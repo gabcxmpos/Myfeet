@@ -160,21 +160,61 @@ const Dashboard = () => {
     }, {});
 
 
+    // Filtrar apenas avaliações aprovadas
+    const approvedEvaluations = filteredEvaluations.filter(e => e.status === 'approved');
+    
+    // Calcular pontuação geral e por pilares baseado em avaliações aprovadas
+    const pillars = ['Pessoas', 'Performance', 'Ambientação', 'Digital'];
+    
+    // Calcular pontuação por pilar (média de todas as avaliações aprovadas)
+    const pillarScores = {};
+    pillars.forEach(pillar => {
+      const pillarEvals = approvedEvaluations.filter(e => e.pillar === pillar);
+      if (pillarEvals.length > 0) {
+        pillarScores[pillar] = Math.round(
+          pillarEvals.reduce((acc, curr) => acc + curr.score, 0) / pillarEvals.length
+        );
+      } else {
+        pillarScores[pillar] = 0;
+      }
+    });
+    
+    // Calcular pontuação geral (média de todas as avaliações aprovadas)
+    const overallScore = approvedEvaluations.length > 0
+      ? Math.round(approvedEvaluations.reduce((sum, e) => sum + e.score, 0) / approvedEvaluations.length)
+      : 0;
+
     if (isLoja) {
-        // Logic for single store view remains unchanged
+        // Logic for single store view - usar apenas avaliações aprovadas da loja
+        const storeEvaluations = approvedEvaluations.filter(e => e.storeId === user.storeId);
+        
+        const storePillarScores = {};
+        pillars.forEach(pillar => {
+          const pillarEvals = storeEvaluations.filter(e => e.pillar === pillar);
+          if (pillarEvals.length > 0) {
+            storePillarScores[pillar] = Math.round(
+              pillarEvals.reduce((acc, curr) => acc + curr.score, 0) / pillarEvals.length
+            );
+          } else {
+            storePillarScores[pillar] = 0;
+          }
+        });
+        
+        const storeOverallScore = storeEvaluations.length > 0
+          ? Math.round(storeEvaluations.reduce((sum, e) => sum + e.score, 0) / storeEvaluations.length)
+          : 0;
+        
         return {
-            overallScore: 91,
-            pillars: [
-              { name: 'Pessoas', score: 92 },
-              { name: 'Performance', score: 88 },
-              { name: 'Ambientação', score: 95 },
-              { name: 'Digital', score: 90 },
-            ],
+            overallScore: storeOverallScore,
+            pillars: pillars.map(pillar => ({
+              name: pillar,
+              score: storePillarScores[pillar] || 0,
+            })),
             gaps: {
-              Pessoas: ['Simpatia no caixa'],
+              Pessoas: [],
               Performance: [],
-              Ambientação: ['Organização do estoque'],
-              Digital: ['Uso da prateleira infinita'],
+              Ambientação: [],
+              Digital: [],
             },
             feedbackSummary,
         }
@@ -182,7 +222,7 @@ const Dashboard = () => {
 
     // Admin/Supervisor logic with filters
     const storeScores = filteredStores.map(store => {
-        const storeEvals = filteredEvaluations.filter(e => e.storeId === store.id && e.status === 'approved');
+        const storeEvals = approvedEvaluations.filter(e => e.storeId === store.id);
         const avgScore = storeEvals.length > 0 ? storeEvals.reduce((sum, e) => sum + e.score, 0) / storeEvals.length : 0;
         return { ...store, score: Math.round(avgScore) };
     });
@@ -200,19 +240,18 @@ const Dashboard = () => {
     });
 
     return {
-        overallScore: 88,
-        overallTrend: 2.5,
-        pillars: [
-          { name: 'Pessoas', score: 85, trend: 3 },
-          { name: 'Performance', score: 92, trend: 1.2 },
-          { name: 'Ambientação', score: 82, trend: -0.5 },
-          { name: 'Digital', score: 90, trend: 5 },
-        ],
+        overallScore,
+        overallTrend: null, // Removido trend mockado - pode ser implementado no futuro com histórico
+        pillars: pillars.map(pillar => ({
+          name: pillar,
+          score: pillarScores[pillar] || 0,
+          trend: null, // Removido trend mockado - pode ser implementado no futuro com histórico
+        })),
         gaps: {
-          Pessoas: ['Conhecimento de produto', 'Simpatia no caixa'],
-          Performance: ['Atingimento P.A.', 'Conversão de vendas'],
-          Ambientação: ['Limpeza do provador', 'Organização do estoque'],
-          Digital: ['Uso da prateleira infinita', 'Postagens em redes sociais'],
+          Pessoas: [],
+          Performance: [],
+          Ambientação: [],
+          Digital: [],
         },
         supervisorAnalysis,
         feedbackSummary,
