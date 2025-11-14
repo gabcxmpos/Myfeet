@@ -256,8 +256,7 @@ export default defineConfig({
 	resolve: {
 		extensions: ['.jsx', '.js', '.tsx', '.ts', '.json', ],
 		alias: {
-			'@': path.resolve(__dirname, './src'),
-		},
+   '@': path.resolve(process.cwd(), './src'),		},
 	},
 	build: {
 		rollupOptions: {
