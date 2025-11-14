@@ -1,0 +1,73 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Helmet } from 'react-helmet';
+import { AuthProvider } from '@/contexts/SupabaseAuthContext';
+import { DataProvider } from '@/contexts/DataContext';
+import { Toaster } from '@/components/ui/toaster';
+import Login from '@/pages/Login';
+import ForgotPassword from '@/pages/ForgotPassword';
+import ResetPassword from '@/pages/ResetPassword';
+import FirstAccess from '@/pages/FirstAccess';
+import Dashboard from '@/pages/Dashboard';
+import MonthlyRanking from '@/pages/MonthlyRanking';
+import Analytics from '@/pages/Analytics';
+import GoalsPanel from '@/pages/GoalsPanel';
+import StartEvaluation from '@/pages/StartEvaluation';
+import StoresManagement from '@/pages/StoresManagement';
+import Settings from '@/pages/Settings';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import MainLayout from '@/components/MainLayout';
+import UserManagement from '@/pages/UserManagement';
+import FormBuilder from '@/pages/FormBuilder';
+import Collaborators from '@/pages/Collaborators';
+import Feedback from '@/pages/Feedback';
+import FeedbackManagement from '@/pages/FeedbackManagement';
+import Chave from '@/pages/Chave';
+import DailyChecklist from '@/pages/DailyChecklist';
+import ChecklistManagement from '@/pages/ChecklistManagement';
+import MenuVisibilitySettings from '@/pages/MenuVisibilitySettings';
+
+function App() {
+  return (
+    <>
+      <Helmet>
+        <title>MYFEET - Painel PPAD</title>
+        <meta name="description" content="Painel de avaliação de desempenho de lojas baseado nos pilares: Pessoas, Performance, Ambientação e Digital." />
+      </Helmet>
+      <AuthProvider>
+        <DataProvider>
+          <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/first-access" element={<ProtectedRoute><FirstAccess /></ProtectedRoute>} />
+              <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
+                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="ranking" element={<MonthlyRanking />} />
+                <Route path="analytics" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><Analytics /></ProtectedRoute>} />
+                <Route path="goals" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><GoalsPanel /></ProtectedRoute>} />
+                <Route path="evaluation" element={<StartEvaluation />} />
+                <Route path="stores" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><StoresManagement /></ProtectedRoute>} />
+                <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
+                <Route path="forms" element={<ProtectedRoute allowedRoles={['admin']}><FormBuilder /></ProtectedRoute>} />
+                <Route path="settings" element={<ProtectedRoute allowedRoles={['admin']}><Settings /></ProtectedRoute>} />
+                <Route path="settings/visibility" element={<ProtectedRoute allowedRoles={['admin']}><MenuVisibilitySettings /></ProtectedRoute>} />
+                <Route path="collaborators" element={<ProtectedRoute allowedRoles={['loja']}><Collaborators /></ProtectedRoute>} />
+                <Route path="feedback" element={<ProtectedRoute allowedRoles={['loja']}><Feedback /></ProtectedRoute>} />
+                <Route path="feedback-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><FeedbackManagement /></ProtectedRoute>} />
+                <Route path="chave" element={<Chave />} />
+                <Route path="checklist" element={<DailyChecklist />} />
+                <Route path="checklist/management" element={<ProtectedRoute allowedRoles={['admin']}><ChecklistManagement /></ProtectedRoute>} />
+              </Route>
+            </Routes>
+          </Router>
+          <Toaster />
+        </DataProvider>
+      </AuthProvider>
+    </>
+  );
+}
+
+export default App;
