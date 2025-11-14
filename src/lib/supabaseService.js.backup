@@ -1,0 +1,1465 @@
+﻿import { supabase } from '@/lib/customSupabaseClient';
+
+// ============ STORES ============
+export const fetchStores = async () => {
+  const { data, error } = await supabase
+    .from('stores')
+    .select('*')
+    .order('code', { ascending: true });
+  
+  if (error) throw error;
+  
+  // Se houver dados, ordenar numericamente pelo cÃ³digo (ex: af011, af013)
+  // Isso garante que cÃ³digos como "af11" venham depois de "af011"
+  if (data && data.length > 0) {
+    return data.sort((a, b) => {
+      const codeA = (a.code || '').toLowerCase();
+      const codeB = (b.code || '').toLowerCase();
+      
+      // Extrair prefixo alfabÃ©tico e nÃºmero
+      const matchA = codeA.match(/^([a-z]+)(\d+)$/);
+      const matchB = codeB.match(/^([a-z]+)(\d+)$/);
+      
+      if (matchA && matchB) {
+        const prefixA = matchA[1];
+        const prefixB = matchB[1];
+        const numA = parseInt(matchA[2], 10);
+        const numB = parseInt(matchB[2], 10);
+        
+        // Comparar prefixo primeiro
+        if (prefixA !== prefixB) {
+          return prefixA.localeCompare(prefixB);
+        }
+        
+        // Se prefixo igual, comparar numericamente
+        return numA - numB;
+      }
+      
+      // Fallback para comparaÃ§Ã£o alfabÃ©tica se nÃ£o houver padrÃ£o
+      return codeA.localeCompare(codeB);
+    });
+  }
+  
+  return data || [];
+};
+
+export const createStore = async (storeData) => {
+  const { data, error } = await supabase
+    .from('stores')
+    .insert([storeData])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+// Salvar histÃ³rico de metas antes de atualizar
+export const saveGoalsHistory = async (storeId, goals, weights, changedBy = null) => {
+  try {
+    const historyData = {
+      store_id: storeId,
+      goals: goals || {},
+      weights: weights || {}
+    };
+    
+    // Se tiver informaÃ§Ã£o do usuÃ¡rio que estÃ¡ fazendo a mudanÃ§a, adicionar
+    if (changedBy) {
+      historyData.changed_by = changedBy;
+    }
+    
+    const { error } = await supabase
+      .from('goals_history')
+      .insert([historyData]);
+    
+    // NÃ£o lanÃ§ar erro se a tabela nÃ£o existir ainda (para nÃ£o quebrar a aplicaÃ§Ã£o)
+    if (error && error.code !== '42P01') { // 42P01 = table does not exist
+      console.warn('âš ï¸ Erro ao salvar histÃ³rico de metas (continuando mesmo assim):', error);
+    }
+  } catch (error) {
+    // NÃ£o lanÃ§ar erro - apenas logar
+    console.warn('âš ï¸ Erro ao salvar histÃ³rico de metas (continuando mesmo assim):', error);
+  }
+};
+
+export const updateStore = async (id, updates) => {
+  // Se estiver atualizando goals ou weights, salvar histÃ³rico primeiro
+  if (updates.goals || updates.weights) {
+    try {
+      // Buscar dados atuais da loja
+      const { data: currentStore } = await supabase
+        .from('stores')
+        .select('goals, weights')
+        .eq('id', id)
+        .single();
+      
+      // Se encontrou a loja, salvar histÃ³rico
+      if (currentStore) {
+        // Buscar usuÃ¡rio atual se possÃ­vel
+        const { data: { user } } = await supabase.auth.getUser();
+        const changedBy = user?.id || null;
+        
+        // Salvar histÃ³rico com os valores que serÃ£o atualizados
+        await saveGoalsHistory(
+          id,
+          updates.goals || currentStore.goals,
+          updates.weights || currentStore.weights,
+          changedBy
+        );
+      }
+    } catch (error) {
+      // NÃ£o bloquear a atualizaÃ§Ã£o se o histÃ³rico falhar
+      console.warn('âš ï¸ Erro ao preparar histÃ³rico de metas (continuando mesmo assim):', error);
+    }
+  }
+  const { data, error } = await supabase
+    .from('stores')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+// Buscar histÃ³rico de metas de uma loja
+export const fetchGoalsHistory = async (storeId, limit = 50) => {
+  try {
+    const { data, error } = await supabase
+      .from('goals_history')
+      .select('*')
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    // Se a tabela nÃ£o existir ainda, retornar array vazio
+    if (error.code === '42P01') { // 42P01 = table does not exist
+      console.warn('âš ï¸ Tabela goals_history nÃ£o existe ainda. Execute o script CRIAR_HISTORICO_METAS.sql');
+      return [];
+    }
+    throw error;
+  }
+};
+
+export const deleteStore = async (id) => {
+  const { error } = await supabase
+    .from('stores')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
+
+// ============ USERS ============
+export const fetchAppUsers = async () => {
+  // Buscar usuÃ¡rios da tabela app_users (sem relacionamento automÃ¡tico)
+  const { data, error } = await supabase
+    .from('app_users')
+    .select('*')
+    .order('username');
+  
+  if (error) throw error;
+  
+  // Se houver usuÃ¡rios com store_id, buscar dados das lojas
+  if (data && data.length > 0) {
+    const storeIds = data
+      .map(user => user.store_id)
+      .filter(id => id !== null && id !== undefined);
+    
+    if (storeIds.length > 0) {
+      try {
+        const { data: storesData } = await supabase
+          .from('stores')
+          .select('id, name, code')
+          .in('id', storeIds)
+          .order('code', { ascending: true });
+        
+        // Adicionar dados da loja a cada usuÃ¡rio
+        if (storesData) {
+          const storesMap = new Map(storesData.map(store => [store.id, store]));
+          data.forEach(user => {
+            if (user.store_id && storesMap.has(user.store_id)) {
+              user.store = storesMap.get(user.store_id);
+            }
+          });
+        }
+      } catch (storeError) {
+        // Se falhar ao buscar lojas, continuar sem os dados das lojas
+        console.log('Erro ao buscar dados das lojas:', storeError);
+      }
+    }
+  }
+  
+  return data || [];
+};
+
+// Buscar email do usuÃ¡rio atravÃ©s do auth.users
+// Nota: Isso requer uma funÃ§Ã£o edge ou RPC no Supabase que use a service role key
+// Por enquanto, vamos armazenar o email na tabela app_users ou buscar de outra forma
+export const getUserEmail = async (userId) => {
+  // Tentar buscar o email do usuÃ¡rio
+  // Como nÃ£o temos acesso direto ao auth.users com anon key,
+  // vamos tentar buscar atravÃ©s de uma funÃ§Ã£o RPC ou edge function
+  // Por enquanto, retornamos null e vamos armazenar o email na tabela app_users
+  
+  // SoluÃ§Ã£o: Armazenar o email na tabela app_users quando criar o usuÃ¡rio
+  // ou buscar atravÃ©s de uma funÃ§Ã£o RPC/Edge que use service role key
+  
+  return null;
+};
+
+export const createAppUser = async (email, password, userData) => {
+  // Senha padrÃ£o para primeiro acesso
+  const DEFAULT_PASSWORD = 'afeet10';
+  
+  // Se nÃ£o houver senha fornecida, usar senha padrÃ£o
+  // Todos os novos usuÃ¡rios terÃ£o a senha padrÃ£o e precisarÃ£o definir uma nova senha no primeiro acesso
+  const userPassword = password || DEFAULT_PASSWORD;
+  const sanitizedEmail = email.trim().toLowerCase();
+  
+  // IMPORTANTE: Salvar a sessÃ£o atual do admin ANTES de criar o usuÃ¡rio
+  // Isso permite restaurar a sessÃ£o apÃ³s criar o usuÃ¡rio
+  let adminSession = null;
+  let adminAccessToken = null;
+  let adminRefreshToken = null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      adminSession = session;
+      adminAccessToken = session.access_token;
+      adminRefreshToken = session.refresh_token;
+      console.log('âœ… SessÃ£o do admin salva antes de criar usuÃ¡rio (ID:', session.user.id, ')');
+    } else {
+      console.log('âš ï¸ Nenhuma sessÃ£o ativa antes de criar usuÃ¡rio');
+    }
+  } catch (sessionError) {
+    console.warn('Erro ao salvar sessÃ£o do admin:', sessionError);
+  }
+  
+  // Criar usuÃ¡rio no auth SEM confirmaÃ§Ã£o de email
+  // O trigger handle_new_user() criarÃ¡ o registro em app_users automaticamente
+  // NÃ£o Ã© necessÃ¡rio confirmar email - usuÃ¡rios sÃ£o criados imediatamente
+  
+  // IMPORTANTE: Garantir que o role seja passado corretamente
+  // Se userData.role nÃ£o existir ou for vazio, usar 'user' como padrÃ£o
+  // Mas priorizar o role passado no userData
+  // DEBUG: Vamos garantir que o role seja sempre passado explicitamente
+  const userRole = userData?.role || 'user';
+  const userStatus = userData?.status || 'active';
+  const userUsername = userData?.username || sanitizedEmail.split('@')[0];
+  const userStoreId = userData?.store_id || null;
+  
+  // DEBUG: Log dos valores que serÃ£o passados
+  console.log('ðŸ“ Criando usuÃ¡rio com os seguintes dados:', {
+    email: sanitizedEmail,
+    username: userUsername,
+    role: userRole,
+    status: userStatus,
+    store_id: userStoreId
+  });
+  
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email: sanitizedEmail,
+    password: userPassword,
+    options: {
+      // NÃ£o enviar email de confirmaÃ§Ã£o
+      emailRedirectTo: undefined,
+      // Incluir dados do usuÃ¡rio nos metadados para o trigger usar
+      // IMPORTANTE: Usar os valores explÃ­citos, nÃ£o o spread que pode sobrescrever
+      // DEBUG: Vamos garantir que o role seja passado como string explÃ­cita
+      data: {
+        username: userUsername,
+        role: String(userRole), // Garantir que seja string
+        status: String(userStatus), // Garantir que seja string
+        store_id: userStoreId ? String(userStoreId) : null
+      }
+    }
+  });
+  
+  if (authError) {
+    // Se o erro for de usuÃ¡rio jÃ¡ existente
+    if (authError.message?.includes('User already registered') || 
+        authError.message?.includes('already registered') ||
+        (authError.message?.includes('email') && authError.message?.includes('already'))) {
+      throw new Error(`UsuÃ¡rio com o email ${sanitizedEmail} jÃ¡ existe no sistema. Use a funÃ§Ã£o de reset de senha se necessÃ¡rio.`);
+    }
+    throw authError;
+  }
+  
+  // Verificar se o usuÃ¡rio foi criado
+  // Se authData.user for null, pode ser que a confirmaÃ§Ã£o de email esteja habilitada
+  // Nesse caso, ainda podemos continuar - o trigger serÃ¡ executado quando o email for confirmado
+  if (!authData?.user?.id) {
+    // Se o usuÃ¡rio nÃ£o foi criado imediatamente, pode ser que a confirmaÃ§Ã£o de email esteja habilitada
+    // Mas ainda podemos criar o perfil quando o email for confirmado
+    // Por enquanto, lanÃ§ar um erro informativo
+    throw new Error(`O usuÃ¡rio nÃ£o foi criado imediatamente. Isso pode acontecer se a confirmaÃ§Ã£o de email estiver habilitada. Por favor, desabilite a confirmaÃ§Ã£o de email em Authentication > Settings > Email Auth > Desabilite "Enable email confirmations". O sistema nÃ£o envia email de confirmaÃ§Ã£o, apenas para reset de senha.`);
+  }
+  
+  const userId = authData.user.id;
+  
+  // IMPORTANTE: O signUp do Supabase cria uma sessÃ£o automaticamente para o novo usuÃ¡rio
+  // Isso substitui a sessÃ£o do admin que estÃ¡ criando o usuÃ¡rio
+  // Precisamos restaurar a sessÃ£o do admin imediatamente apÃ³s criar o usuÃ¡rio
+  // Usando setSession para restaurar a sessÃ£o do admin diretamente
+  
+  // O trigger handle_new_user() DEVE criar o perfil automaticamente quando um usuÃ¡rio Ã© criado no auth
+  // IMPORTANTE: Aguardar ANTES de restaurar a sessÃ£o para dar tempo ao trigger executar
+  // O trigger precisa que a sessÃ£o do novo usuÃ¡rio esteja ativa para funcionar corretamente
+  // Aguardar um pouco para o trigger processar (o trigger Ã© executado imediatamente apÃ³s INSERT no auth.users)
+  console.log('â³ Aguardando trigger criar o perfil...');
+  await new Promise(resolve => setTimeout(resolve, 3000)); // Aumentar para 3 segundos para dar mais tempo ao trigger
+  
+  // Restaurar a sessÃ£o do admin DEPOIS de aguardar o trigger
+  // Isso garante que o trigger tenha tempo de executar com a sessÃ£o do novo usuÃ¡rio
+  if (adminSession && adminAccessToken && adminRefreshToken) {
+    try {
+      // Restaurar a sessÃ£o do admin usando setSession
+      const { data: restoreData, error: restoreError } = await supabase.auth.setSession({
+        access_token: adminAccessToken,
+        refresh_token: adminRefreshToken
+      });
+      
+      if (!restoreError && restoreData.session) {
+        console.log('âœ… SessÃ£o do admin restaurada com sucesso (ID:', restoreData.session.user.id, ')');
+        
+        // Verificar se a sessÃ£o foi realmente restaurada
+        const { data: { session: verifySession } } = await supabase.auth.getSession();
+        if (verifySession && verifySession.user.id === adminSession.user.id) {
+          console.log('âœ… VerificaÃ§Ã£o: SessÃ£o do admin confirmada - vocÃª permanecerÃ¡ logado');
+        } else {
+          console.warn('âš ï¸ VerificaÃ§Ã£o: SessÃ£o pode nÃ£o ter sido restaurada corretamente');
+          // Se a verificaÃ§Ã£o falhou, tentar restaurar novamente
+          try {
+            await supabase.auth.setSession({
+              access_token: adminAccessToken,
+              refresh_token: adminRefreshToken
+            });
+            console.log('âœ… Tentativa de restaurar sessÃ£o novamente');
+          } catch (retryError) {
+            console.warn('âš ï¸ Erro ao tentar restaurar sessÃ£o novamente:', retryError);
+          }
+        }
+      } else {
+        console.warn('âš ï¸ NÃ£o foi possÃ­vel restaurar a sessÃ£o do admin:', restoreError);
+        // Se nÃ£o conseguir restaurar, o admin precisarÃ¡ fazer login novamente
+        console.warn('âš ï¸ VocÃª precisarÃ¡ fazer login novamente');
+      }
+    } catch (restoreError) {
+      console.error('Erro ao tentar restaurar sessÃ£o do admin:', restoreError);
+      // NÃ£o fazer signOut automaticamente - deixar o usuÃ¡rio decidir
+      console.warn('âš ï¸ VocÃª precisarÃ¡ fazer login novamente');
+    }
+  } else {
+    // Se nÃ£o temos a sessÃ£o do admin salva, nÃ£o podemos restaurar
+    console.warn('âš ï¸ NÃ£o foi possÃ­vel salvar a sessÃ£o do admin');
+    console.warn('âš ï¸ VocÃª serÃ¡ deslogado apÃ³s criar o usuÃ¡rio e precisarÃ¡ fazer login novamente');
+  }
+  
+  // Verificar se o perfil foi criado pelo trigger
+  let profile = null;
+  let attempts = 0;
+  const maxAttempts = 8; // Aguardar atÃ© 8 segundos (2s inicial + 6 tentativas de 1s)
+  
+  while (attempts < maxAttempts && !profile) {
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('app_users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    if (existingProfile && !fetchError) {
+      profile = existingProfile;
+      
+      // Se o perfil foi criado pelo trigger, atualizar com os dados adicionais se necessÃ¡rio
+      // IMPORTANTE: Garantir que o role seja atualizado corretamente
+      const userRole = userData?.role || 'user';
+      const userStatus = userData?.status || 'active';
+      const userUsername = userData?.username || sanitizedEmail.split('@')[0];
+      const userStoreId = userData?.store_id || null;
+      
+      const needsUpdate = 
+        (userUsername && existingProfile.username !== userUsername) ||
+        (userRole && existingProfile.role !== userRole) ||
+        (userStoreId !== null && existingProfile.store_id !== userStoreId);
+      
+      if (needsUpdate) {
+        try {
+          const { data: updatedProfile, error: updateError } = await supabase
+            .from('app_users')
+            .update({
+              username: userUsername,
+              role: userRole,
+              status: userStatus,
+              store_id: userStoreId
+            })
+            .eq('id', userId)
+            .select()
+            .single();
+          
+          if (!updateError && updatedProfile) {
+            profile = updatedProfile;
+            console.log('âœ… Perfil atualizado com dados corretos');
+          }
+        } catch (updateErr) {
+          // Se falhar ao atualizar, usar o perfil que jÃ¡ existe
+          console.warn('Erro ao atualizar perfil:', updateErr);
+        }
+      }
+      
+      // SessÃ£o do admin jÃ¡ foi restaurada no inÃ­cio da funÃ§Ã£o (se possÃ­vel)
+      break;
+    }
+    
+    // Se nÃ£o encontrou, aguardar e tentar novamente
+    attempts++;
+    if (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  
+  // Se o trigger nÃ£o criou o perfil apÃ³s todas as tentativas, tentar criar manualmente
+  if (!profile) {
+    console.warn('Trigger nÃ£o criou o perfil, tentando criar manualmente...');
+    
+    try {
+      // PRIMEIRO: Tentar usar a funÃ§Ã£o RPC (mais confiÃ¡vel - usa SECURITY DEFINER)
+      // Aguardar um pouco mais para garantir que o usuÃ¡rio foi commitado no banco
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Tentar usar a funÃ§Ã£o RPC com retry (mais confiÃ¡vel - usa SECURITY DEFINER)
+      let rpcSuccess = false;
+      let rpcAttempts = 0;
+      const maxRpcAttempts = 3;
+      
+      while (!rpcSuccess && rpcAttempts < maxRpcAttempts) {
+        try {
+          const { data: rpcResult, error: rpcError } = await supabase.rpc('create_user_profile', {
+            p_user_id: userId,
+            p_username: userUsername,
+            p_role: userRole,
+            p_status: userStatus,
+            p_store_id: userStoreId,
+          });
+          
+          if (!rpcError && rpcResult?.success) {
+            // Se a funÃ§Ã£o RPC funcionou, buscar o perfil criado
+            await new Promise(resolve => setTimeout(resolve, 500)); // Aguardar um pouco para garantir
+            
+            const { data: createdProfile, error: fetchError } = await supabase
+              .from('app_users')
+              .select('*')
+              .eq('id', userId)
+              .single();
+            
+            if (createdProfile && !fetchError) {
+              profile = createdProfile;
+              console.log('âœ… Perfil criado via funÃ§Ã£o RPC com sucesso');
+              
+              // Verificar se o role estÃ¡ correto e atualizar se necessÃ¡rio
+              if (profile.role !== userRole) {
+                console.warn(`Role do perfil (${profile.role}) diferente do esperado (${userRole}), atualizando...`);
+                try {
+                  const { data: updatedProfile, error: updateError } = await supabase
+                    .from('app_users')
+                    .update({ role: userRole, status: userStatus, store_id: userStoreId })
+                    .eq('id', userId)
+                    .select()
+                    .single();
+                  
+                  if (!updateError && updatedProfile) {
+                    profile = updatedProfile;
+                    console.log('âœ… Perfil atualizado com role correto');
+                  }
+                } catch (updateErr) {
+                  console.warn('Erro ao atualizar role do perfil:', updateErr);
+                }
+              }
+              
+              rpcSuccess = true;
+              
+              // SignOut jÃ¡ foi feito no inÃ­cio da funÃ§Ã£o, nÃ£o precisa fazer novamente
+              return profile;
+            } else if (fetchError) {
+              console.warn(`Perfil criado via RPC mas erro ao buscar (tentativa ${rpcAttempts + 1}/${maxRpcAttempts}):`, fetchError);
+            }
+          } else if (rpcError) {
+            // Se o erro for 404, a funÃ§Ã£o nÃ£o existe
+            if (rpcError.code === 'PGRST202' || rpcError.message?.includes('not found')) {
+              console.warn(`FunÃ§Ã£o RPC nÃ£o encontrada (tentativa ${rpcAttempts + 1}/${maxRpcAttempts}). Execute o script CRIAR_FUNCAO_RPC_AGORA.sql no Supabase SQL Editor.`);
+              break; // NÃ£o tentar novamente se a funÃ§Ã£o nÃ£o existe
+            } else {
+              console.warn(`FunÃ§Ã£o RPC falhou (tentativa ${rpcAttempts + 1}/${maxRpcAttempts}):`, rpcError);
+            }
+          }
+        } catch (rpcErr) {
+          console.warn(`Erro ao chamar funÃ§Ã£o RPC (tentativa ${rpcAttempts + 1}/${maxRpcAttempts}):`, rpcErr);
+        }
+        
+        rpcAttempts++;
+        if (!rpcSuccess && rpcAttempts < maxRpcAttempts) {
+          // Aguardar antes de tentar novamente
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      // Se a funÃ§Ã£o RPC nÃ£o funcionou apÃ³s todas as tentativas, continuar para inserir diretamente
+      if (!rpcSuccess) {
+        console.warn('FunÃ§Ã£o RPC nÃ£o funcionou apÃ³s todas as tentativas, tentando inserir diretamente...');
+      }
+      
+      // SEGUNDO: Se a funÃ§Ã£o RPC nÃ£o funcionou, tentar inserir diretamente
+      // Aguardar mais um pouco para garantir que o usuÃ¡rio foi commitado
+      if (!profile) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const profileData = {
+          id: userId,
+          status: userStatus,
+          username: userUsername,
+          role: userRole,
+          store_id: userStoreId,
+        };
+        
+        const { data: createdProfile, error: createError } = await supabase
+    .from('app_users')
+          .insert([profileData])
+    .select()
+    .single();
+  
+        if (createError) {
+          // Se o erro for de foreign key, verificar se Ã© problema de timing ou foreign key incorreta
+          if (createError.code === '23503' || createError.message?.includes('foreign key')) {
+            // Verificar se o usuÃ¡rio realmente existe no auth.users
+            // Se nÃ£o existir, pode ser problema de timing ou confirmaÃ§Ã£o de email
+            const errorDetails = createError.message || '';
+            
+            // Tentar verificar se o usuÃ¡rio existe no auth.users
+            // Se a funÃ§Ã£o RPC nÃ£o funcionou e a inserÃ§Ã£o direta falhou, pode ser que:
+            // 1. O usuÃ¡rio ainda nÃ£o foi commitado (problema de timing)
+            // 2. A confirmaÃ§Ã£o de email estÃ¡ habilitada e o usuÃ¡rio nÃ£o estÃ¡ ativo
+            // 3. A foreign key estÃ¡ incorreta (mas o script disse que estÃ¡ correta)
+            
+            const errorMsg = `âŒ ERRO: NÃ£o foi possÃ­vel criar o perfil do usuÃ¡rio.
+
+UsuÃ¡rio criado no auth.users (ID: ${userId}), mas nÃ£o foi possÃ­vel criar o perfil em app_users.
+
+CAUSA POSSÃVEL: 
+- O trigger nÃ£o executou automaticamente
+- A funÃ§Ã£o RPC create_user_profile nÃ£o estÃ¡ disponÃ­vel ou falhou
+- Problema de timing: o usuÃ¡rio pode ainda nÃ£o estar disponÃ­vel no banco
+- A confirmaÃ§Ã£o de email pode estar habilitada (desabilite em Authentication > Settings)
+
+SOLUÃ‡ÃƒO:
+1. Verifique se a confirmaÃ§Ã£o de email estÃ¡ DESABILITADA:
+   - Authentication > Settings > Email Auth
+   - Desabilite "Enable email confirmations"
+   - Clique em "Save"
+
+2. Verifique se a funÃ§Ã£o RPC create_user_profile foi criada:
+   - Execute o script: SOLUCAO_DEFINITIVA.sql no Supabase SQL Editor
+   - Verifique se a funÃ§Ã£o foi criada no PASSO 9
+
+3. Verifique os logs do Supabase para ver se o trigger estÃ¡ executando
+
+4. Tente criar o usuÃ¡rio novamente apÃ³s alguns segundos
+
+Detalhes do erro: ${createError.message}
+CÃ³digo do erro: ${createError.code}`;
+            
+            throw new Error(errorMsg);
+          }
+          
+          // Se for outro erro, lanÃ§ar normalmente
+          throw createError;
+        }
+        
+        // Se conseguiu criar manualmente, retornar o perfil criado
+        profile = createdProfile;
+        console.log('âœ… Perfil criado diretamente com sucesso');
+        
+        // SignOut jÃ¡ foi feito no inÃ­cio da funÃ§Ã£o, nÃ£o precisa fazer novamente
+      }
+    } catch (manualCreateError) {
+      // Se falhar ao criar manualmente, lanÃ§ar erro detalhado
+      const errorMessage = manualCreateError.message || String(manualCreateError);
+      const isForeignKeyError = errorMessage.includes('foreign key') || 
+                                errorMessage.includes('23503') ||
+                                errorMessage.includes('Key is not present in table');
+      
+      let errorMsg;
+      if (isForeignKeyError) {
+        errorMsg = `âŒ ERRO: NÃ£o foi possÃ­vel criar o perfil do usuÃ¡rio.
+
+UsuÃ¡rio criado no auth.users (ID: ${userId}), mas nÃ£o foi possÃ­vel criar o perfil em app_users.
+
+CAUSA POSSÃVEL:
+- Problema de timing: o usuÃ¡rio pode ainda nÃ£o estar disponÃ­vel no banco quando tentamos criar o perfil
+- A confirmaÃ§Ã£o de email pode estar habilitada (desabilite em Authentication > Settings)
+- O trigger nÃ£o executou e a funÃ§Ã£o RPC nÃ£o estÃ¡ disponÃ­vel
+
+SOLUÃ‡ÃƒO:
+1. IMPORTANTE: Desabilite a confirmaÃ§Ã£o de email:
+   - Authentication > Settings > Email Auth
+   - Desabilite "Enable email confirmations"
+   - Clique em "Save"
+
+2. Verifique se a funÃ§Ã£o RPC create_user_profile foi criada:
+   - Execute o script: SOLUCAO_DEFINITIVA.sql no Supabase SQL Editor
+   - Verifique se a funÃ§Ã£o foi criada no PASSO 9
+
+3. Aguarde alguns segundos e tente criar o usuÃ¡rio novamente
+
+4. Se o problema persistir, verifique os logs do Supabase
+
+Detalhes do erro: ${errorMessage}`;
+      } else {
+        errorMsg = `âŒ ERRO: NÃ£o foi possÃ­vel criar o perfil do usuÃ¡rio.
+
+UsuÃ¡rio criado no auth.users (ID: ${userId}), mas nÃ£o foi possÃ­vel criar o perfil em app_users.
+
+ERRO: ${errorMessage}
+
+SOLUÃ‡ÃƒO:
+1. Desabilite a confirmaÃ§Ã£o de email em Authentication > Settings
+2. Execute o script SQL: SOLUCAO_DEFINITIVA.sql no Supabase SQL Editor
+3. Verifique se a funÃ§Ã£o create_user_profile foi criada
+4. Tente criar o usuÃ¡rio novamente apÃ³s alguns segundos`;
+      }
+      
+      throw new Error(errorMsg);
+    }
+  }
+  
+  // IMPORTANTE: Verificar se o perfil foi criado com o role correto
+  // Se nÃ£o, atualizar o perfil com o role correto
+  if (profile) {
+    // Verificar se o role estÃ¡ correto
+    if (profile.role !== userRole) {
+      console.warn(`âš ï¸ Role do perfil (${profile.role}) diferente do esperado (${userRole}), atualizando...`);
+      try {
+        const { data: updatedProfile, error: updateError } = await supabase
+          .from('app_users')
+          .update({ 
+            role: userRole,
+            status: userStatus,
+            username: userUsername,
+            store_id: userStoreId
+          })
+          .eq('id', userId)
+          .select()
+          .single();
+        
+        if (!updateError && updatedProfile) {
+          profile = updatedProfile;
+          console.log(`âœ… Perfil atualizado com role correto: ${userRole}`);
+        } else {
+          console.error('âŒ Erro ao atualizar role do perfil:', updateError);
+        }
+      } catch (updateErr) {
+        console.error('âŒ Erro ao atualizar role do perfil:', updateErr);
+      }
+    } else {
+      console.log(`âœ… Perfil criado com role correto: ${userRole}`);
+    }
+  }
+  
+  // A sessÃ£o do admin jÃ¡ foi restaurada (se possÃ­vel) no inÃ­cio da funÃ§Ã£o
+  // NÃ£o precisamos fazer nada adicional aqui
+  
+  return profile;
+};
+
+export const updateAppUser = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('app_users')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteAppUser = async (id) => {
+  // Validar ID do usuÃ¡rio
+  if (!id) {
+    throw new Error('ID do usuÃ¡rio Ã© obrigatÃ³rio');
+  }
+  
+  // Tentar usar a funÃ§Ã£o RPC para excluir o usuÃ¡rio completamente
+  try {
+    const { data, error } = await supabase.rpc('delete_user_completely', {
+      p_user_id: id
+    });
+    
+    if (error) {
+      // Se a funÃ§Ã£o RPC nÃ£o existir, tentar alternativa
+      if (error.code === 'PGRST202' || error.message?.includes('not found')) {
+        console.warn('FunÃ§Ã£o RPC nÃ£o encontrada, tentando mÃ©todo alternativo...');
+        
+        // MÃ©todo alternativo: excluir apenas de app_users
+        // Nota: Isso nÃ£o excluirÃ¡ o usuÃ¡rio de auth.users
+        // O usuÃ¡rio ainda existirÃ¡ no sistema de autenticaÃ§Ã£o
+        const { error: deleteError } = await supabase
+          .from('app_users')
+          .delete()
+          .eq('id', id);
+        
+        if (deleteError) {
+          throw deleteError;
+        }
+        
+        // Avisar que a exclusÃ£o foi parcial
+        console.warn('âš ï¸ UsuÃ¡rio excluÃ­do apenas de app_users. Execute o script CRIAR_FUNCAO_EXCLUIR_USUARIO.sql no Supabase SQL Editor para excluir completamente.');
+        throw new Error('FunÃ§Ã£o RPC nÃ£o disponÃ­vel. Execute o script CRIAR_FUNCAO_EXCLUIR_USUARIO.sql no Supabase SQL Editor para excluir completamente.');
+      }
+      
+      throw error;
+    }
+    
+    // Verificar se a funÃ§Ã£o retornou sucesso
+    if (data && data.success) {
+      console.log('âœ… UsuÃ¡rio excluÃ­do com sucesso:', data.message);
+      return true;
+    } else if (data && !data.success) {
+      throw new Error(data.error || 'Erro ao excluir usuÃ¡rio');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Erro ao excluir usuÃ¡rio:', error);
+    throw error;
+  }
+};
+
+// Reset de senha de um usuÃ¡rio especÃ­fico (admin)
+// Recebe o email do usuÃ¡rio e envia email de recuperaÃ§Ã£o
+export const resetUserPassword = async (email) => {
+  const sanitizedEmail = email.trim().toLowerCase();
+  const DEFAULT_PASSWORD = 'afeet10';
+  
+  // Validar email
+  if (!sanitizedEmail) {
+    throw new Error('Email Ã© obrigatÃ³rio');
+  }
+  
+  // Tentar usar a funÃ§Ã£o RPC para resetar a senha para a senha padrÃ£o
+  try {
+    const { data, error } = await supabase.rpc('reset_user_password_to_default', {
+      p_email: sanitizedEmail
+    });
+    
+    if (error) {
+      // Se a funÃ§Ã£o RPC nÃ£o existir, tentar alternativa
+      if (error.code === 'PGRST202' || error.message?.includes('not found')) {
+        console.warn('FunÃ§Ã£o RPC nÃ£o encontrada, tentando mÃ©todo alternativo...');
+        
+        // MÃ©todo alternativo: usar a API Admin do Supabase
+        // Como nÃ£o temos acesso direto Ã  API Admin, vamos usar uma abordagem diferente
+        // Buscar o usuÃ¡rio pelo email e usar updateUser se o usuÃ¡rio estiver logado
+        // Mas isso nÃ£o funciona para outros usuÃ¡rios
+        
+        // Por enquanto, vamos lanÃ§ar um erro com instruÃ§Ãµes
+        throw new Error(`NÃ£o foi possÃ­vel resetar a senha. A funÃ§Ã£o RPC nÃ£o estÃ¡ disponÃ­vel. Execute o script CRIAR_FUNCAO_RESET_SENHA.sql no Supabase SQL Editor para criar a funÃ§Ã£o necessÃ¡ria.`);
+      }
+      
+      throw error;
+    }
+    
+    // Verificar se a funÃ§Ã£o retornou sucesso
+    if (data && data.success) {
+      console.log('âœ… Senha resetada com sucesso:', data.message);
+      return true;
+    } else if (data && !data.success) {
+      throw new Error(data.error || 'Erro ao resetar senha');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Erro ao resetar senha:', error);
+    throw error;
+  }
+};
+
+// ============ FORMS ============
+export const fetchForms = async () => {
+  const { data, error } = await supabase
+    .from('forms')
+    .select('*')
+    .order('created_at', { ascending: false });
+  
+  if (error) throw error;
+  return data || [];
+};
+
+export const createForm = async (formData) => {
+  const { data, error } = await supabase
+    .from('forms')
+    .insert([formData])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateForm = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('forms')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteForm = async (id) => {
+  const { error } = await supabase
+    .from('forms')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
+
+// ============ EVALUATIONS ============
+export const fetchEvaluations = async () => {
+  // Buscar avaliaÃ§Ãµes sem relacionamento automÃ¡tico
+  const { data, error } = await supabase
+    .from('evaluations')
+    .select('*')
+    .order('created_at', { ascending: false });
+  
+  if (error) throw error;
+  
+  // Se houver dados, buscar informaÃ§Ãµes das lojas e usuÃ¡rios separadamente
+  if (data && data.length > 0) {
+    // Buscar store_ids Ãºnicos
+    const storeIds = [...new Set(data.map(evaluation => evaluation.store_id).filter(id => id))];
+    const userIds = [...new Set(data.map(evaluation => evaluation.user_id).filter(id => id))];
+    
+    // Buscar dados das lojas
+    if (storeIds.length > 0) {
+      try {
+        const { data: storesData } = await supabase
+          .from('stores')
+          .select('id, name, code')
+          .in('id', storeIds)
+          .order('code', { ascending: true });
+        
+        if (storesData) {
+          const storesMap = new Map(storesData.map(store => [store.id, store]));
+          data.forEach(evaluation => {
+            if (evaluation.store_id && storesMap.has(evaluation.store_id)) {
+              evaluation.store = storesMap.get(evaluation.store_id);
+            }
+          });
+        }
+      } catch (storeError) {
+        console.log('Erro ao buscar dados das lojas:', storeError);
+      }
+    }
+    
+    // Buscar dados dos usuÃ¡rios
+    if (userIds.length > 0) {
+      try {
+        const { data: usersData } = await supabase
+          .from('app_users')
+          .select('id, username')
+          .in('id', userIds);
+        
+        if (usersData) {
+          const usersMap = new Map(usersData.map(user => [user.id, user]));
+          data.forEach(evaluation => {
+            if (evaluation.user_id && usersMap.has(evaluation.user_id)) {
+              evaluation.app_user = usersMap.get(evaluation.user_id);
+            }
+          });
+        }
+      } catch (userError) {
+        console.log('Erro ao buscar dados dos usuÃ¡rios:', userError);
+      }
+    }
+  }
+  
+  return data || [];
+};
+
+export const createEvaluation = async (evaluationData) => {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .insert([evaluationData])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateEvaluation = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('evaluations')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteEvaluation = async (id) => {
+  const { error } = await supabase
+    .from('evaluations')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
+
+// ============ COLLABORATORS ============
+export const fetchCollaborators = async (storeId = null) => {
+  let query = supabase
+    .from('collaborators')
+    .select('*')
+    .order('name');
+  
+  if (storeId) {
+    query = query.eq('store_id', storeId);
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) throw error;
+  
+  // Converter store_id para storeId no retorno para manter consistÃªncia com o frontend
+  if (data && data.length > 0) {
+    return data.map(collab => ({
+      ...collab,
+      storeId: collab.store_id
+    }));
+  }
+  
+  return data || [];
+};
+
+export const createCollaborator = async (collaboratorData) => {
+  // Converter storeId (camelCase) para store_id (snake_case) se necessÃ¡rio
+  const dataToInsert = {
+    name: collaboratorData.name,
+    role: collaboratorData.role,
+    store_id: collaboratorData.store_id || collaboratorData.storeId
+  };
+  
+  const { data, error } = await supabase
+    .from('collaborators')
+    .insert([dataToInsert])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  
+  // Converter store_id para storeId no retorno para manter consistÃªncia com o frontend
+  if (data) {
+    return {
+      ...data,
+      storeId: data.store_id
+    };
+  }
+  
+  return data;
+};
+
+export const deleteCollaborator = async (id) => {
+  const { error } = await supabase
+    .from('collaborators')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
+
+// ============ FEEDBACKS ============
+export const fetchFeedbacks = async (storeId = null) => {
+  // Buscar feedbacks sem relacionamento automÃ¡tico
+  let query = supabase
+    .from('feedbacks')
+    .select('*')
+    .order('created_at', { ascending: false });
+  
+  if (storeId) {
+    query = query.eq('store_id', storeId);
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) throw error;
+  
+  // Se houver dados, buscar informaÃ§Ãµes das lojas e colaboradores separadamente
+  if (data && data.length > 0) {
+    // Buscar store_ids Ãºnicos
+    const storeIds = [...new Set(data.map(feedback => feedback.store_id).filter(id => id))];
+    const collaboratorIds = [...new Set(data.map(feedback => feedback.collaborator_id).filter(id => id))];
+    
+    // Buscar dados das lojas
+    if (storeIds.length > 0) {
+      try {
+        const { data: storesData } = await supabase
+          .from('stores')
+          .select('id, name, code')
+          .in('id', storeIds)
+          .order('code', { ascending: true });
+        
+        if (storesData) {
+          const storesMap = new Map(storesData.map(store => [store.id, store]));
+          data.forEach(feedback => {
+            if (feedback.store_id && storesMap.has(feedback.store_id)) {
+              feedback.store = storesMap.get(feedback.store_id);
+            }
+          });
+        }
+      } catch (storeError) {
+        console.log('Erro ao buscar dados das lojas:', storeError);
+      }
+    }
+    
+    // Buscar dados dos colaboradores
+    if (collaboratorIds.length > 0) {
+      try {
+        const { data: collaboratorsData } = await supabase
+          .from('collaborators')
+          .select('id, name')
+          .in('id', collaboratorIds);
+        
+        if (collaboratorsData) {
+          const collaboratorsMap = new Map(collaboratorsData.map(collab => [collab.id, collab]));
+          data.forEach(feedback => {
+            if (feedback.collaborator_id && collaboratorsMap.has(feedback.collaborator_id)) {
+              feedback.collaborator = collaboratorsMap.get(feedback.collaborator_id);
+            }
+          });
+        }
+      } catch (collabError) {
+        console.log('Erro ao buscar dados dos colaboradores:', collabError);
+      }
+    }
+    
+    // Converter store_id e collaborator_id para storeId e collaboratorId no retorno para manter consistÃªncia com o frontend
+    return data.map(feedback => ({
+      ...feedback,
+      storeId: feedback.store_id,
+      collaboratorId: feedback.collaborator_id,
+      feedbackText: feedback.feedback_text,
+      developmentPoint: feedback.development_point || null,
+      isPromotionCandidate: feedback.is_promotion_candidate || false,
+      satisfaction: feedback.satisfaction || 3,
+      date: feedback.created_at || feedback.date
+    }));
+  }
+  
+  return data || [];
+};
+
+export const createFeedback = async (feedbackData) => {
+  // Validar campos obrigatÃ³rios
+  const feedbackText = feedbackData.feedback_text || feedbackData.feedbackText || '';
+  const storeId = feedbackData.store_id || feedbackData.storeId;
+  const collaboratorId = feedbackData.collaborator_id || feedbackData.collaboratorId;
+  
+  if (!storeId) {
+    throw new Error('store_id Ã© obrigatÃ³rio');
+  }
+  if (!collaboratorId) {
+    throw new Error('collaborator_id Ã© obrigatÃ³rio');
+  }
+  if (!feedbackText) {
+    throw new Error('feedback_text Ã© obrigatÃ³rio');
+  }
+  
+  try {
+    // Buscar o nome do colaborador antes de inserir
+    // A tabela feedbacks requer collaborator_name (NOT NULL)
+    const { data: collaborator, error: collaboratorError } = await supabase
+      .from('collaborators')
+      .select('name')
+      .eq('id', collaboratorId)
+      .single();
+    
+    if (collaboratorError || !collaborator) {
+      throw new Error(`Colaborador nÃ£o encontrado: ${collaboratorError?.message || 'ID invÃ¡lido'}`);
+    }
+    
+    // Criar objeto com campos obrigatÃ³rios (incluindo collaborator_name)
+    const basicData = {
+      feedback_text: feedbackText,
+      store_id: storeId,
+      collaborator_id: collaboratorId,
+      collaborator_name: collaborator.name  // Campo obrigatÃ³rio NOT NULL
+    };
+    
+    // Preparar campos opcionais (serÃ£o adicionados depois da inserÃ§Ã£o bÃ¡sica se necessÃ¡rio)
+    const optionalFields = {};
+    if (feedbackData.development_point || feedbackData.developmentPoint) {
+      optionalFields.development_point = feedbackData.development_point || feedbackData.developmentPoint;
+    }
+    if (feedbackData.satisfaction !== undefined) {
+      optionalFields.satisfaction = feedbackData.satisfaction;
+    }
+    if (feedbackData.is_promotion_candidate !== undefined || feedbackData.isPromotionCandidate !== undefined) {
+      optionalFields.is_promotion_candidate = feedbackData.is_promotion_candidate !== undefined 
+        ? feedbackData.is_promotion_candidate 
+        : feedbackData.isPromotionCandidate;
+    }
+    
+    // Se temos campos opcionais, adicionar ao objeto bÃ¡sico para inserir tudo de uma vez
+    // Isso evita fazer UPDATE depois e funciona melhor com cache do PostgREST
+    const dataToInsert = {
+      ...basicData,
+      ...optionalFields
+    };
+    
+    // Inserir todos os dados de uma vez
+    const { data: insertedData, error: insertError } = await supabase
+      .from('feedbacks')
+      .insert([dataToInsert])
+      .select('*')
+      .single();
+    
+    if (insertError) {
+      // Se o INSERT falhar com campos opcionais, tentar apenas com campos obrigatÃ³rios
+      if (insertError.code === 'PGRST204' || Object.keys(optionalFields).length > 0) {
+        console.warn('âš ï¸ Tentando inserir apenas com campos obrigatÃ³rios...');
+        
+        const { data: basicInsertData, error: basicInsertError } = await supabase
+          .from('feedbacks')
+          .insert([basicData])
+          .select('*')
+          .single();
+        
+        if (basicInsertError) {
+          console.error('Erro ao inserir feedback (campos bÃ¡sicos):', basicInsertError);
+          throw new Error(`Erro ao criar feedback: ${basicInsertError.message}`);
+        }
+        
+        // Se inserÃ§Ã£o bÃ¡sica funcionou, retornar dados
+        return {
+          ...basicInsertData,
+          storeId: basicInsertData.store_id,
+          collaboratorId: basicInsertData.collaborator_id,
+          feedbackText: basicInsertData.feedback_text,
+          developmentPoint: optionalFields.development_point || null,
+          isPromotionCandidate: optionalFields.is_promotion_candidate || false,
+          satisfaction: optionalFields.satisfaction || 3
+        };
+      }
+      
+      console.error('Erro ao inserir feedback:', insertError);
+      throw new Error(`Erro ao criar feedback: ${insertError.message}`);
+    }
+    
+    // Se inserÃ§Ã£o funcionou, retornar dados formatados
+    if (insertedData) {
+      return {
+        ...insertedData,
+        storeId: insertedData.store_id,
+        collaboratorId: insertedData.collaborator_id,
+        feedbackText: insertedData.feedback_text,
+        developmentPoint: insertedData.development_point || null,
+        isPromotionCandidate: insertedData.is_promotion_candidate || false,
+        satisfaction: insertedData.satisfaction || 3
+      };
+    }
+    
+    throw new Error('Erro ao criar feedback: Nenhum dado retornado');
+    
+  } catch (error) {
+    console.error('Erro ao criar feedback:', error);
+    throw error;
+  }
+};
+
+export const deleteFeedback = async (feedbackId) => {
+  try {
+    const { error } = await supabase
+      .from('feedbacks')
+      .delete()
+      .eq('id', feedbackId);
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Erro ao excluir feedback:', error);
+    throw error;
+  }
+};
+
+// ============ DAILY CHECKLISTS ============
+// FunÃ§Ã£o genÃ©rica para buscar checklist por tipo (operacional ou gerencial)
+export const fetchDailyChecklist = async (storeId, date, checklistType = 'operacional') => {
+  // Buscar todos os checklists para essa loja e data (pode haver operacional e gerencial)
+  const { data: checklists, error } = await supabase
+    .from('daily_checklists')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('date', date);
+  
+  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+  
+  // Se nÃ£o encontrou dados, retornar null
+  if (!checklists || checklists.length === 0) return null;
+  
+  // Buscar checklist com o tipo especÃ­fico
+  const checklistWithType = checklists.find(c => c.checklist_type === checklistType);
+  
+  if (checklistWithType) {
+    return checklistWithType;
+  }
+  
+  // Se nÃ£o encontrou com tipo e estamos buscando operacional, buscar legado (sem tipo)
+  if (checklistType === 'operacional') {
+    const legacyChecklist = checklists.find(c => !c.checklist_type || c.checklist_type === null);
+    if (legacyChecklist) {
+      return legacyChecklist;
+    }
+  }
+  
+  // NÃ£o encontrou checklist do tipo solicitado
+  return null;
+};
+
+export const upsertDailyChecklist = async (storeId, date, tasks, checklistType = 'operacional') => {
+  // Primeiro, verificar se jÃ¡ existe um checklist com esse tipo e data
+  const { data: existingChecklist, error: fetchError } = await supabase
+    .from('daily_checklists')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('date', date);
+  
+  if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+  
+  // Se existe um checklist com o mesmo tipo, fazer update
+  const existingWithType = existingChecklist?.find(c => c.checklist_type === checklistType);
+  
+  if (existingWithType) {
+    // Fazer update do checklist existente
+    const { data: updatedData, error: updateError } = await supabase
+      .from('daily_checklists')
+      .update({ tasks, checklist_type: checklistType })
+      .eq('store_id', storeId)
+      .eq('date', date)
+      .eq('checklist_type', checklistType)
+      .select()
+      .single();
+    
+    if (updateError) throw updateError;
+    return updatedData;
+  }
+  
+  // Se existe checklist sem tipo (legado) e estamos salvando operacional, atualizar ele
+  if (checklistType === 'operacional' && existingChecklist?.length > 0) {
+    const existingWithoutType = existingChecklist.find(c => !c.checklist_type || c.checklist_type === null);
+    if (existingWithoutType) {
+      // Atualizar o checklist legado para incluir o tipo
+      const { data: updatedData, error: updateError } = await supabase
+        .from('daily_checklists')
+        .update({ tasks, checklist_type: 'operacional' })
+        .eq('store_id', storeId)
+        .eq('date', date)
+        .is('checklist_type', null)
+        .select()
+        .single();
+      
+      if (updateError) throw updateError;
+      return updatedData;
+    }
+  }
+  
+  // Se nÃ£o existe, inserir novo checklist
+  const checklistData = {
+    store_id: storeId,
+    date,
+    tasks,
+    checklist_type: checklistType
+  };
+  
+  const { data: insertedData, error: insertError } = await supabase
+    .from('daily_checklists')
+    .insert([checklistData])
+    .select()
+    .single();
+  
+  if (insertError) throw insertError;
+  return insertedData;
+};
+
+// Buscar histÃ³rico de checklists por loja e intervalo de datas e tipo
+export const fetchChecklistHistory = async (storeId, startDate, endDate, checklistType = 'operacional') => {
+  let query = supabase
+    .from('daily_checklists')
+    .select('*')
+    .eq('store_id', storeId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+  
+  // Se a tabela tiver campo checklist_type, filtrar
+  // Caso contrÃ¡rio, retornar todos e filtrar depois
+  const { data, error } = await query.order('date', { ascending: false });
+  
+  if (error) throw error;
+  
+  // Filtrar por tipo se necessÃ¡rio
+  if (data && data.length > 0) {
+    return data.filter(item => {
+      // Se tem tipo, comparar
+      if (item.checklist_type) {
+        return item.checklist_type === checklistType;
+      }
+      // Se nÃ£o tem tipo, Ã© checklist operacional (legado)
+      return checklistType === 'operacional';
+    });
+  }
+  
+  return data || [];
+};
+
+// Buscar todas as tarefas do checklist operacional (configuraÃ§Ã£o)
+export const fetchChecklistTasks = async () => {
+  const tasks = await fetchAppSettings('daily_checklist_tasks');
+  // Se nÃ£o houver tarefas salvas, retornar array vazio (serÃ¡ criado pela primeira vez)
+  if (!tasks) return [];
+  // Se tasks for um array, retornar diretamente
+  if (Array.isArray(tasks)) return tasks;
+  // Se tasks for um objeto com tasks, retornar tasks
+  if (tasks && tasks.tasks && Array.isArray(tasks.tasks)) return tasks.tasks;
+  return [];
+};
+
+// Buscar todas as tarefas do checklist gerencial (configuraÃ§Ã£o)
+export const fetchGerencialChecklistTasks = async () => {
+  const tasks = await fetchAppSettings('daily_checklist_gerencial_tasks');
+  // Se nÃ£o houver tarefas salvas, retornar array vazio (serÃ¡ criado pela primeira vez)
+  if (!tasks) return [];
+  // Se tasks for um array, retornar diretamente
+  if (Array.isArray(tasks)) return tasks;
+  // Se tasks for um objeto com tasks, retornar tasks
+  if (tasks && tasks.tasks && Array.isArray(tasks.tasks)) return tasks.tasks;
+  return [];
+};
+
+// Salvar tarefas do checklist operacional (configuraÃ§Ã£o)
+export const saveChecklistTasks = async (tasks) => {
+  return await upsertAppSettings('daily_checklist_tasks', tasks);
+};
+
+// Salvar tarefas do checklist gerencial (configuraÃ§Ã£o)
+export const saveGerencialChecklistTasks = async (tasks) => {
+  return await upsertAppSettings('daily_checklist_gerencial_tasks', tasks);
+};
+
+// Buscar checklist de uma data especÃ­fica para histÃ³rico (operacional)
+export const fetchChecklistByDate = async (storeId, date) => {
+  return await fetchDailyChecklist(storeId, date, 'operacional');
+};
+
+// Buscar checklist gerencial de uma data especÃ­fica para histÃ³rico
+export const fetchGerencialChecklistByDate = async (storeId, date) => {
+  return await fetchDailyChecklist(storeId, date, 'gerencial');
+};
+
+// ============ APP SETTINGS ============
+export const fetchAppSettings = async (key) => {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('*')
+    .eq('key', key)
+    .single();
+  
+  if (error && error.code !== 'PGRST116') throw error;
+  return data?.value;
+};
+
+export const upsertAppSettings = async (key, value) => {
+  const { data, error } = await supabase
+    .from('app_settings')
+    .upsert({
+      key,
+      value
+    }, {
+      onConflict: 'key'
+    })
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+// ============ CURRENT USER ============
+export const fetchCurrentUserProfile = async () => {
+  try {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) return null;
+  
+    // Buscar perfil do usuÃ¡rio (sem relacionamento automÃ¡tico com stores)
+  const { data, error } = await supabase
+    .from('app_users')
+      .select('*')
+    .eq('id', user.id)
+      .maybeSingle();
+    
+    if (error) {
+      // Se o erro for que nÃ£o encontrou o perfil, retornar null
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      // Se o erro for de relacionamento nÃ£o encontrado (PGRST200), 
+      // ainda tentar buscar sem relacionamento
+      if (error.code === 'PGRST200') {
+        // JÃ¡ estamos buscando sem relacionamento, entÃ£o este erro nÃ£o deveria acontecer
+        // Mas se acontecer, retornar null para permitir que o cÃ³digo continue
+        console.warn('Erro PGRST200 ao buscar perfil:', error);
+        return null;
+      }
+      throw error;
+    }
+    
+    // Se nÃ£o houver dados, retornar null
+    if (!data) {
+      return null;
+    }
+    
+    // Se houver store_id, buscar dados da loja separadamente
+    if (data?.store_id) {
+      try {
+        const { data: storeData } = await supabase
+          .from('stores')
+          .select('id, name, code')
+          .eq('id', data.store_id)
+          .maybeSingle();
+        
+        if (storeData) {
+          data.store = storeData;
+        }
+      } catch (storeError) {
+        // Se falhar ao buscar a loja, nÃ£o impedir o login
+        // Apenas logar o erro sem propagar
+        console.log('Erro ao buscar dados da loja (nÃ£o crÃ­tico):', storeError);
+      }
+    }
+    
+  return data;
+  } catch (error) {
+    // Capturar qualquer erro inesperado e retornar null em vez de propagar
+    console.error('Erro ao buscar perfil do usuÃ¡rio:', error);
+    return null;
+  }
+};

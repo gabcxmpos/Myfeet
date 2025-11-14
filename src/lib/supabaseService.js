@@ -5,7 +5,7 @@ export const fetchStores = async () => {
   const { data, error } = await supabase
     .from('stores')
     .select('*')
-    .order('name');
+    .order('code', { ascending: true });
   
   if (error) throw error;
   
@@ -1549,3 +1549,4 @@ export const fetchCurrentUserProfile = async () => {
     return null;
   }
 };
+
