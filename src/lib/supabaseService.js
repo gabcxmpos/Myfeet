@@ -1187,6 +1187,21 @@ export const createFeedback = async (feedbackData) => {
   }
 };
 
+export const deleteFeedback = async (feedbackId) => {
+  try {
+    const { error } = await supabase
+      .from('feedbacks')
+      .delete()
+      .eq('id', feedbackId);
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Erro ao excluir feedback:', error);
+    throw error;
+  }
+};
+
 // ============ DAILY CHECKLISTS ============
 // Função genérica para buscar checklist por tipo (operacional ou gerencial)
 export const fetchDailyChecklist = async (storeId, date, checklistType = 'operacional') => {

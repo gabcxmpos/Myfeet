@@ -32,7 +32,7 @@ const PatentSummaryCard = ({ summary, className }) => (
 );
 
 const MonthlyRanking = () => {
-  const { stores, patentSettings } = useData();
+  const { stores, patentSettings, evaluations } = useData();
   const [nameFilter, setNameFilter] = useState('');
   const [franquiaFilter, setFranquiaFilter] = useState('all');
 
@@ -45,21 +45,67 @@ const MonthlyRanking = () => {
     return { name: 'Bronze', color: patentIcons['Bronze'].color, icon: <Trophy /> };
   };
 
-  const mockRanking = useMemo(() => stores.map((store, index) => ({
-    id: store.id,
-    store: store.name,
-    manager: store.manager,
-    franqueado: store.franqueado,
-    p_pessoas: 80 + index * 2,
-    p_performance: 85 - index,
-    p_ambientacao: 75 + index * 3,
-    p_digital: 90 - index * 2,
-    finalScore: Math.floor(Math.random() * 40 + 60),
-  })).sort((a, b) => b.finalScore - a.finalScore), [stores]);
+  // Calcular ranking baseado em avaliações aprovadas reais
+  const approvedEvaluations = useMemo(() => 
+    evaluations.filter(e => e.status === 'approved'), 
+    [evaluations]
+  );
 
-  const filteredRanking = mockRanking.filter(item => {
+  const realRanking = useMemo(() => {
+    const pillars = ['Pessoas', 'Performance', 'Ambientação', 'Digital'];
+    
+    return stores.map((store) => {
+      // Buscar avaliações aprovadas desta loja
+      const storeEvaluations = approvedEvaluations.filter(e => e.storeId === store.id);
+      
+      // Calcular pontuação por pilar
+      const pillarScores = {};
+      pillars.forEach(pillar => {
+        const pillarEvals = storeEvaluations.filter(e => e.pillar === pillar);
+        if (pillarEvals.length > 0) {
+          pillarScores[pillar] = Math.round(
+            pillarEvals.reduce((acc, curr) => acc + curr.score, 0) / pillarEvals.length
+          );
+        } else {
+          pillarScores[pillar] = 0;
+        }
+      });
+      
+      // Calcular pontuação final (média de todas as avaliações aprovadas desta loja)
+      let finalScore = 0;
+      if (storeEvaluations.length > 0) {
+        finalScore = Math.round(
+          storeEvaluations.reduce((acc, curr) => acc + curr.score, 0) / storeEvaluations.length
+        );
+      }
+      
+      return {
+        id: store.id,
+        store: store.name,
+        manager: store.manager,
+        franqueado: store.franqueado,
+        p_pessoas: pillarScores['Pessoas'] || 0,
+        p_performance: pillarScores['Performance'] || 0,
+        p_ambientacao: pillarScores['Ambientação'] || 0,
+        p_digital: pillarScores['Digital'] || 0,
+        finalScore: finalScore,
+        hasEvaluations: storeEvaluations.length > 0, // Para filtrar lojas sem avaliações
+      };
+    }).sort((a, b) => {
+      // Ordenar: primeiro por pontuação final, depois por lojas sem avaliações por último
+      if (a.hasEvaluations && !b.hasEvaluations) return -1;
+      if (!a.hasEvaluations && b.hasEvaluations) return 1;
+      return b.finalScore - a.finalScore;
+    });
+  }, [stores, approvedEvaluations]);
+
+  // Filtrar apenas lojas com avaliações aprovadas e aplicar filtros
+  const filteredRanking = realRanking.filter(item => {
+    // Mostrar apenas lojas que têm avaliações aprovadas
+    if (!item.hasEvaluations) return false;
+    
     const nameMatch = item.store.toLowerCase().includes(nameFilter.toLowerCase()) ||
-                      item.manager.toLowerCase().includes(nameFilter.toLowerCase());
+                      (item.manager && item.manager.toLowerCase().includes(nameFilter.toLowerCase()));
     const franquiaMatch = franquiaFilter === 'all' || item.franqueado === franquiaFilter;
     return nameMatch && franquiaMatch;
   });
@@ -128,30 +174,46 @@ const MonthlyRanking = () => {
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5 }}
               >
-                {filteredRanking.map((item, index) => {
-                  const patent = getPatent(item.finalScore);
-                  const Icon = patentIcons[patent.name].icon;
-                  return (
-                    <tr key={item.id} className="border-b border-border hover:bg-secondary/20 transition-colors">
-                      <td className="px-6 py-4 font-bold text-lg text-foreground">#{index + 1}</td>
-                      <td className="px-6 py-4">
-                        <div className="font-semibold text-foreground">{item.store}</div>
-                        <div className="text-xs text-muted-foreground">{item.manager}</div>
-                      </td>
-                      <td className="px-6 py-4 text-center text-foreground">{item.p_pessoas}</td>
-                      <td className="px-6 py-4 text-center text-foreground">{item.p_performance}</td>
-                      <td className="px-6 py-4 text-center text-foreground">{item.p_ambientacao}</td>
-                      <td className="px-6 py-4 text-center text-foreground">{item.p_digital}</td>
-                      <td className="px-6 py-4 text-center">
-                        <div className={`flex items-center justify-center gap-2 font-bold ${patent.color}`}>
-                          <Icon />
-                          <span>{patent.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right font-bold text-2xl text-primary">{item.finalScore}</td>
-                    </tr>
-                  );
-                })}
+                {approvedEvaluations.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="px-6 py-8 text-center text-muted-foreground">
+                      Nenhuma avaliação aprovada ainda. As lojas só aparecerão aqui após avaliações serem feitas e aprovadas por um supervisor ou admin.
+                    </td>
+                  </tr>
+                ) : filteredRanking.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="px-6 py-8 text-center text-muted-foreground">
+                      Nenhuma loja encontrada com os filtros aplicados.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRanking.map((item, index) => {
+                    const patent = getPatent(item.finalScore);
+                    const Icon = patentIcons[patent.name].icon;
+                    return (
+                      <tr key={item.id} className="border-b border-border hover:bg-secondary/20 transition-colors">
+                        <td className="px-6 py-4 font-bold text-lg text-foreground">#{index + 1}</td>
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-foreground">{item.store}</div>
+                          {item.manager && (
+                            <div className="text-xs text-muted-foreground">{item.manager}</div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center text-foreground">{item.p_pessoas}</td>
+                        <td className="px-6 py-4 text-center text-foreground">{item.p_performance}</td>
+                        <td className="px-6 py-4 text-center text-foreground">{item.p_ambientacao}</td>
+                        <td className="px-6 py-4 text-center text-foreground">{item.p_digital}</td>
+                        <td className="px-6 py-4 text-center">
+                          <div className={`flex items-center justify-center gap-2 font-bold ${patent.color}`}>
+                            <Icon />
+                            <span>{patent.name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-right font-bold text-2xl text-primary">{item.finalScore}</td>
+                      </tr>
+                    );
+                  })
+                )}
               </motion.tbody>
             </table>
           </div>

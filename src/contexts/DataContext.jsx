@@ -351,6 +351,7 @@ export const DataProvider = ({ children }) => {
 
   // Feedback
   const addFeedback = (feedbackData) => handleApiCall(() => api.createFeedback(feedbackData), 'Feedback enviado.');
+  const deleteFeedback = (feedbackId) => handleApiCall(() => api.deleteFeedback(feedbackId), 'Feedback excluído.');
 
   // Settings
   const updatePatentSettings = (settings) => handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
@@ -442,6 +443,7 @@ export const DataProvider = ({ children }) => {
     deleteCollaborator,
     feedbacks,
     addFeedback,
+    deleteFeedback,
     chaveContent,
     updateChaveContent,
     dailyTasks,

@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { motion } from 'framer-motion';
-import { Diamond, Frown, Meh, Smile, Laugh, Search, Download } from 'lucide-react';
+import { Diamond, Frown, Meh, Smile, Laugh, Search, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 const satisfactionIcons = {
   1: { icon: Frown, color: 'text-red-400', label: 'Ruim' },
@@ -19,7 +21,7 @@ const satisfactionIcons = {
   4: { icon: Laugh, color: 'text-green-400', label: 'Excelente' },
 };
 
-const FeedbackCard = ({ feedback, store, collaborator }) => {
+const FeedbackCard = ({ feedback, store, collaborator, onDelete, canDelete }) => {
   const SatisfactionIcon = satisfactionIcons[feedback.satisfaction]?.icon || Meh;
   const satisfactionColor = satisfactionIcons[feedback.satisfaction]?.color || 'text-muted-foreground';
 
@@ -27,8 +29,49 @@ const FeedbackCard = ({ feedback, store, collaborator }) => {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-card p-5 rounded-xl border border-border shadow-sm"
+      className="bg-card p-5 rounded-xl border border-border shadow-sm relative"
     >
+      {canDelete && (
+        <div className="absolute top-4 right-4">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir Feedback</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja excluir este feedback? Esta ação não pode ser desfeita.
+                  <br />
+                  <br />
+                  <strong>Colaborador:</strong> {collaborator?.name || 'N/A'}
+                  <br />
+                  <strong>Loja:</strong> {store?.name || 'N/A'}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(feedback.id);
+                  }}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Excluir
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      )}
       <div className="flex justify-between items-start">
         <div>
           <h3 className="font-bold text-foreground">{collaborator?.name || 'Colaborador não encontrado'}</h3>
@@ -57,7 +100,8 @@ const FeedbackCard = ({ feedback, store, collaborator }) => {
 };
 
 const FeedbackManagement = () => {
-  const { feedbacks, collaborators, stores, fetchData } = useData();
+  const { feedbacks, collaborators, stores, fetchData, deleteFeedback } = useData();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [showHighlights, setShowHighlights] = useState(false);
@@ -110,6 +154,16 @@ const FeedbackManagement = () => {
       description: '🚧 Esta funcionalidade ainda não foi implementada. Mas não se preocupe, você pode solicitá-la no próximo prompt! 🚀',
     });
   };
+
+  const handleDeleteFeedback = async (feedbackId) => {
+    try {
+      await deleteFeedback(feedbackId);
+    } catch (error) {
+      console.error('Erro ao excluir feedback:', error);
+    }
+  };
+
+  const canDelete = user?.role === 'admin' || user?.role === 'supervisor';
   
   const storeIdsWithFeedbacks = Object.keys(groupedFeedbacks);
 
@@ -186,6 +240,8 @@ const FeedbackManagement = () => {
                           feedback={feedback}
                           store={feedback.store}
                           collaborator={feedback.collaborator}
+                          onDelete={handleDeleteFeedback}
+                          canDelete={canDelete}
                         />
                       ))}
                     </div>
