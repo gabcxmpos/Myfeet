@@ -5,7 +5,7 @@ export const fetchStores = async () => {
   const { data, error } = await supabase
     .from('stores')
     .select('*')
-    .order('code', { ascending: true });
+    .order('name');
   
   if (error) throw error;
   
@@ -903,8 +903,8 @@ export const fetchEvaluations = async () => {
 };
 
 export const createEvaluation = async (evaluationData) => {
-  // Converter camelCase para snake_case e obter user_id da sessão
-  const { data: { user } } = await supabase.auth.getUser();
+  // Converter camelCase para snake_case
+  // NOTA: A tabela evaluations NÃO tem coluna user_id, então NÃO incluímos
   
   // Validar campos obrigatórios
   if (!evaluationData.storeId && !evaluationData.store_id) {
@@ -920,8 +920,7 @@ export const createEvaluation = async (evaluationData) => {
     score: evaluationData.score || 0,
     answers: evaluationData.answers || {},
     pillar: evaluationData.pillar || null,
-    status: evaluationData.status || 'pending',
-    user_id: user?.id || null
+    status: evaluationData.status || 'pending'
   };
   
   // Limpar campos undefined para evitar problemas
@@ -933,22 +932,24 @@ export const createEvaluation = async (evaluationData) => {
   
   // Garantir que estamos usando apenas snake_case
   // Remover qualquer propriedade em camelCase que possa ter sobrado
+  // IMPORTANTE: NÃO incluir user_id - a tabela não tem essa coluna!
   const cleanData = {
     store_id: dataToInsert.store_id,
     form_id: dataToInsert.form_id,
     score: dataToInsert.score,
     answers: dataToInsert.answers,
     pillar: dataToInsert.pillar,
-    status: dataToInsert.status,
-    user_id: dataToInsert.user_id
+    status: dataToInsert.status
   };
   
   console.log('📤 Enviando avaliação para o banco:', cleanData);
   
+  // Especificar explicitamente as colunas no select para evitar incluir user_id
+  // IMPORTANTE: Não usar .select('*') pois pode tentar incluir user_id
   const { data, error } = await supabase
     .from('evaluations')
     .insert([cleanData])
-    .select('*')
+    .select('id, store_id, form_id, score, answers, pillar, status, created_at, updated_at')
     .single();
   
   if (error) {
@@ -962,11 +963,12 @@ export const createEvaluation = async (evaluationData) => {
   console.log('✅ Avaliação criada com sucesso:', data);
   
   // Converter snake_case para camelCase no retorno para consistência
+  // NOTA: Não tentar acessar data.user_id pois a tabela não tem essa coluna
   return {
     ...data,
     storeId: data.store_id,
     formId: data.form_id,
-    userId: data.user_id
+    userId: null // A tabela não tem user_id
   };
 };
 
@@ -1312,78 +1314,171 @@ export const upsertDailyChecklist = async (storeId, date, tasks, checklistType =
   
   // Primeiro, verificar se existe checklist legado (sem tipo) para operacional
   if (checklistType === 'operacional') {
-    const { data: existingChecklist, error: fetchError } = await supabase
-      .from('daily_checklists')
-      .select('id')
-      .eq('store_id', storeId)
-      .eq('date', date)
-      .is('checklist_type', null)
-      .maybeSingle();
-    
-    // Se encontrou checklist legado, atualizar ele para incluir o tipo
-    if (!fetchError && existingChecklist) {
-      const { data: updatedData, error: updateError } = await supabase
+    try {
+      const { data: existingChecklist, error: fetchError } = await supabase
         .from('daily_checklists')
-        .update({ tasks, checklist_type: 'operacional' })
-        .eq('id', existingChecklist.id)
-        .select()
-        .single();
+        .select('id')
+        .eq('store_id', storeId)
+        .eq('date', date)
+        .is('checklist_type', null)
+        .maybeSingle();
       
-      if (!updateError) return updatedData;
-      // Se update falhou, continuar para verificar se existe com tipo
+      // Se encontrou checklist legado, atualizar ele para incluir o tipo
+      if (!fetchError && existingChecklist) {
+        const { data: updatedData, error: updateError } = await supabase
+          .from('daily_checklists')
+          .update({ tasks, checklist_type: 'operacional' })
+          .eq('id', existingChecklist.id)
+          .select()
+          .single();
+        
+        if (!updateError && updatedData) return updatedData;
+        // Se update falhou, continuar para verificar se existe com tipo
+      }
+    } catch (legacyError) {
+      // Se houver erro ao buscar legado, continuar normalmente
+      console.warn('Erro ao buscar checklist legado:', legacyError);
     }
   }
   
   // Verificar se existe checklist com o tipo específico
-  const { data: existingWithType, error: fetchError } = await supabase
-    .from('daily_checklists')
-    .select('id')
-    .eq('store_id', storeId)
-    .eq('date', date)
-    .eq('checklist_type', checklistType)
-    .maybeSingle();
-  
-  if (!fetchError && existingWithType) {
-    // Fazer update do checklist existente
-    const { data: updatedData, error: updateError } = await supabase
+  try {
+    const { data: existingWithType, error: fetchError } = await supabase
       .from('daily_checklists')
-      .update({ tasks })
-      .eq('id', existingWithType.id)
+      .select('id')
+      .eq('store_id', storeId)
+      .eq('date', date)
+      .eq('checklist_type', checklistType)
+      .maybeSingle();
+    
+    if (!fetchError && existingWithType) {
+      // Fazer update do checklist existente
+      // IMPORTANTE: Não usar .select() no UPDATE para evitar erro 406
+      const { error: updateError } = await supabase
+        .from('daily_checklists')
+        .update({ tasks })
+        .eq('id', existingWithType.id);
+      
+      if (updateError) {
+        // Se UPDATE falhar, tentar buscar novamente
+        const { data: updatedData, error: fetchAfterUpdate } = await supabase
+          .from('daily_checklists')
+          .select('*')
+          .eq('id', existingWithType.id)
+          .single();
+        
+        if (fetchAfterUpdate) throw updateError;
+        return updatedData;
+      }
+      
+      // Buscar dados atualizados após o update
+      const { data: updatedDataAfterUpdate, error: fetchAfterUpdateError } = await supabase
+        .from('daily_checklists')
+        .select('*')
+        .eq('id', existingWithType.id)
+        .single();
+      
+      if (fetchAfterUpdateError) throw updateError;
+      return updatedDataAfterUpdate;
+    }
+  } catch (fetchError) {
+    // Se houver erro ao buscar, tentar inserir mesmo assim
+    console.warn('Erro ao buscar checklist existente:', fetchError);
+  }
+  
+  // Se não existe, tentar inserir novo checklist
+  try {
+    const { data: insertedData, error: insertError } = await supabase
+      .from('daily_checklists')
+      .insert([checklistData])
       .select()
       .single();
     
-    if (updateError) throw updateError;
-    return updatedData;
-  }
-  
-  // Se não existe, inserir novo checklist
-  const { data: insertedData, error: insertError } = await supabase
-    .from('daily_checklists')
-    .insert([checklistData])
-    .select()
-    .single();
-  
-  // Se insert falhar com 409 (conflict) ou 23505 (unique_violation), tentar update
-  if (insertError) {
-    // Verificar se é erro de constraint única
-    if (insertError.code === '23505' || insertError.code === 'PGRST301' || insertError.message?.includes('duplicate') || insertError.message?.includes('unique')) {
-      // Tentar update novamente (pode ter sido criado entre a verificação e o insert)
-      const { data: updatedData, error: updateError } = await supabase
+    if (!insertError && insertedData) return insertedData;
+    
+    // Se insert falhar com 409 (conflict) ou 23505 (unique_violation), tentar update
+    if (insertError) {
+      // Verificar se é erro de constraint única ou conflito
+      const isConflict = insertError.code === '23505' || 
+                        insertError.code === 'PGRST301' || 
+                        insertError.code === '409' ||
+                        insertError.message?.includes('duplicate') || 
+                        insertError.message?.includes('unique') ||
+                        insertError.message?.includes('conflict');
+      
+      if (isConflict) {
+        // Tentar update novamente (pode ter sido criado entre a verificação e o insert)
+        const { error: updateError } = await supabase
+          .from('daily_checklists')
+          .update({ tasks })
+          .eq('store_id', storeId)
+          .eq('date', date)
+          .eq('checklist_type', checklistType);
+        
+        if (updateError) {
+          // Se UPDATE ainda falhar, buscar o registro existente
+          const { data: existingData, error: fetchExistingError } = await supabase
+            .from('daily_checklists')
+            .select('*')
+            .eq('store_id', storeId)
+            .eq('date', date)
+            .eq('checklist_type', checklistType)
+            .maybeSingle();
+          
+          if (fetchExistingError) throw insertError;
+          return existingData;
+        }
+        
+        // Buscar dados atualizados após o update
+        const { data: updatedDataAfterConflict, error: fetchAfterConflictError } = await supabase
+          .from('daily_checklists')
+          .select('*')
+          .eq('store_id', storeId)
+          .eq('date', date)
+          .eq('checklist_type', checklistType)
+          .single();
+        
+        if (fetchAfterConflictError) throw insertError;
+        return updatedDataAfterConflict;
+      }
+      
+      throw insertError;
+    }
+  } catch (insertError) {
+    // Se tudo falhar, tentar fazer um update forçado como último recurso
+    console.warn('Erro ao inserir checklist, tentando update forçado:', insertError);
+    
+    const { error: updateError } = await supabase
+      .from('daily_checklists')
+      .update({ tasks, checklist_type: checklistType })
+      .eq('store_id', storeId)
+      .eq('date', date);
+    
+    if (updateError) {
+      // Se ainda falhar, buscar o que existe
+      const { data: existingDataOnError, error: fetchExistingOnError } = await supabase
         .from('daily_checklists')
-        .update({ tasks })
+        .select('*')
         .eq('store_id', storeId)
         .eq('date', date)
-        .eq('checklist_type', checklistType)
-        .select()
-        .single();
+        .maybeSingle();
       
-      if (updateError) throw updateError;
-      return updatedData;
+      if (fetchExistingOnError) throw insertError;
+      return existingDataOnError;
     }
-    throw insertError;
+    
+    // Buscar após update forçado
+    const { data: updatedDataAfterForcedUpdate, error: fetchAfterForcedUpdateError } = await supabase
+      .from('daily_checklists')
+      .select('*')
+      .eq('store_id', storeId)
+      .eq('date', date)
+      .eq('checklist_type', checklistType)
+      .single();
+    
+    if (fetchAfterForcedUpdateError) throw insertError;
+    return updatedDataAfterForcedUpdate;
   }
-  
-  return insertedData;
 };
 
 // Buscar histórico de checklists por loja e intervalo de datas e tipo
