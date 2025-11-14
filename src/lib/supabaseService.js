@@ -903,11 +903,8 @@ export const createEvaluation = async (evaluationData) => {
   
   if (error) throw error;
   return data;
-  const cleanData = {
-    store_id: dataToInsert.store_id,
-    form_id: dataToInsert.form_id,
-    ...
-  };
+};
+
 export const updateEvaluation = async (id, updates) => {
   const { data, error } = await supabase
     .from('evaluations')
