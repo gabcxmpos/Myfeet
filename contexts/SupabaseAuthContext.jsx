@@ -1,0 +1,483 @@
+
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import { supabase } from '@/lib/customSupabaseClient';
+import { fetchCurrentUserProfile } from '@/lib/supabaseService';
+import { useToast } from '@/components/ui/use-toast';
+
+const AuthContext = createContext(undefined);
+
+export const AuthProvider = ({ children }) => {
+  const { toast } = useToast();
+  const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadUserProfile = useCallback(async (authUser) => {
+    if (!authUser) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const profile = await fetchCurrentUserProfile();
+      
+      // Se o perfil não existir ou não tiver status, criar/atualizar com status 'active'
+      if (!profile || !profile.status) {
+        // Se o perfil não existe, pode ser que o usuário foi criado apenas no auth
+        // Neste caso, tentar atualizar o status se o perfil existir mas sem status
+        if (profile && !profile.status) {
+          try {
+            const { data: updatedProfile } = await supabase
+              .from('app_users')
+              .update({ status: 'active' })
+              .eq('id', authUser.id)
+              .select('*')
+              .single();
+            
+            // Se houver store_id, buscar dados da loja separadamente
+            if (updatedProfile?.store_id) {
+              try {
+                const { data: storeData } = await supabase
+                  .from('stores')
+                  .select('id, name, code')
+                  .eq('id', updatedProfile.store_id)
+                  .maybeSingle();
+                
+                if (storeData) {
+                  updatedProfile.store = storeData;
+                }
+              } catch (storeError) {
+                console.log('Erro ao buscar dados da loja:', storeError);
+              }
+            }
+            
+            if (updatedProfile) {
+              setUser({
+                id: authUser.id,
+                email: authUser.email,
+                username: updatedProfile.username || authUser.email,
+                role: updatedProfile.role || 'loja',
+                status: 'active',
+                storeId: updatedProfile.store_id || updatedProfile.store?.id,
+                storeName: updatedProfile.store?.name,
+              });
+              setLoading(false);
+              return;
+            }
+          } catch (updateError) {
+            console.error('Erro ao atualizar status do usuário:', updateError);
+          }
+        }
+      }
+      
+      // Se status for null ou undefined, tratar como 'active' (para compatibilidade)
+      const userStatus = profile?.status || 'active';
+      
+      setUser({
+        id: authUser.id,
+        email: authUser.email,
+        username: profile?.username || authUser.email,
+        role: profile?.role || 'loja',
+        status: userStatus,
+        storeId: profile?.store_id || profile?.store?.id,
+        storeName: profile?.store?.name,
+      });
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      
+      // Se o erro for relacionado a relacionamento não encontrado (PGRST200), 
+      // ainda permitir login mas sem dados do perfil
+      if (error.code === 'PGRST200' || error.code === 'PGRST116') {
+        // Se o erro for que o perfil não existe ou relacionamento não encontrado,
+        // ainda permitir login mas criar um usuário básico com dados do auth
+        setUser({
+          id: authUser.id,
+          email: authUser.email,
+          username: authUser.email?.split('@')[0] || 'Usuário',
+          role: 'user',
+          status: 'active',
+          storeId: null,
+          storeName: null,
+        });
+        
+        if (error.code === 'PGRST116') {
+          toast({
+            variant: "warning",
+            title: "Perfil não encontrado",
+            description: "Seu perfil não foi encontrado. Entre em contato com o administrador.",
+          });
+        }
+      } else {
+        // Para outros erros, mostrar mensagem mas não bloquear completamente
+        console.error('Erro ao carregar perfil:', error);
+        // Ainda permitir login com dados básicos do auth
+        setUser({
+          id: authUser.id,
+          email: authUser.email,
+          username: authUser.email?.split('@')[0] || 'Usuário',
+          role: 'user',
+          status: 'active',
+          storeId: null,
+          storeName: null,
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      loadUserProfile(session?.user);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('🔔 Evento de autenticação:', event, session?.user?.id);
+        
+        // IMPORTANTE: Se o evento for SIGNED_IN e a sessão for de um usuário recém-criado,
+        // verificar se é realmente um login legítimo ou se é apenas resultado de criar um usuário
+        if (event === 'SIGNED_IN' && session) {
+          // Aguardar um pouco para verificar se é uma criação de usuário em andamento
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Verificar se o perfil existe - se não existir, pode ser criação de usuário
+          try {
+            const { data: profile } = await supabase
+              .from('app_users')
+              .select('id')
+              .eq('id', session.user.id)
+              .maybeSingle();
+            
+            // Se o perfil não existe E o evento foi SIGNED_IN recentemente,
+            // pode ser que estamos criando um usuário - ignorar este evento
+            if (!profile) {
+              console.log('⚠️ Evento SIGNED_IN ignorado - perfil não existe (criação de usuário em andamento)');
+              // Não atualizar a sessão nem carregar o perfil neste caso
+              // O processo de criação de usuário vai gerenciar a sessão
+              return;
+            }
+          } catch (error) {
+            // Se houver erro ao verificar, processar normalmente
+            console.warn('Erro ao verificar perfil durante SIGNED_IN:', error);
+          }
+        }
+        
+        // Se chegou aqui, é um evento legítimo - processar normalmente
+        setSession(session);
+        loadUserProfile(session?.user);
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [loadUserProfile]);
+
+  const signIn = useCallback(async (email, password) => {
+    try {
+      // Validação de entrada
+      if (!email || !password) {
+        const error = { message: 'Email e senha são obrigatórios' };
+        toast({
+          variant: "destructive",
+          title: "Falha no Login",
+          description: error.message,
+        });
+        return { success: false, error };
+      }
+
+      // Garantir que o email está em minúsculas e sem espaços
+      const sanitizedEmail = email.trim().toLowerCase();
+      const sanitizedPassword = password.trim();
+
+      console.log('Tentando fazer login com:', { email: sanitizedEmail, passwordLength: sanitizedPassword.length });
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: sanitizedEmail,
+        password: sanitizedPassword,
+      });
+
+      if (error) {
+        console.error('Erro de autenticação:', error);
+        let errorMessage = "Credenciais inválidas";
+        
+        // Mensagens de erro mais específicas
+        if (error.message?.includes('Invalid login credentials')) {
+          errorMessage = "Email ou senha incorretos. Verifique suas credenciais.";
+        } else if (error.message?.includes('Email not confirmed')) {
+          errorMessage = "Por favor, confirme seu email antes de fazer login.";
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+
+        toast({
+          variant: "destructive",
+          title: "Falha no Login",
+          description: errorMessage,
+        });
+        return { success: false, error };
+      }
+
+      // Check if user is blocked
+      const profile = await fetchCurrentUserProfile();
+      
+      // Se o perfil não existir, permitir login mas mostrar aviso
+      if (!profile) {
+        toast({
+          variant: "warning",
+          title: "Login realizado",
+          description: "Seu perfil não foi encontrado. Entre em contato com o administrador.",
+        });
+        return { success: true, data };
+      }
+      
+      // Se o status for null ou undefined, atualizar para 'active'
+      if (!profile.status) {
+        try {
+          await supabase
+            .from('app_users')
+            .update({ status: 'active' })
+            .eq('id', data.user.id);
+          profile.status = 'active';
+        } catch (updateError) {
+          console.error('Erro ao atualizar status do usuário:', updateError);
+        }
+      }
+      
+      if (profile.status === 'blocked') {
+        await supabase.auth.signOut();
+        toast({
+          variant: "destructive",
+          title: "Acesso Bloqueado",
+          description: "Sua conta foi bloqueada. Entre em contato com o administrador.",
+        });
+        return { success: false, error: { message: 'User blocked' } };
+      }
+
+      // Verificar se o usuário está usando a senha padrão "afeet10"
+      // Se estiver, redirecionar para definir nova senha
+      const DEFAULT_PASSWORD = 'afeet10';
+      const isUsingDefaultPassword = sanitizedPassword === DEFAULT_PASSWORD;
+      
+      if (isUsingDefaultPassword) {
+        toast({
+          variant: "info",
+          title: "Primeiro Acesso",
+          description: "Por favor, defina uma nova senha para sua conta.",
+        });
+        return { 
+          success: true, 
+          data,
+          firstAccess: true 
+        };
+      }
+
+      toast({
+        title: "Login realizado!",
+        description: `Bem-vindo, ${profile.username || sanitizedEmail}!`,
+      });
+
+      return { success: true, data, firstAccess: false };
+    } catch (error) {
+      console.error('Erro inesperado no login:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro no Login",
+        description: error.message || "Ocorreu um erro inesperado. Tente novamente.",
+      });
+      return { success: false, error };
+    }
+  }, [toast]);
+
+  const signOut = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao Sair",
+        description: error.message,
+      });
+      return { error };
+    }
+
+    toast({
+      title: "Logout realizado",
+      description: "Até logo!",
+    });
+
+    return { error: null };
+  }, [toast]);
+
+  // Reset de senha - reseta para senha padrão "afeet10" sem enviar email
+  const resetPassword = useCallback(async (email) => {
+    try {
+      const sanitizedEmail = email.trim().toLowerCase();
+      
+      if (!sanitizedEmail) {
+        const error = { message: 'Email é obrigatório' };
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: error.message,
+        });
+        return { success: false, error };
+      }
+
+      // Usar função RPC para resetar a senha para "afeet10"
+      const { data, error } = await supabase.rpc('reset_user_password_to_default', {
+        p_email: sanitizedEmail
+      });
+
+      if (error) {
+        // Se a função RPC não existir, fornecer instruções
+        if (error.code === 'PGRST202' || error.message?.includes('not found')) {
+          const errorMsg = {
+            message: `A função RPC não está disponível. Execute o script CRIAR_FUNCAO_RESET_SENHA.sql no Supabase SQL Editor para criar a função necessária.`
+          };
+          toast({
+            variant: "destructive",
+            title: "Erro ao resetar senha",
+            description: errorMsg.message,
+            duration: 10000
+          });
+          return { success: false, error: errorMsg };
+        }
+        
+        toast({
+          variant: "destructive",
+          title: "Erro ao resetar senha",
+          description: error.message || "Não foi possível resetar a senha.",
+        });
+        return { success: false, error };
+      }
+
+      // Verificar se a função retornou sucesso
+      if (data && data.success) {
+        toast({
+          title: "Senha Resetada!",
+          description: "A senha foi resetada para a senha padrão 'afeet10'. Você pode fazer login com essa senha.",
+        });
+        return { success: true };
+      } else if (data && !data.success) {
+        const error = { message: data.error || 'Erro ao resetar senha' };
+        toast({
+          variant: "destructive",
+          title: "Erro ao resetar senha",
+          description: error.message,
+        });
+        return { success: false, error };
+      }
+
+      // Se não houver dados, considerar como sucesso (compatibilidade)
+      toast({
+        title: "Senha Resetada!",
+        description: "A senha foi resetada para a senha padrão 'afeet10'.",
+      });
+      return { success: true };
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: error.message || "Ocorreu um erro inesperado.",
+      });
+      return { success: false, error };
+    }
+  }, [toast]);
+
+  // Atualizar senha (usado no reset e primeiro acesso)
+  const updatePassword = useCallback(async (newPassword) => {
+    try {
+      if (!newPassword || newPassword.length < 6) {
+        const error = { message: 'A senha deve ter pelo menos 6 caracteres' };
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: error.message,
+        });
+        return { success: false, error };
+      }
+
+      // Validar se a senha não é a senha padrão
+      const DEFAULT_PASSWORD = 'afeet10';
+      if (newPassword === DEFAULT_PASSWORD) {
+        const error = { message: 'A senha não pode ser a senha padrão. Por favor, escolha uma senha diferente.' };
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: error.message,
+        });
+        return { success: false, error };
+      }
+
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Erro ao atualizar senha",
+          description: error.message || "Não foi possível atualizar a senha.",
+        });
+        return { success: false, error };
+      }
+
+      // Senha atualizada com sucesso
+      // Não precisamos atualizar nenhuma flag, pois verificamos a senha padrão no login
+
+      toast({
+        title: "Senha atualizada!",
+        description: "Sua senha foi atualizada com sucesso.",
+      });
+
+      return { success: true };
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: error.message || "Ocorreu um erro inesperado.",
+      });
+      return { success: false, error };
+    }
+  }, [toast]);
+
+  // Verificar se precisa definir senha (verificando se está usando senha padrão)
+  const checkNeedsPasswordChange = useCallback(async () => {
+    // Esta função não é mais necessária, pois verificamos no login
+    // Mas mantemos para compatibilidade
+    return false;
+  }, []);
+
+  const value = useMemo(() => {
+    // Considerar autenticado se tiver sessão e usuário, e o status não for 'blocked'
+    // Se status for null/undefined, tratar como 'active' (compatibilidade)
+    const isUserActive = !user || user.status !== 'blocked';
+    const isAuthenticated = !!session && !!user && isUserActive;
+    
+    return {
+      user,
+      session,
+      loading,
+      isAuthenticated,
+      signIn,
+      signOut,
+      resetPassword,
+      updatePassword,
+      checkNeedsPasswordChange,
+    };
+  }, [user, session, loading, signIn, signOut, resetPassword, updatePassword, checkNeedsPasswordChange]);
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

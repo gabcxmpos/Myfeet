@@ -1,0 +1,91 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 224 71% 4%; /* Dark Navy */
+    --foreground: 210 40% 98%;
+    
+    --card: 225 35% 9%; /* Slightly lighter navy */
+    --card-foreground: 210 40% 98%;
+
+    --popover: 224 71% 4%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 259 81% 69%; /* Vibrant Purple */
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 226 44% 14%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 226 44% 14%;
+    --muted-foreground: 215 28% 65%;
+
+    --accent: 226 44% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 226 44% 14%;
+    --input: 226 44% 14%;
+    --ring: 259 81% 69%;
+
+    --radius: 0.75rem;
+
+    /* Brand Colors */
+    --brand-artwalk: 27 98% 55%; /* Orange */
+    --brand-authentic-feet: 45 93% 55%; /* Yellow */
+    --brand-magic-feet: 145 63% 49%; /* Green */
+
+    /* Pillar Colors */
+    --pillar-pessoas: 217 91% 60%;
+    --pillar-performance: 142 71% 45%;
+    --pillar-ambientacao: 39 91% 55%;
+    --pillar-digital: 283 91% 60%;
+  }
+  
+  .dark {
+    /* Keeping the same variables for dark mode as it's the default */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Poppins', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .bg-artwalk { background-color: hsl(var(--brand-artwalk)); }
+  .text-artwalk { color: hsl(var(--brand-artwalk)); }
+  .border-artwalk { border-color: hsl(var(--brand-artwalk)); }
+  
+  .bg-authentic-feet { background-color: hsl(var(--brand-authentic-feet)); }
+  .text-authentic-feet { color: hsl(var(--brand-authentic-feet)); }
+  .border-authentic-feet { border-color: hsl(var(--brand-authentic-feet)); }
+
+  .bg-magic-feet { background-color: hsl(var(--brand-magic-feet)); }
+  .text-magic-feet { color: hsl(var(--brand-magic-feet)); }
+  .border-magic-feet { border-color: hsl(var(--brand-magic-feet)); }
+
+  .bg-glass {
+    @apply bg-card/50 backdrop-blur-lg;
+  }
+}
