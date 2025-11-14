@@ -5,9 +5,6 @@ import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 import { DataProvider } from '@/contexts/DataContext';
 import { Toaster } from '@/components/ui/toaster';
 import Login from '@/pages/Login';
-import ForgotPassword from '@/pages/ForgotPassword';
-import ResetPassword from '@/pages/ResetPassword';
-import FirstAccess from '@/pages/FirstAccess';
 import Dashboard from '@/pages/Dashboard';
 import MonthlyRanking from '@/pages/MonthlyRanking';
 import Analytics from '@/pages/Analytics';
@@ -24,7 +21,6 @@ import Feedback from '@/pages/Feedback';
 import FeedbackManagement from '@/pages/FeedbackManagement';
 import Chave from '@/pages/Chave';
 import DailyChecklist from '@/pages/DailyChecklist';
-import ChecklistManagement from '@/pages/ChecklistManagement';
 import MenuVisibilitySettings from '@/pages/MenuVisibilitySettings';
 
 function App() {
@@ -36,12 +32,9 @@ function App() {
       </Helmet>
       <AuthProvider>
         <DataProvider>
-          <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Router>
             <Routes>
               <Route path="/login" element={<Login />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/first-access" element={<ProtectedRoute><FirstAccess /></ProtectedRoute>} />
               <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
@@ -59,7 +52,6 @@ function App() {
                 <Route path="feedback-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><FeedbackManagement /></ProtectedRoute>} />
                 <Route path="chave" element={<Chave />} />
                 <Route path="checklist" element={<DailyChecklist />} />
-                <Route path="checklist/management" element={<ProtectedRoute allowedRoles={['admin']}><ChecklistManagement /></ProtectedRoute>} />
               </Route>
             </Routes>
           </Router>
