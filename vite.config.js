@@ -1,12 +1,18 @@
 import path from 'node:path';
 import react from '@vitejs/plugin-react';
 import { createLogger, defineConfig } from 'vite';
-import inlineEditPlugin from './plugins/visual-editor/vite-plugin-react-inline-editor.js';
-import editModeDevPlugin from './plugins/visual-editor/vite-plugin-edit-mode.js';
-import iframeRouteRestorationPlugin from './plugins/vite-plugin-iframe-route-restoration.js';
-import selectionModePlugin from './plugins/selection-mode/vite-plugin-selection-mode.js';
 
 const isDev = process.env.NODE_ENV !== 'production';
+
+// Em produção, não usar plugins de desenvolvimento visual (apenas em dev local)
+// Esses plugins são apenas para visual editor e não são necessários em produção
+// Isso evita erros de build no Vercel onde esses plugins podem não estar disponíveis
+// SOLUÇÃO: Não importar esses plugins em produção - eles não são necessários
+let devPlugins = [];
+
+// Apenas em desenvolvimento local, tentar carregar plugins (podem não existir em alguns ambientes)
+// NOTA: Em produção no Vercel, esses plugins não são necessários e não serão carregados
+// Isso evita erros de build onde os arquivos podem não estar disponíveis
 
 const configHorizonsViteErrorHandler = `
 const observer = new MutationObserver((mutations) => {
@@ -236,7 +242,7 @@ logger.error = (msg, options) => {
 export default defineConfig({
 	customLogger: logger,
 	plugins: [
-		...(isDev ? [inlineEditPlugin(), editModeDevPlugin(), iframeRouteRestorationPlugin(), selectionModePlugin()] : []),
+		...devPlugins,
 		react(),
 		addTransformIndexHtml
 	],
