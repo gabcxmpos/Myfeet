@@ -8,4 +8,39 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('⚠️ Supabase credentials missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Configuração do cliente Supabase com opções de autenticação e persistência
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    // Usar localStorage para persistir sessão entre navegadores/dispositivos
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    // Auto refresh de tokens
+    autoRefreshToken: true,
+    // Persistir sessão
+    persistSession: true,
+    // Detectar mudanças de sessão automaticamente
+    detectSessionInUrl: true,
+    // Fluxo de autenticação
+    flowType: 'pkce',
+  },
+  // Configurações globais
+  global: {
+    headers: {
+      'x-client-info': 'myfeet-painel-ppad',
+    },
+  },
+  // Configurações de realtime (se necessário)
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+});
+
+// Log de configuração (apenas em desenvolvimento)
+if (import.meta.env.DEV) {
+  console.log('🔧 Supabase Client Configurado:', {
+    url: supabaseUrl,
+    hasKey: !!supabaseAnonKey,
+    storage: typeof window !== 'undefined' ? 'localStorage disponível' : 'localStorage não disponível',
+  });
+}
