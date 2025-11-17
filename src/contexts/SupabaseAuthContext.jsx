@@ -407,8 +407,11 @@ export const AuthProvider = ({ children }) => {
   // Atualizar senha (usado no reset e primeiro acesso)
   const updatePassword = useCallback(async (newPassword) => {
     try {
+      console.log('🔐 Atualizando senha...');
+      
       if (!newPassword || newPassword.length < 6) {
         const error = { message: 'A senha deve ter pelo menos 6 caracteres' };
+        console.error('❌ Erro de validação:', error.message);
         toast({
           variant: "destructive",
           title: "Erro",
@@ -421,6 +424,7 @@ export const AuthProvider = ({ children }) => {
       const DEFAULT_PASSWORD = 'afeet10';
       if (newPassword === DEFAULT_PASSWORD) {
         const error = { message: 'A senha não pode ser a senha padrão. Por favor, escolha uma senha diferente.' };
+        console.error('❌ Erro: Tentativa de usar senha padrão');
         toast({
           variant: "destructive",
           title: "Erro",
@@ -429,11 +433,30 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error };
       }
 
-      const { error } = await supabase.auth.updateUser({
+      // Verificar se há sessão ativa antes de atualizar
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) {
+        const error = { message: 'Não há sessão ativa. Por favor, faça login novamente.' };
+        console.error('❌ Erro: Sem sessão ativa');
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: error.message,
+        });
+        return { success: false, error };
+      }
+
+      console.log('✅ Sessão ativa encontrada, atualizando senha...');
+      const { data, error } = await supabase.auth.updateUser({
         password: newPassword,
       });
 
       if (error) {
+        console.error('❌ Erro ao atualizar senha:', {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+        });
         toast({
           variant: "destructive",
           title: "Erro ao atualizar senha",
@@ -443,15 +466,23 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Senha atualizada com sucesso
-      // Não precisamos atualizar nenhuma flag, pois verificamos a senha padrão no login
+      console.log('✅ Senha atualizada com sucesso');
+      
+      // Atualizar a sessão para garantir que está sincronizada
+      const { data: { session: updatedSession } } = await supabase.auth.getSession();
+      if (updatedSession) {
+        setSession(updatedSession);
+        console.log('✅ Sessão atualizada após mudança de senha');
+      }
 
       toast({
         title: "Senha atualizada!",
         description: "Sua senha foi atualizada com sucesso.",
       });
 
-      return { success: true };
+      return { success: true, data };
     } catch (error) {
+      console.error('❌ Erro inesperado ao atualizar senha:', error);
       toast({
         variant: "destructive",
         title: "Erro",
