@@ -338,12 +338,146 @@ export const DataProvider = ({ children }) => {
   // Forms
   const saveForm = (form) => handleApiCall(() => api.createForm(form), 'Formulário salvo.');
   const updateForm = (id, data) => handleApiCall(() => api.updateForm(id, data), 'Formulário atualizado.');
-  const deleteForm = (id) => handleApiCall(() => api.deleteForm(id), 'Formulário removido.');
+  const deleteForm = async (id) => {
+    if (!id) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'ID do formulário é obrigatório' });
+      return;
+    }
+    
+    // Salvar o formulário que será excluído para reverter se necessário
+    const formToDelete = forms.find(f => f.id === id);
+    
+    if (!formToDelete) {
+      console.warn('⚠️ Formulário não encontrado no estado local:', id);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Formulário não encontrado' });
+      return;
+    }
+    
+    // Remover IMEDIATAMENTE do estado local (optimistic update)
+    console.log('🗑️ Removendo formulário do estado local imediatamente:', id);
+    setForms(prev => {
+      const filtered = prev.filter(f => f.id !== id);
+      console.log('📊 Formulário removido do estado. Total restante:', filtered.length);
+      return filtered;
+    });
+    
+    // Mostrar toast de sucesso imediatamente
+    toast({ title: 'Sucesso!', description: 'Formulário excluído.' });
+    
+    // Fazer a exclusão no banco de forma assíncrona (não bloquear UI)
+    try {
+      console.log('🗑️ Excluindo formulário no banco de dados:', id);
+      await api.deleteForm(id);
+      console.log('✅ Formulário excluído com sucesso no banco:', id);
+      
+      // Refresh dados para garantir sincronização (mas não deve trazer o item de volta se foi excluído)
+      setTimeout(() => {
+        fetchData();
+      }, 500);
+    } catch (error) {
+      console.error('❌ Erro ao excluir formulário no banco:', error);
+      
+      // Reverter: adicionar o formulário de volta ao estado local
+      console.log('↩️ Revertendo exclusão: adicionando formulário de volta ao estado');
+      setForms(prev => {
+        const exists = prev.find(f => f.id === id);
+        if (!exists) {
+          return [...prev, formToDelete];
+        }
+        return prev;
+      });
+      
+      toast({ 
+        variant: 'destructive', 
+        title: 'Erro ao excluir formulário', 
+        description: error.message || 'Não foi possível excluir o formulário. Tente novamente.' 
+      });
+    }
+  };
 
   // Evaluations
   const addEvaluation = (evalData) => handleApiCall(() => api.createEvaluation(evalData), 'Avaliação enviada.');
   const updateEvaluationStatus = (id, status) => handleApiCall(() => api.updateEvaluation(id, { status }), 'Status da avaliação atualizado.');
-  const deleteEvaluation = (id) => handleApiCall(() => api.deleteEvaluation(id), 'Avaliação removida.');
+  const deleteEvaluation = async (id) => {
+    if (!id) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'ID da avaliação é obrigatório' });
+      return;
+    }
+    
+    // Salvar a avaliação que será excluída para reverter se necessário
+    const evaluationToDelete = evaluations.find(e => e.id === id);
+    
+    if (!evaluationToDelete) {
+      console.warn('⚠️ Avaliação não encontrada no estado local:', id);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Avaliação não encontrada' });
+      return;
+    }
+    
+    // Remover IMEDIATAMENTE do estado local (optimistic update)
+    // Isso força o recálculo INSTANTÂNEO das pontuações no Dashboard e Ranking
+    console.log('🗑️ Removendo avaliação do estado local imediatamente:', id);
+    setEvaluations(prev => {
+      const filtered = prev.filter(e => e.id !== id);
+      console.log('📊 Avaliação removida do estado. Total restante:', filtered.length);
+      console.log('📊 IDs restantes:', filtered.map(e => e.id));
+      return filtered;
+    });
+    
+    // Mostrar toast de sucesso imediatamente
+    toast({ title: 'Sucesso!', description: 'Avaliação removida.' });
+    
+    // Fazer a exclusão no banco de forma assíncrona (não bloquear UI)
+    // Se falhar, vamos reverter o estado
+    api.deleteEvaluation(id)
+      .then((result) => {
+        if (!result || !result.success) {
+          throw new Error('A exclusão não foi confirmada pelo servidor');
+        }
+        
+        console.log('✅ Avaliação excluída do banco de dados:', result);
+        
+        // Aguardar um pouco para garantir que a exclusão foi commitada
+        return new Promise(resolve => setTimeout(resolve, 2000));
+      })
+      .then(() => {
+        // Recarregar dados do banco APENAS para sincronizar com outros usuários
+        // Mas filtrar para não trazer a avaliação excluída de volta
+        console.log('🔄 Recarregando dados para sincronização...');
+        return fetchData();
+      })
+      .then(() => {
+        // Verificar se a avaliação ainda está no estado (não deveria estar)
+        const stillExists = evaluations.some(e => e.id === id);
+        if (stillExists) {
+          console.warn('⚠️ Avaliação ainda aparece após recarregar. Removendo novamente...');
+          setEvaluations(prev => prev.filter(e => e.id !== id));
+        }
+        console.log('✅ Sincronização concluída. Avaliação excluída permanentemente.');
+      })
+      .catch((error) => {
+        // Se falhar, reverter o optimistic update
+        console.error('❌ Erro ao excluir avaliação do banco:', error);
+        
+        // Reverter o estado
+        setEvaluations(prev => {
+          const exists = prev.find(e => e.id === id);
+          if (!exists && evaluationToDelete) {
+            console.log('🔄 Revertendo exclusão. Adicionando avaliação de volta ao estado.');
+            return [...prev, evaluationToDelete];
+          }
+          return prev;
+        });
+        
+        // Recarregar dados para garantir consistência
+        fetchData().catch(err => console.error('Erro ao recarregar dados:', err));
+        
+        toast({ 
+          variant: 'destructive', 
+          title: 'Erro na Operação', 
+          description: error.message || 'Não foi possível excluir a avaliação. Ela foi restaurada.' 
+        });
+      });
+  };
   
   // Collaborators
   const addCollaborator = (collabData) => handleApiCall(() => api.createCollaborator(collabData), 'Colaborador adicionado.');
@@ -351,7 +485,62 @@ export const DataProvider = ({ children }) => {
 
   // Feedback
   const addFeedback = (feedbackData) => handleApiCall(() => api.createFeedback(feedbackData), 'Feedback enviado.');
-  const deleteFeedback = (feedbackId) => handleApiCall(() => api.deleteFeedback(feedbackId), 'Feedback excluído.');
+  const deleteFeedback = async (feedbackId) => {
+    if (!feedbackId) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'ID do feedback é obrigatório' });
+      return;
+    }
+    
+    // Salvar o feedback que será excluído para reverter se necessário
+    const feedbackToDelete = feedbacks.find(f => f.id === feedbackId);
+    
+    if (!feedbackToDelete) {
+      console.warn('⚠️ Feedback não encontrado no estado local:', feedbackId);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Feedback não encontrado' });
+      return;
+    }
+    
+    // Remover IMEDIATAMENTE do estado local (optimistic update)
+    console.log('🗑️ Removendo feedback do estado local imediatamente:', feedbackId);
+    setFeedbacks(prev => {
+      const filtered = prev.filter(f => f.id !== feedbackId);
+      console.log('📊 Feedback removido do estado. Total restante:', filtered.length);
+      return filtered;
+    });
+    
+    // Mostrar toast de sucesso imediatamente
+    toast({ title: 'Sucesso!', description: 'Feedback excluído.' });
+    
+    // Fazer a exclusão no banco de forma assíncrona (não bloquear UI)
+    try {
+      console.log('🗑️ Excluindo feedback no banco de dados:', feedbackId);
+      const result = await api.deleteFeedback(feedbackId);
+      console.log('✅ Feedback excluído com sucesso no banco:', result);
+      
+      // Refresh dados para garantir sincronização (mas não deve trazer o item de volta se foi excluído)
+      setTimeout(() => {
+        fetchData();
+      }, 500);
+    } catch (error) {
+      console.error('❌ Erro ao excluir feedback no banco:', error);
+      
+      // Reverter: adicionar o feedback de volta ao estado local
+      console.log('↩️ Revertendo exclusão: adicionando feedback de volta ao estado');
+      setFeedbacks(prev => {
+        const exists = prev.find(f => f.id === feedbackId);
+        if (!exists) {
+          return [...prev, feedbackToDelete];
+        }
+        return prev;
+      });
+      
+      toast({ 
+        variant: 'destructive', 
+        title: 'Erro ao excluir feedback', 
+        description: error.message || 'Não foi possível excluir o feedback. Tente novamente.' 
+      });
+    }
+  };
 
   // Settings
   const updatePatentSettings = (settings) => handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
@@ -359,14 +548,33 @@ export const DataProvider = ({ children }) => {
   const updateMenuVisibility = (visibility) => handleApiCall(() => api.upsertAppSettings('menu_visibility', visibility), 'Visibilidade do menu atualizada.');
 
   // Checklist operacional ou gerencial
-  const updateChecklist = async (storeId, taskId, isChecked, checklistType = 'operacional') => {
+  const updateChecklist = async (storeId, taskId, isChecked, checklistType = 'operacional', updateBoth = false) => {
     try {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const currentChecklist = await api.fetchDailyChecklist(storeId, todayStr, checklistType);
       
       const newTasks = { ...(currentChecklist?.tasks || {}), [taskId]: isChecked };
       
+      // Salvar o checklist atual
       await api.upsertDailyChecklist(storeId, todayStr, newTasks, checklistType);
+      
+      // Se updateBoth for true, atualizar também o outro checklist
+      // Isso é útil quando admin/supervisor edita e quer garantir que ambos estejam sincronizados
+      if (updateBoth) {
+        const otherType = checklistType === 'operacional' ? 'gerencial' : 'operacional';
+        try {
+          // Buscar o checklist do outro tipo
+          const otherChecklist = await api.fetchDailyChecklist(storeId, todayStr, otherType);
+          // Atualizar com as mesmas tarefas (mas apenas se o taskId existir no outro checklist)
+          if (otherChecklist?.tasks && otherChecklist.tasks.hasOwnProperty(taskId)) {
+            const otherNewTasks = { ...otherChecklist.tasks, [taskId]: isChecked };
+            await api.upsertDailyChecklist(storeId, todayStr, otherNewTasks, otherType);
+          }
+        } catch (otherError) {
+          // Se falhar ao atualizar o outro checklist, não bloquear a atualização do atual
+          console.warn('Erro ao atualizar outro checklist:', otherError);
+        }
+      }
       
       setChecklist(prev => ({
         ...prev,
