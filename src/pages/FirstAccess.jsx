@@ -13,15 +13,21 @@ const FirstAccess = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const { updatePassword, user, isAuthenticated } = useAuth();
+  const { updatePassword, user, isAuthenticated, loading: authLoading, session } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Se não estiver autenticado, redirecionar para login
-    if (!isAuthenticated && !user) {
-      navigate('/login');
+    // Aguardar o carregamento da autenticação
+    if (authLoading) {
+      return;
     }
-  }, [isAuthenticated, user, navigate]);
+
+    // Se não estiver autenticado ou não tiver sessão, redirecionar para login
+    if (!authLoading && (!isAuthenticated || !user || !session)) {
+      console.log('🔒 Primeiro acesso: Usuário não autenticado, redirecionando para login');
+      navigate('/login', { replace: true });
+    }
+  }, [isAuthenticated, user, session, authLoading, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -51,23 +57,52 @@ const FirstAccess = () => {
     setIsLoading(true);
 
     try {
+      console.log('🔐 Primeiro acesso: Tentando atualizar senha...');
       const result = await updatePassword(password);
+      
       if (result.success) {
+        console.log('✅ Primeiro acesso: Senha atualizada com sucesso');
+        // Aguardar um pouco para garantir que a sessão foi atualizada
+        await new Promise(resolve => setTimeout(resolve, 500));
         // Redirecionar para o dashboard após definir a senha
-        navigate('/dashboard');
+        navigate('/dashboard', { replace: true });
       } else if (result.error) {
+        console.error('❌ Primeiro acesso: Erro ao atualizar senha:', result.error);
         setError(result.error.message || 'Erro ao definir senha');
+      } else {
+        console.error('❌ Primeiro acesso: Resultado inesperado:', result);
+        setError('Erro ao definir senha. Tente novamente.');
       }
     } catch (error) {
-      console.error('First access error:', error);
-      setError('Ocorreu um erro inesperado. Tente novamente.');
+      console.error('❌ Primeiro acesso: Erro inesperado:', error);
+      setError(error.message || 'Ocorreu um erro inesperado. Tente novamente.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (!isAuthenticated && !user) {
-    return null; // Ou um loading spinner
+  // Mostrar loading enquanto verifica autenticação
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Se não estiver autenticado, mostrar loading (será redirecionado pelo useEffect)
+  if (!isAuthenticated || !user || !session) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Verificando autenticação...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
