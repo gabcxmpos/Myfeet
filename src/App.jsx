@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 import { DataProvider } from '@/contexts/DataContext';
 import { Toaster } from '@/components/ui/toaster';
 import Login from '@/pages/Login';
+import FirstAccess from '@/pages/FirstAccess';
 import Dashboard from '@/pages/Dashboard';
 import MonthlyRanking from '@/pages/MonthlyRanking';
 import Analytics from '@/pages/Analytics';
@@ -35,6 +36,7 @@ function App() {
           <Router>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/first-access" element={<FirstAccess />} />
               <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
