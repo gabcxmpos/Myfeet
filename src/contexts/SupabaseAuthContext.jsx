@@ -74,14 +74,20 @@ export const AuthProvider = ({ children }) => {
       // Se status for null ou undefined, tratar como 'active' (para compatibilidade)
       const userStatus = profile?.status || 'active';
       
+      // IMPORTANTE: Admin e supervisor NÃO devem ter storeId
+      // Apenas usuários com role 'loja' devem ter storeId
+      const userRole = profile?.role || 'loja';
+      const userStoreId = (userRole === 'loja') ? (profile?.store_id || profile?.store?.id) : null;
+      const userStoreName = (userRole === 'loja') ? (profile?.store?.name) : null;
+      
       setUser({
         id: authUser.id,
         email: authUser.email,
         username: profile?.username || authUser.email,
-        role: profile?.role || 'loja',
+        role: userRole,
         status: userStatus,
-        storeId: profile?.store_id || profile?.store?.id,
-        storeName: profile?.store?.name,
+        storeId: userStoreId,
+        storeName: userStoreName,
       });
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -193,7 +199,11 @@ export const AuthProvider = ({ children }) => {
       const sanitizedEmail = email.trim().toLowerCase();
       const sanitizedPassword = password.trim();
 
-      console.log('Tentando fazer login com:', { email: sanitizedEmail, passwordLength: sanitizedPassword.length });
+      console.log('🔐 Tentando fazer login com:', { 
+        email: sanitizedEmail, 
+        passwordLength: sanitizedPassword.length,
+        timestamp: new Date().toISOString()
+      });
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email: sanitizedEmail,
@@ -201,7 +211,13 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) {
-        console.error('Erro de autenticação:', error);
+        console.error('❌ Erro de autenticação:', {
+          message: error.message,
+          status: error.status,
+          code: error.code,
+          email: sanitizedEmail,
+          timestamp: new Date().toISOString()
+        });
         let errorMessage = "Credenciais inválidas";
         
         // Mensagens de erro mais específicas
