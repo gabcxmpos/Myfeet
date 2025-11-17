@@ -176,7 +176,7 @@ const FormBuilder = () => {
     const handleDelete = (id) => {
         if(window.confirm('Tem certeza que deseja excluir este formulário?')) {
             deleteForm(id);
-            toast({ title: 'Excluído!', description: 'Formulário removido.', variant: 'destructive' });
+            // Toast já é mostrado pela função deleteForm no DataContext
         }
     }
     
