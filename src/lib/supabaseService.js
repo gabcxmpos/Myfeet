@@ -5,7 +5,7 @@ export const fetchStores = async () => {
   const { data, error } = await supabase
     .from('stores')
     .select('*')
-    .order('code', { ascending: true });
+    .order('name');
   
   if (error) throw error;
   
@@ -822,12 +822,61 @@ export const updateForm = async (id, updates) => {
 };
 
 export const deleteForm = async (id) => {
-  const { error } = await supabase
+  if (!id) {
+    throw new Error('ID do formulário é obrigatório');
+  }
+  
+  console.log('🗑️ Tentando excluir formulário:', id);
+  
+  // Primeiro, verificar se o formulário existe
+  const { data: existingForm, error: fetchError } = await supabase
+    .from('forms')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle();
+  
+  if (fetchError) {
+    console.error('❌ Erro ao verificar formulário:', fetchError);
+    throw fetchError;
+  }
+  
+  if (!existingForm) {
+    console.warn('⚠️ Formulário não encontrado:', id);
+    // Se não existe, considerar como sucesso (já foi excluído)
+    return { success: true, deleted: false };
+  }
+  
+  // Tentar excluir
+  const { data, error } = await supabase
     .from('forms')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .select();
   
-  if (error) throw error;
+  if (error) {
+    console.error('❌ Erro ao excluir formulário:', error);
+    throw error;
+  }
+  
+  // Verificar se realmente foi excluído
+  const { data: verifyDeleted, error: verifyError } = await supabase
+    .from('forms')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle();
+  
+  if (verifyError && verifyError.code !== 'PGRST116') {
+    console.error('❌ Erro ao verificar exclusão:', verifyError);
+    throw verifyError;
+  }
+  
+  if (verifyDeleted) {
+    console.error('❌ Formulário ainda existe após exclusão:', id);
+    throw new Error('A exclusão falhou. O formulário ainda existe no banco de dados.');
+  }
+  
+  console.log('✅ Formulário excluído com sucesso:', id);
+  return { success: true, deleted: true, data };
 };
 
 // ============ EVALUATIONS ============
@@ -903,8 +952,8 @@ export const fetchEvaluations = async () => {
 };
 
 export const createEvaluation = async (evaluationData) => {
-  // Converter camelCase para snake_case e obter user_id da sessão
-  const { data: { user } } = await supabase.auth.getUser();
+  // Converter camelCase para snake_case
+  // NOTA: A tabela evaluations não tem coluna user_id, então não incluímos
   
   // Validar campos obrigatórios
   if (!evaluationData.storeId && !evaluationData.store_id) {
@@ -920,8 +969,7 @@ export const createEvaluation = async (evaluationData) => {
     score: evaluationData.score || 0,
     answers: evaluationData.answers || {},
     pillar: evaluationData.pillar || null,
-    status: evaluationData.status || 'pending',
-    user_id: user?.id || null
+    status: evaluationData.status || 'pending'
   };
   
   // Limpar campos undefined para evitar problemas
@@ -939,16 +987,16 @@ export const createEvaluation = async (evaluationData) => {
     score: dataToInsert.score,
     answers: dataToInsert.answers,
     pillar: dataToInsert.pillar,
-    status: dataToInsert.status,
-    user_id: dataToInsert.user_id
+    status: dataToInsert.status
   };
   
   console.log('📤 Enviando avaliação para o banco:', cleanData);
   
+  // Especificar explicitamente as colunas no select para evitar incluir user_id
   const { data, error } = await supabase
     .from('evaluations')
     .insert([cleanData])
-    .select('*')
+    .select('id, store_id, form_id, score, answers, pillar, status, created_at, updated_at')
     .single();
   
   if (error) {
@@ -966,7 +1014,7 @@ export const createEvaluation = async (evaluationData) => {
     ...data,
     storeId: data.store_id,
     formId: data.form_id,
-    userId: data.user_id
+    userId: data.user_id || null
   };
 };
 
@@ -983,12 +1031,61 @@ export const updateEvaluation = async (id, updates) => {
 };
 
 export const deleteEvaluation = async (id) => {
-  const { error } = await supabase
+  if (!id) {
+    throw new Error('ID da avaliação é obrigatório');
+  }
+  
+  console.log('🗑️ Tentando excluir avaliação:', id);
+  
+  // Primeiro, verificar se a avaliação existe
+  const { data: existingEvaluation, error: fetchError } = await supabase
+    .from('evaluations')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle();
+  
+  if (fetchError) {
+    console.error('❌ Erro ao verificar avaliação:', fetchError);
+    throw fetchError;
+  }
+  
+  if (!existingEvaluation) {
+    console.warn('⚠️ Avaliação não encontrada:', id);
+    // Se não existe, considerar como sucesso (já foi excluída)
+    return { success: true, deleted: false };
+  }
+  
+  // Tentar excluir
+  const { data, error } = await supabase
     .from('evaluations')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .select();
   
-  if (error) throw error;
+  if (error) {
+    console.error('❌ Erro ao excluir avaliação:', error);
+    throw error;
+  }
+  
+  // Verificar se realmente foi excluída
+  const { data: verifyDeleted, error: verifyError } = await supabase
+    .from('evaluations')
+    .select('id')
+    .eq('id', id)
+    .maybeSingle();
+  
+  if (verifyError && verifyError.code !== 'PGRST116') {
+    console.error('❌ Erro ao verificar exclusão:', verifyError);
+    throw verifyError;
+  }
+  
+  if (verifyDeleted) {
+    console.error('❌ Avaliação ainda existe após exclusão:', id);
+    throw new Error('A exclusão falhou. A avaliação ainda existe no banco de dados.');
+  }
+  
+  console.log('✅ Avaliação excluída com sucesso:', id);
+  return { success: true, deleted: true, data };
 };
 
 // ============ COLLABORATORS ============
@@ -1253,23 +1350,76 @@ export const createFeedback = async (feedbackData) => {
 };
 
 export const deleteFeedback = async (feedbackId) => {
-  try {
-    const { error } = await supabase
-      .from('feedbacks')
-      .delete()
-      .eq('id', feedbackId);
-    
-    if (error) throw error;
-    return true;
-  } catch (error) {
-    console.error('Erro ao excluir feedback:', error);
+  if (!feedbackId) {
+    throw new Error('ID do feedback é obrigatório');
+  }
+  
+  console.log('🗑️ Tentando excluir feedback:', feedbackId);
+  
+  // Primeiro, verificar se o feedback existe
+  const { data: existingFeedback, error: fetchError } = await supabase
+    .from('feedbacks')
+    .select('id')
+    .eq('id', feedbackId)
+    .maybeSingle();
+  
+  if (fetchError) {
+    console.error('❌ Erro ao verificar feedback:', fetchError);
+    throw fetchError;
+  }
+  
+  if (!existingFeedback) {
+    console.warn('⚠️ Feedback não encontrado:', feedbackId);
+    // Se não existe, considerar como sucesso (já foi excluído)
+    return { success: true, deleted: false };
+  }
+  
+  // Tentar excluir
+  const { data, error } = await supabase
+    .from('feedbacks')
+    .delete()
+    .eq('id', feedbackId)
+    .select();
+  
+  if (error) {
+    console.error('❌ Erro ao excluir feedback:', error);
     throw error;
   }
+  
+  // Verificar se realmente foi excluído
+  const { data: verifyDeleted, error: verifyError } = await supabase
+    .from('feedbacks')
+    .select('id')
+    .eq('id', feedbackId)
+    .maybeSingle();
+  
+  if (verifyError && verifyError.code !== 'PGRST116') {
+    console.error('❌ Erro ao verificar exclusão:', verifyError);
+    throw verifyError;
+  }
+  
+  if (verifyDeleted) {
+    console.error('❌ Feedback ainda existe após exclusão:', feedbackId);
+    throw new Error('A exclusão falhou. O feedback ainda existe no banco de dados.');
+  }
+  
+  console.log('✅ Feedback excluído com sucesso:', feedbackId);
+  return { success: true, deleted: true, data };
 };
 
 // ============ DAILY CHECKLISTS ============
 // Função genérica para buscar checklist por tipo (operacional ou gerencial)
 export const fetchDailyChecklist = async (storeId, date, checklistType = 'operacional') => {
+  // Validar parâmetros
+  if (!storeId) {
+    console.error('❌ storeId é obrigatório para buscar checklist');
+    throw new Error('storeId é obrigatório');
+  }
+  if (!date) {
+    console.error('❌ date é obrigatório para buscar checklist');
+    throw new Error('date é obrigatório');
+  }
+  
   // Buscar todos os checklists para essa loja e data (pode haver operacional e gerencial)
   const { data: checklists, error } = await supabase
     .from('daily_checklists')
@@ -1302,6 +1452,20 @@ export const fetchDailyChecklist = async (storeId, date, checklistType = 'operac
 };
 
 export const upsertDailyChecklist = async (storeId, date, tasks, checklistType = 'operacional') => {
+  // Validar parâmetros
+  if (!storeId) {
+    console.error('❌ storeId é obrigatório para salvar checklist');
+    throw new Error('storeId é obrigatório');
+  }
+  if (!date) {
+    console.error('❌ date é obrigatório para salvar checklist');
+    throw new Error('date é obrigatório');
+  }
+  
+  // IMPORTANTE: A constraint única agora é store_id + date + checklist_type
+  // Isso significa que pode haver DOIS checklists separados (operacional e gerencial) para a mesma loja/data
+  // Agora podemos fazer UPDATE/INSERT normalmente por tipo
+  
   // Preparar dados do checklist
   const checklistData = {
     store_id: storeId,
@@ -1310,80 +1474,178 @@ export const upsertDailyChecklist = async (storeId, date, tasks, checklistType =
     checklist_type: checklistType
   };
   
-  // Primeiro, verificar se existe checklist legado (sem tipo) para operacional
-  if (checklistType === 'operacional') {
-    const { data: existingChecklist, error: fetchError } = await supabase
+  // ESTRATÉGIA: Verificar se existe checklist com o tipo específico
+  // 1. Buscar checklist com store_id + date + checklist_type
+  // 2. Se existe, fazer UPDATE
+  // 3. Se não existe, fazer INSERT
+  
+  try {
+    // Primeiro, verificar se existe checklist legado (sem tipo) para operacional
+    if (checklistType === 'operacional') {
+      try {
+        const { data: existingChecklist, error: fetchError } = await supabase
+          .from('daily_checklists')
+          .select('id')
+          .eq('store_id', storeId)
+          .eq('date', date)
+          .is('checklist_type', null)
+          .maybeSingle();
+        
+        // Se encontrou checklist legado, atualizar ele para incluir o tipo
+        if (!fetchError && existingChecklist) {
+          const { error: updateError } = await supabase
+            .from('daily_checklists')
+            .update({ tasks, checklist_type: 'operacional' })
+            .eq('id', existingChecklist.id);
+          
+          if (!updateError) {
+            // Buscar dados atualizados
+            const { data: updatedData, error: refetchError } = await supabase
+              .from('daily_checklists')
+              .select('*')
+              .eq('id', existingChecklist.id)
+              .single();
+            
+            if (!refetchError) return updatedData;
+          }
+          // Se update falhou, continuar para verificar se existe com tipo
+        }
+      } catch (legacyError) {
+        // Se houver erro ao buscar legado, continuar normalmente
+        console.warn('Erro ao buscar checklist legado:', legacyError);
+      }
+    }
+    
+    // Verificar se existe checklist com o tipo específico
+    const { data: existingWithType, error: fetchError } = await supabase
       .from('daily_checklists')
       .select('id')
       .eq('store_id', storeId)
       .eq('date', date)
-      .is('checklist_type', null)
+      .eq('checklist_type', checklistType)
       .maybeSingle();
     
-    // Se encontrou checklist legado, atualizar ele para incluir o tipo
-    if (!fetchError && existingChecklist) {
-      const { data: updatedData, error: updateError } = await supabase
-        .from('daily_checklists')
-        .update({ tasks, checklist_type: 'operacional' })
-        .eq('id', existingChecklist.id)
-        .select()
-        .single();
-      
-      if (!updateError) return updatedData;
-      // Se update falhou, continuar para verificar se existe com tipo
-    }
-  }
-  
-  // Verificar se existe checklist com o tipo específico
-  const { data: existingWithType, error: fetchError } = await supabase
-    .from('daily_checklists')
-    .select('id')
-    .eq('store_id', storeId)
-    .eq('date', date)
-    .eq('checklist_type', checklistType)
-    .maybeSingle();
-  
-  if (!fetchError && existingWithType) {
-    // Fazer update do checklist existente
-    const { data: updatedData, error: updateError } = await supabase
-      .from('daily_checklists')
-      .update({ tasks })
-      .eq('id', existingWithType.id)
-      .select()
-      .single();
-    
-    if (updateError) throw updateError;
-    return updatedData;
-  }
-  
-  // Se não existe, inserir novo checklist
-  const { data: insertedData, error: insertError } = await supabase
-    .from('daily_checklists')
-    .insert([checklistData])
-    .select()
-    .single();
-  
-  // Se insert falhar com 409 (conflict) ou 23505 (unique_violation), tentar update
-  if (insertError) {
-    // Verificar se é erro de constraint única
-    if (insertError.code === '23505' || insertError.code === 'PGRST301' || insertError.message?.includes('duplicate') || insertError.message?.includes('unique')) {
-      // Tentar update novamente (pode ter sido criado entre a verificação e o insert)
-      const { data: updatedData, error: updateError } = await supabase
+    if (!fetchError && existingWithType) {
+      // Existe um checklist com este tipo, fazer UPDATE
+      // IMPORTANTE: Não usar .select() no UPDATE para evitar erro 406
+      const { error: updateError } = await supabase
         .from('daily_checklists')
         .update({ tasks })
-        .eq('store_id', storeId)
-        .eq('date', date)
-        .eq('checklist_type', checklistType)
-        .select()
+        .eq('id', existingWithType.id);
+      
+      if (updateError) {
+        // Se UPDATE falhar, buscar novamente para retornar o que existe
+        console.warn('Erro ao atualizar checklist, buscando registro existente:', updateError);
+        const { data: currentData, error: refetchError } = await supabase
+          .from('daily_checklists')
+          .select('*')
+          .eq('id', existingWithType.id)
+          .single();
+        
+        if (refetchError) {
+          // Se não conseguir buscar, lançar o erro do update
+          throw updateError;
+        }
+        
+        return currentData;
+      }
+      
+      // Buscar dados atualizados após o update
+      const { data: updatedData, error: refetchError } = await supabase
+        .from('daily_checklists')
+        .select('*')
+        .eq('id', existingWithType.id)
         .single();
       
-      if (updateError) throw updateError;
+      if (refetchError) {
+        // Se não conseguir buscar, retornar os dados esperados
+        return {
+          ...existingWithType,
+          store_id: storeId,
+          date,
+          tasks,
+          checklist_type: checklistType
+        };
+      }
+      
       return updatedData;
     }
-    throw insertError;
+    
+    // Se não existe, fazer INSERT
+    // Se falhar com 409/23505 (já existe), fazer UPDATE como fallback
+    const { data: insertedData, error: insertError } = await supabase
+      .from('daily_checklists')
+      .insert([checklistData])
+      .select('*')
+      .single();
+    
+    if (!insertError && insertedData) {
+      return insertedData;
+    }
+    
+    // Se insert falhou com conflito, fazer UPDATE
+    if (insertError) {
+      const isConflict = insertError.code === '23505' || 
+                        insertError.code === 'PGRST301' || 
+                        insertError.code === '409' ||
+                        insertError.message?.includes('duplicate') || 
+                        insertError.message?.includes('unique') ||
+                        insertError.message?.includes('conflict');
+      
+      if (isConflict) {
+        // Tentar UPDATE novamente (pode ter sido criado entre a busca e o insert)
+        const { error: updateError } = await supabase
+          .from('daily_checklists')
+          .update({ tasks })
+          .eq('store_id', storeId)
+          .eq('date', date)
+          .eq('checklist_type', checklistType);
+        
+        if (updateError) {
+          // Se UPDATE falhar, buscar o que existe
+          const { data: existingData, error: fetchExistingError } = await supabase
+            .from('daily_checklists')
+            .select('*')
+            .eq('store_id', storeId)
+            .eq('date', date)
+            .eq('checklist_type', checklistType)
+            .maybeSingle();
+          
+          if (fetchExistingError) {
+            // Se não conseguir buscar, lançar o erro do insert
+            throw insertError;
+          }
+          
+          return existingData;
+        }
+        
+        // Buscar dados atualizados
+        const { data: updatedData, error: fetchUpdatedError } = await supabase
+          .from('daily_checklists')
+          .select('*')
+          .eq('store_id', storeId)
+          .eq('date', date)
+          .eq('checklist_type', checklistType)
+          .single();
+        
+        if (fetchUpdatedError) {
+          // Se não conseguir buscar, lançar o erro do insert
+          throw insertError;
+        }
+        
+        return updatedData;
+      }
+      
+      // Se não é erro de conflito, lançar o erro
+      throw insertError;
+    }
+    
+    return insertedData;
+    
+  } catch (error) {
+    console.error('Erro ao fazer upsert do checklist:', error);
+    throw error;
   }
-  
-  return insertedData;
 };
 
 // Buscar histórico de checklists por loja e intervalo de datas e tipo
@@ -1491,15 +1753,41 @@ export const upsertAppSettings = async (key, value) => {
 // ============ CURRENT USER ============
 export const fetchCurrentUserProfile = async () => {
   try {
-  const { data: { user } } = await supabase.auth.getUser();
+    // Tentar obter o usuário atual
+    // Se falhar com 403, pode ser que a sessão esteja expirada
+    let authUser = null;
+    try {
+      const { data, error: getUserError } = await supabase.auth.getUser();
+      if (getUserError) {
+        // Se for erro 403 ou 401, a sessão pode estar expirada
+        if (getUserError.status === 403 || getUserError.status === 401) {
+          console.warn('⚠️ Sessão expirada ou inválida (403/401). Tentando obter da sessão local...');
+          // Tentar obter da sessão local
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            authUser = session.user;
+          } else {
+            throw getUserError;
+          }
+        } else {
+          throw getUserError;
+        }
+      } else {
+        authUser = data?.user;
+      }
+    } catch (authError) {
+      console.error('❌ Erro ao obter usuário:', authError);
+      // Se não conseguir obter usuário, retornar null
+      return null;
+    }
   
-  if (!user) return null;
+  if (!authUser) return null;
   
     // Buscar perfil do usuário (sem relacionamento automático com stores)
   const { data, error } = await supabase
     .from('app_users')
       .select('*')
-    .eq('id', user.id)
+    .eq('id', authUser.id)
       .maybeSingle();
     
     if (error) {
@@ -1549,4 +1837,3 @@ export const fetchCurrentUserProfile = async () => {
     return null;
   }
 };
-
