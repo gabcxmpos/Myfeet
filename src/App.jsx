@@ -23,6 +23,8 @@ import FeedbackManagement from '@/pages/FeedbackManagement';
 import Chave from '@/pages/Chave';
 import DailyChecklist from '@/pages/DailyChecklist';
 import MenuVisibilitySettings from '@/pages/MenuVisibilitySettings';
+import TrainingManagement from '@/pages/TrainingManagement';
+import Training from '@/pages/Training';
 
 function App() {
   return (
@@ -52,6 +54,8 @@ function App() {
                 <Route path="collaborators" element={<ProtectedRoute allowedRoles={['loja']}><Collaborators /></ProtectedRoute>} />
                 <Route path="feedback" element={<ProtectedRoute allowedRoles={['loja']}><Feedback /></ProtectedRoute>} />
                 <Route path="feedback-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><FeedbackManagement /></ProtectedRoute>} />
+                <Route path="training-management" element={<ProtectedRoute allowedRoles={['admin']}><TrainingManagement /></ProtectedRoute>} />
+                <Route path="training" element={<ProtectedRoute allowedRoles={['loja']}><Training /></ProtectedRoute>} />
                 <Route path="chave" element={<Chave />} />
                 <Route path="checklist" element={<DailyChecklist />} />
               </Route>
