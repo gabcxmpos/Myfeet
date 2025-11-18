@@ -398,6 +398,7 @@ export const DataProvider = ({ children }) => {
   // Evaluations
   const addEvaluation = (evalData) => handleApiCall(() => api.createEvaluation(evalData), 'Avaliação enviada.');
   const updateEvaluationStatus = (id, status) => handleApiCall(() => api.updateEvaluation(id, { status }), 'Status da avaliação atualizado.');
+  const approveEvaluation = (id) => handleApiCall(() => api.updateEvaluation(id, { status: 'approved' }), 'Avaliação aprovada! A avaliação agora conta para a pontuação.');
   const deleteEvaluation = async (id) => {
     if (!id) {
       toast({ variant: 'destructive', title: 'Erro', description: 'ID da avaliação é obrigatório' });
@@ -639,6 +640,7 @@ export const DataProvider = ({ children }) => {
     evaluations,
     addEvaluation,
     updateEvaluationStatus,
+    approveEvaluation,
     deleteEvaluation,
     forms,
     saveForm,
