@@ -1,0 +1,360 @@
+import React, { useState, useMemo } from 'react';
+import { Helmet } from 'react-helmet';
+import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { useToast } from '@/components/ui/use-toast';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Calendar, MapPin, Users, GraduationCap, Building2, UserCheck, Clock, Link as LinkIcon } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { format, differenceInDays, isToday, isTomorrow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+
+const Training = () => {
+  const { trainings, trainingRegistrations, collaborators, stores, addTrainingRegistration, fetchData } = useData();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [selectedTraining, setSelectedTraining] = useState(null);
+  const [selectedCollaborator, setSelectedCollaborator] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // Função para calcular dias até o treinamento
+  const getDaysUntilTraining = (trainingDate) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const training = new Date(trainingDate);
+    training.setHours(0, 0, 0, 0);
+    
+    const days = differenceInDays(training, today);
+    
+    if (days < 0) return null; // Treinamento já passou
+    if (isToday(training)) return 'Hoje';
+    if (isTomorrow(training)) return 'Amanhã';
+    if (days === 1) return '1 dia';
+    return `${days} dias`;
+  };
+
+  // Buscar a loja do usuário
+  const userStore = useMemo(() => {
+    if (!user?.storeId) return null;
+    return stores.find(s => s.id === user.storeId);
+  }, [stores, user?.storeId]);
+
+  // Filtrar treinamentos disponíveis para a loja (lojas específicas ou sem lojas específicas)
+  const availableTrainings = useMemo(() => {
+    if (!user?.storeId || !userStore) {
+      console.log('❌ [Training] Sem storeId ou userStore:', { storeId: user?.storeId, userStore });
+      return [];
+    }
+    
+    console.log('🔍 [Training] Filtrando treinamentos para loja:', user.storeId);
+    console.log('🔍 [Training] Total de treinamentos recebidos:', trainings.length);
+    
+    const filtered = trainings.filter(t => {
+      // Verificar se a loja está nas lojas do treinamento
+      let storeMatch = true;
+      
+      // Se o treinamento não tem lojas específicas, está disponível para todos
+      if (!t.store_ids || t.store_ids === null || t.store_ids === '') {
+        console.log('✅ [Training] Treinamento sem lojas específicas:', t.title);
+        storeMatch = true;
+      } else {
+        try {
+          const storeIds = typeof t.store_ids === 'string' 
+            ? JSON.parse(t.store_ids) 
+            : t.store_ids;
+          if (Array.isArray(storeIds) && storeIds.length > 0) {
+            storeMatch = storeIds.includes(user.storeId);
+            console.log(`🔍 [Training] "${t.title}": lojas=${JSON.stringify(storeIds)}, match=${storeMatch}`);
+          } else {
+            storeMatch = false;
+            console.log('❌ [Training] Array vazio ou inválido:', t.title);
+          }
+        } catch (error) {
+          storeMatch = false;
+          console.error('❌ [Training] Erro ao parsear:', error, t);
+        }
+      }
+      
+      // Filtrar apenas treinamentos futuros ou do dia atual
+      const trainingDate = new Date(t.training_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      trainingDate.setHours(0, 0, 0, 0);
+      const isFuture = trainingDate >= today;
+      
+      const result = storeMatch && isFuture;
+      if (result) {
+        console.log('✅ [Training] Treinamento disponível:', t.title);
+      }
+      
+      return result;
+    }).sort((a, b) => {
+      const dateA = new Date(a.training_date);
+      const dateB = new Date(b.training_date);
+      return dateA - dateB;
+    });
+    
+    console.log('✅ [Training] Treinamentos disponíveis:', filtered.length);
+    return filtered;
+  }, [trainings, user?.storeId, userStore]);
+
+  // Colaboradores da loja
+  const storeCollaborators = useMemo(() => {
+    return collaborators.filter(c => 
+      c.storeId === user?.storeId || c.store_id === user?.storeId
+    );
+  }, [collaborators, user?.storeId]);
+
+  // Verificar se colaborador já está inscrito em um treinamento
+  const isCollaboratorRegistered = (trainingId, collaboratorId) => {
+    return trainingRegistrations.some(reg => 
+      (reg.training_id || reg.trainingId) === trainingId &&
+      (reg.collaborator_id || reg.collaboratorId) === collaboratorId
+    );
+  };
+
+  const handleOpenDialog = (training) => {
+    setSelectedTraining(training);
+    setSelectedCollaborator('');
+    setIsDialogOpen(true);
+  };
+
+  const handleRegister = async () => {
+    if (!selectedTraining || !selectedCollaborator) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Selecione um colaborador para inscrever.',
+      });
+      return;
+    }
+
+    if (!user?.storeId) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Usuário não possui loja associada.',
+      });
+      return;
+    }
+
+    // Verificar se já está inscrito
+    if (isCollaboratorRegistered(selectedTraining.id, selectedCollaborator)) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Este colaborador já está inscrito neste treinamento.',
+      });
+      return;
+    }
+
+    try {
+      await addTrainingRegistration({
+        trainingId: selectedTraining.id,
+        collaboratorId: selectedCollaborator,
+        storeId: user.storeId,
+        status: 'pending',
+      });
+      
+      setIsDialogOpen(false);
+      setSelectedTraining(null);
+      setSelectedCollaborator('');
+      toast({
+        title: 'Sucesso!',
+        description: 'Colaborador inscrito no treinamento com sucesso.',
+      });
+    } catch (error) {
+      console.error('Erro ao inscrever colaborador:', error);
+    }
+  };
+
+  const formatOptions = {
+    presencial: 'Presencial',
+    online: 'Online',
+    hibrido: 'Híbrido',
+  };
+
+  return (
+    <>
+      <Helmet>
+        <title>Treinamentos - MYFEET</title>
+      </Helmet>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Treinamentos Disponíveis</h1>
+          <p className="text-muted-foreground mt-1">Inscreva colaboradores da sua loja nos treinamentos disponíveis.</p>
+        </div>
+
+        {availableTrainings.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {availableTrainings.map(training => {
+              const registrations = trainingRegistrations.filter(reg => 
+                (reg.training_id || reg.trainingId) === training.id &&
+                (reg.store_id || reg.storeId) === user?.storeId
+              );
+              
+              return (
+                <motion.div
+                  key={training.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-card p-5 rounded-xl border border-border shadow-sm"
+                >
+                  <div className="mb-4">
+                    <h3 className="font-bold text-lg text-foreground mb-2">{training.title}</h3>
+                    {training.description && (
+                      <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{training.description}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2 text-sm mb-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Calendar className="w-4 h-4" />
+                        <span>
+                          {format(new Date(training.training_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                          {training.time && ` às ${training.time}`}
+                        </span>
+                      </div>
+                      {getDaysUntilTraining(training.training_date) && (
+                        <div className={cn(
+                          "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold",
+                          getDaysUntilTraining(training.training_date) === 'Hoje' 
+                            ? "bg-red-500/20 text-red-500"
+                            : getDaysUntilTraining(training.training_date) === 'Amanhã'
+                            ? "bg-orange-500/20 text-orange-500"
+                            : "bg-blue-500/20 text-blue-500"
+                        )}>
+                          <Clock className="w-3 h-3" />
+                          <span>{getDaysUntilTraining(training.training_date)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <GraduationCap className="w-4 h-4" />
+                      <span>{formatOptions[training.format] || training.format}</span>
+                    </div>
+                    {training.location && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <MapPin className="w-4 h-4" />
+                        <span className="truncate">{training.location}</span>
+                      </div>
+                    )}
+                    {training.link && (
+                      <div className="flex items-center gap-2">
+                        <LinkIcon className="w-4 h-4 text-primary" />
+                        <a 
+                          href={training.link} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline truncate font-medium"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Acessar Link da Reunião
+                        </a>
+                      </div>
+                    )}
+                    {training.brand && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Building2 className="w-4 h-4" />
+                        <span>Marca: {training.brand}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Users className="w-4 h-4" />
+                      <span>
+                        {registrations.length} da sua loja inscrito(s)
+                        {training.max_participants && ` / ${training.max_participants} máximo`}
+                      </span>
+                    </div>
+                  </div>
+                  <Dialog open={isDialogOpen && selectedTraining?.id === training.id} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button
+                        onClick={() => handleOpenDialog(training)}
+                        className="w-full gap-2"
+                        disabled={storeCollaborators.length === 0}
+                      >
+                        <UserCheck className="w-4 h-4" />
+                        Inscrever Colaborador
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Inscrever Colaborador</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 mt-4">
+                        <div>
+                          <p className="text-sm font-medium mb-2">Treinamento:</p>
+                          <p className="text-sm text-muted-foreground">{selectedTraining?.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {selectedTraining && format(new Date(selectedTraining.training_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="collaborator">Selecione o Colaborador *</Label>
+                          <Select
+                            value={selectedCollaborator}
+                            onValueChange={setSelectedCollaborator}
+                          >
+                            <SelectTrigger className="bg-secondary">
+                              <SelectValue placeholder="Selecione um colaborador" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {storeCollaborators.map(collab => {
+                                const isRegistered = isCollaboratorRegistered(selectedTraining?.id, collab.id);
+                                return (
+                                  <SelectItem
+                                    key={collab.id}
+                                    value={collab.id}
+                                    disabled={isRegistered}
+                                  >
+                                    {collab.name} - {collab.role}
+                                    {isRegistered && ' (já inscrito)'}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+                            Cancelar
+                          </Button>
+                          <Button onClick={handleRegister} disabled={!selectedCollaborator}>
+                            Inscrever
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </motion.div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-16 text-muted-foreground bg-card rounded-lg border border-dashed">
+            <p className="text-lg">Nenhum treinamento disponível no momento.</p>
+            <p className="text-sm">Novos treinamentos aparecerão aqui quando forem cadastrados.</p>
+          </div>
+        )}
+
+        {storeCollaborators.length === 0 && (
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+              ⚠️ Você precisa cadastrar colaboradores antes de inscrevê-los em treinamentos.
+              <br />
+              Acesse a página de <strong>Colaboradores</strong> para adicionar.
+            </p>
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
+
+export default Training;
+
