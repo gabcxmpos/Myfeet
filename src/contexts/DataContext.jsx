@@ -69,7 +69,7 @@ const defaultGerencialTasks = [
 ];
 
 export const DataProvider = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
 
@@ -80,6 +80,8 @@ export const DataProvider = ({ children }) => {
   const [forms, setForms] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
+  const [trainings, setTrainings] = useState([]);
+  const [trainingRegistrations, setTrainingRegistrations] = useState([]);
   
   // App Settings
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
@@ -90,8 +92,16 @@ export const DataProvider = ({ children }) => {
   const [gerencialTasks, setGerencialTasks] = useState(defaultGerencialTasks); // Tarefas do checklist gerencial
 
   const fetchData = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     try {
+      // Para lojas, passar storeId para filtrar treinamentos
+      const storeIdForTrainings = user?.role === 'loja' ? user?.storeId : null;
+      
       const [
         fetchedStores,
         fetchedUsers,
@@ -99,6 +109,8 @@ export const DataProvider = ({ children }) => {
         fetchedEvaluations,
         fetchedCollaborators,
         fetchedFeedbacks,
+        fetchedTrainings,
+        fetchedTrainingRegistrations,
         fetchedPatents,
         fetchedChave,
         fetchedMenu,
@@ -111,6 +123,8 @@ export const DataProvider = ({ children }) => {
         api.fetchEvaluations(),
         api.fetchCollaborators(),
         api.fetchFeedbacks(),
+        api.fetchTrainings(storeIdForTrainings),
+        api.fetchTrainingRegistrations(),
         api.fetchAppSettings('patent_settings'),
         api.fetchAppSettings('chave_content'),
         api.fetchAppSettings('menu_visibility'),
@@ -124,6 +138,8 @@ export const DataProvider = ({ children }) => {
       setEvaluations(fetchedEvaluations);
       setCollaborators(fetchedCollaborators);
       setFeedbacks(fetchedFeedbacks);
+      setTrainings(fetchedTrainings);
+      setTrainingRegistrations(fetchedTrainingRegistrations);
       
       if (fetchedPatents) setPatentSettings(fetchedPatents);
       // Garantir que chaveContent sempre seja uma string
@@ -171,7 +187,7 @@ export const DataProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, isAuthenticated, user?.role, user?.storeId]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -185,6 +201,8 @@ export const DataProvider = ({ children }) => {
       setEvaluations([]);
       setCollaborators([]);
       setFeedbacks([]);
+      setTrainings([]);
+      setTrainingRegistrations([]);
     }
   }, [isAuthenticated, fetchData]);
 
@@ -198,17 +216,21 @@ export const DataProvider = ({ children }) => {
         api.fetchEvaluations(),
         api.fetchFeedbacks(),
         api.fetchCollaborators(),
-      ]).then(([newEvaluations, newFeedbacks, newCollaborators]) => {
+        api.fetchTrainings(user?.role === 'loja' ? user?.storeId : null),
+        api.fetchTrainingRegistrations(),
+      ]).then(([newEvaluations, newFeedbacks, newCollaborators, newTrainings, newRegistrations]) => {
         setEvaluations(newEvaluations);
         setFeedbacks(newFeedbacks);
         setCollaborators(newCollaborators);
+        setTrainings(newTrainings);
+        setTrainingRegistrations(newRegistrations);
       }).catch(error => {
         console.warn('Erro ao atualizar dados em background:', error);
       });
     }, 30000); // 30 segundos
 
     return () => clearInterval(interval);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, user?.role, user?.storeId]);
 
   // Refresh quando a janela volta ao foco (usuário volta para a aba)
   useEffect(() => {
@@ -218,15 +240,19 @@ export const DataProvider = ({ children }) => {
       if (document.visibilityState === 'visible') {
         // Refresh dados quando a página volta a ser visível
         Promise.all([
-          api.fetchEvaluations(),
-          api.fetchFeedbacks(),
-          api.fetchCollaborators(),
-          api.fetchStores(),
-        ]).then(([newEvaluations, newFeedbacks, newCollaborators, newStores]) => {
+        api.fetchEvaluations(),
+        api.fetchFeedbacks(),
+        api.fetchCollaborators(),
+        api.fetchStores(),
+        api.fetchTrainings(user?.role === 'loja' ? user?.storeId : null),
+        api.fetchTrainingRegistrations(),
+        ]).then(([newEvaluations, newFeedbacks, newCollaborators, newStores, newTrainings, newRegistrations]) => {
           setEvaluations(newEvaluations);
           setFeedbacks(newFeedbacks);
           setCollaborators(newCollaborators);
           setStores(newStores);
+          setTrainings(newTrainings);
+          setTrainingRegistrations(newRegistrations);
         }).catch(error => {
           console.warn('Erro ao atualizar dados ao voltar ao foco:', error);
         });
@@ -484,8 +510,42 @@ export const DataProvider = ({ children }) => {
   const addCollaborator = (collabData) => handleApiCall(() => api.createCollaborator(collabData), 'Colaborador adicionado.');
   const deleteCollaborator = (id) => handleApiCall(() => api.deleteCollaborator(id), 'Colaborador removido.');
 
+  // Trainings
+  const addTraining = (trainingData) => handleApiCall(() => api.createTraining(trainingData), 'Treinamento criado.');
+  const updateTraining = (id, data) => handleApiCall(() => api.updateTraining(id, data), 'Treinamento atualizado.');
+  const deleteTraining = (id) => handleApiCall(() => api.deleteTraining(id), 'Treinamento removido.');
+  
+  // Training Registrations
+  const addTrainingRegistration = (registrationData) => handleApiCall(() => api.createTrainingRegistration(registrationData), 'Inscrição realizada com sucesso.');
+  const updateTrainingRegistration = (id, data) => handleApiCall(() => api.updateTrainingRegistration(id, data), 'Inscrição atualizada.');
+  const deleteTrainingRegistration = (id) => handleApiCall(() => api.deleteTrainingRegistration(id), 'Inscrição cancelada.');
+
   // Feedback
   const addFeedback = (feedbackData) => handleApiCall(() => api.createFeedback(feedbackData), 'Feedback enviado.');
+  const deleteFeedbacksBySatisfaction = async (satisfactionLevels) => {
+    if (!satisfactionLevels || !Array.isArray(satisfactionLevels) || satisfactionLevels.length === 0) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Níveis de satisfação são obrigatórios' });
+      return;
+    }
+    
+    try {
+      const result = await api.deleteFeedbacksBySatisfaction(satisfactionLevels);
+      const count = result.deleted || 0;
+      toast({ 
+        title: 'Sucesso!', 
+        description: `${count} feedback(s) excluído(s) com sucesso.` 
+      });
+      fetchData(); // Refresh dados
+      return result;
+    } catch (error) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Erro ao excluir feedbacks', 
+        description: error.message || 'Não foi possível excluir os feedbacks.' 
+      });
+      throw error;
+    }
+  };
   const deleteFeedback = async (feedbackId) => {
     if (!feedbackId) {
       toast({ variant: 'destructive', title: 'Erro', description: 'ID do feedback é obrigatório' });
@@ -652,8 +712,17 @@ export const DataProvider = ({ children }) => {
     addCollaborator,
     deleteCollaborator,
     feedbacks,
+    trainings,
+    addTraining,
+    updateTraining,
+    deleteTraining,
+    trainingRegistrations,
+    addTrainingRegistration,
+    updateTrainingRegistration,
+    deleteTrainingRegistration,
     addFeedback,
     deleteFeedback,
+    deleteFeedbacksBySatisfaction,
     chaveContent,
     updateChaveContent,
     dailyTasks,
