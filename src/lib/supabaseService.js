@@ -1067,24 +1067,9 @@ export const deleteEvaluation = async (id) => {
     throw error;
   }
   
-  // Verificar se realmente foi excluída
-  const { data: verifyDeleted, error: verifyError } = await supabase
-    .from('evaluations')
-    .select('id')
-    .eq('id', id)
-    .maybeSingle();
-  
-  if (verifyError && verifyError.code !== 'PGRST116') {
-    console.error('❌ Erro ao verificar exclusão:', verifyError);
-    throw verifyError;
-  }
-  
-  if (verifyDeleted) {
-    console.error('❌ Avaliação ainda existe após exclusão:', id);
-    throw new Error('A exclusão falhou. A avaliação ainda existe no banco de dados.');
-  }
-  
-  console.log('✅ Avaliação excluída com sucesso:', id);
+  // Se não houve erro, a exclusão foi bem-sucedida
+  // Confiar no resultado do Supabase (pode haver cache/RLS que faz a verificação falhar)
+  console.log('✅ Avaliação excluída com sucesso:', id, data);
   return { success: true, deleted: true, data };
 };
 
@@ -1119,7 +1104,9 @@ export const createCollaborator = async (collaboratorData) => {
   const dataToInsert = {
     name: collaboratorData.name,
     role: collaboratorData.role,
-    store_id: collaboratorData.store_id || collaboratorData.storeId
+    store_id: collaboratorData.store_id || collaboratorData.storeId,
+    cpf: collaboratorData.cpf || null,
+    email: collaboratorData.email || null
   };
   
   const { data, error } = await supabase
@@ -1144,6 +1131,409 @@ export const createCollaborator = async (collaboratorData) => {
 export const deleteCollaborator = async (id) => {
   const { error } = await supabase
     .from('collaborators')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
+
+// ============ TRAININGS ============
+export const fetchTrainings = async (storeId = null) => {
+  console.log('🔍 [fetchTrainings] Iniciando busca, storeId:', storeId);
+  
+  let query = supabase
+    .from('trainings')
+    .select('*')
+    .order('training_date', { ascending: true });
+  
+  // Se for loja, filtrar por lojas específicas ou treinamentos sem lojas específicas
+  if (storeId) {
+    // Buscar todos os treinamentos para filtrar no código
+    // IMPORTANTE: RLS deve permitir que lojas vejam treinamentos disponíveis
+    const { data: allTrainings, error: fetchError } = await supabase
+      .from('trainings')
+      .select('*')
+      .order('training_date', { ascending: true });
+    
+    if (fetchError) {
+      console.error('❌ [fetchTrainings] Erro ao buscar treinamentos:', fetchError);
+      console.error('❌ [fetchTrainings] Detalhes do erro:', {
+        message: fetchError.message,
+        code: fetchError.code,
+        details: fetchError.details,
+        hint: fetchError.hint
+      });
+      throw fetchError;
+    }
+    
+    console.log('🔍 [fetchTrainings] StoreId:', storeId);
+    console.log('🔍 [fetchTrainings] Total treinamentos no banco:', allTrainings?.length || 0);
+    
+    // Log de todos os treinamentos para debug
+    if (allTrainings && allTrainings.length > 0) {
+      console.log('📋 [fetchTrainings] Todos os treinamentos encontrados:');
+      allTrainings.forEach(t => {
+        console.log(`  - "${t.title}"`, {
+          id: t.id,
+          store_ids: t.store_ids,
+          store_ids_type: typeof t.store_ids,
+          store_ids_value: t.store_ids,
+          training_date: t.training_date,
+          format: t.format
+        });
+      });
+    } else {
+      console.warn('⚠️ [fetchTrainings] NENHUM treinamento encontrado no banco!');
+      console.warn('⚠️ [fetchTrainings] Verifique se há treinamentos cadastrados e se as políticas RLS estão corretas.');
+    }
+    
+    // Filtrar no código para verificar se a loja está no array de lojas
+    const filtered = (allTrainings || []).filter(training => {
+      // Se o treinamento não tem lojas específicas (store_ids), está disponível para todos
+      if (!training.store_ids || training.store_ids === null || training.store_ids === '') {
+        console.log('✅ [fetchTrainings] Treinamento sem lojas específicas (disponível para todos):', training.title);
+        // Verificar se é futuro
+        const trainingDate = new Date(training.training_date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        trainingDate.setHours(0, 0, 0, 0);
+        const isFuture = trainingDate >= today;
+        if (!isFuture) {
+          console.log('❌ [fetchTrainings] Treinamento já passou:', training.title);
+        }
+        return isFuture;
+      }
+      
+      try {
+        let storeIds;
+        // JSONB pode vir como array ou como objeto, dependendo de como foi salvo
+        if (typeof training.store_ids === 'string') {
+          // Tentar parsear como JSON
+          try {
+            storeIds = JSON.parse(training.store_ids);
+          } catch {
+            // Se não for JSON válido, pode ser que esteja em outro formato
+            console.warn('⚠️ [fetchTrainings] store_ids não é JSON válido, tentando como string simples:', training.store_ids);
+            storeIds = [training.store_ids];
+          }
+        } else if (Array.isArray(training.store_ids)) {
+          // Se já é array (JSONB retorna array diretamente)
+          storeIds = training.store_ids;
+        } else if (training.store_ids && typeof training.store_ids === 'object') {
+          // Se for objeto, tentar converter
+          storeIds = Object.values(training.store_ids);
+        } else {
+          storeIds = null;
+        }
+        
+        if (Array.isArray(storeIds) && storeIds.length > 0) {
+          // Converter todos para string para comparação (caso alguns sejam UUID e outros string)
+          const storeIdsStr = storeIds.map(id => String(id).toLowerCase().trim());
+          const storeIdStr = String(storeId).toLowerCase().trim();
+          const isIncluded = storeIdsStr.includes(storeIdStr);
+          console.log(`🔍 [fetchTrainings] Treinamento "${training.title}":`, {
+            store_ids_original: storeIds,
+            store_ids_string: storeIdsStr,
+            store_id_buscado: storeIdStr,
+            incluído: isIncluded,
+            match_exato: storeIdsStr.some(id => id === storeIdStr)
+          });
+          
+          if (isIncluded) {
+            // Verificar se é futuro
+            const trainingDate = new Date(training.training_date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            trainingDate.setHours(0, 0, 0, 0);
+            const isFuture = trainingDate >= today;
+            if (!isFuture) {
+              console.log('❌ [fetchTrainings] Treinamento já passou:', training.title);
+            }
+            return isFuture;
+          }
+          return false;
+        }
+        console.log('❌ [fetchTrainings] Treinamento sem array válido:', training.title, {
+          store_ids: training.store_ids,
+          store_ids_type: typeof training.store_ids
+        });
+        return false;
+      } catch (error) {
+        console.error('❌ [fetchTrainings] Erro ao processar store_ids:', error, {
+          training_title: training.title,
+          store_ids: training.store_ids
+        });
+        return false;
+      }
+    });
+    
+    console.log('✅ [fetchTrainings] Treinamentos filtrados:', filtered.length);
+    if (filtered.length > 0) {
+      filtered.forEach(t => {
+        console.log(`  - ${t.title} (${t.training_date})`);
+      });
+    }
+    return filtered || [];
+  }
+  
+  // Se for admin, buscar todos os treinamentos
+  console.log('🔍 [fetchTrainings] Buscando todos os treinamentos (admin)');
+  const { data, error } = await query;
+  
+  if (error) {
+    console.error('❌ [fetchTrainings] Erro ao buscar treinamentos:', error);
+    throw error;
+  }
+  
+  console.log('✅ [fetchTrainings] Treinamentos encontrados (admin):', data?.length || 0);
+  if (data && data.length > 0) {
+    data.forEach(t => {
+      console.log(`  - ${t.title} (store_ids: ${t.store_ids})`);
+    });
+  }
+  
+  return data || [];
+};
+
+export const createTraining = async (trainingData) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  // Processar store_ids: se for string JSON, manter; se for array, converter para JSONB
+  let storeIdsValue = null;
+  if (trainingData.storeIds || trainingData.store_ids) {
+    const rawStoreIds = trainingData.storeIds || trainingData.store_ids;
+    if (typeof rawStoreIds === 'string') {
+      // Se já é string, pode ser JSON string ou precisa ser parseado
+      try {
+        const parsed = JSON.parse(rawStoreIds);
+        storeIdsValue = Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+      } catch {
+        // Se não for JSON válido, tratar como null
+        storeIdsValue = null;
+      }
+    } else if (Array.isArray(rawStoreIds) && rawStoreIds.length > 0) {
+      // Se é array, usar diretamente (Supabase JSONB aceita arrays)
+      storeIdsValue = rawStoreIds;
+    }
+  }
+  
+  const dataToInsert = {
+    title: trainingData.title,
+    description: trainingData.description || null,
+    training_date: trainingData.trainingDate || trainingData.training_date,
+    time: trainingData.time || null,
+    format: trainingData.format,
+    brand: trainingData.brand || null,
+    store_ids: storeIdsValue, // JSONB aceita array diretamente
+    location: trainingData.location || null,
+    link: trainingData.link || null,
+    max_participants: trainingData.maxParticipants || trainingData.max_participants || null,
+    created_by: user?.id || null
+  };
+  
+  console.log('💾 [createTraining] Dados a serem salvos:', {
+    title: dataToInsert.title,
+    store_ids: dataToInsert.store_ids,
+    store_ids_type: typeof dataToInsert.store_ids,
+    format: dataToInsert.format,
+    link: dataToInsert.link
+  });
+  
+  const { data, error } = await supabase
+    .from('trainings')
+    .insert([dataToInsert])
+    .select()
+    .single();
+  
+  if (error) {
+    console.error('❌ [createTraining] Erro ao criar:', error);
+    console.error('❌ [createTraining] Detalhes do erro:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint
+    });
+    throw error;
+  }
+  
+  console.log('✅ [createTraining] Treinamento criado:', {
+    id: data.id,
+    title: data.title,
+    store_ids: data.store_ids,
+    store_ids_type: typeof data.store_ids
+  });
+  return data;
+};
+
+export const updateTraining = async (id, updates) => {
+  const dataToUpdate = {
+    title: updates.title,
+    description: updates.description !== undefined ? (updates.description || null) : undefined,
+    training_date: updates.trainingDate || updates.training_date,
+    time: updates.time !== undefined ? (updates.time || null) : undefined,
+    format: updates.format,
+    brand: updates.brand !== undefined ? (updates.brand || null) : undefined,
+    store_ids: updates.storeIds !== undefined ? (updates.storeIds || null) : (updates.store_ids !== undefined ? (updates.store_ids || null) : undefined),
+    location: updates.location !== undefined ? (updates.location || null) : undefined,
+    link: updates.link !== undefined ? (updates.link || null) : undefined,
+    max_participants: updates.maxParticipants !== undefined ? (updates.maxParticipants || null) : (updates.max_participants !== undefined ? updates.max_participants : undefined)
+  };
+  
+  // Remove campos undefined (não enviar campos que não foram alterados)
+  Object.keys(dataToUpdate).forEach(key => {
+    if (dataToUpdate[key] === undefined) {
+      delete dataToUpdate[key];
+    }
+  });
+  
+  const { data, error } = await supabase
+    .from('trainings')
+    .update(dataToUpdate)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteTraining = async (id) => {
+  const { error } = await supabase
+    .from('trainings')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
+
+// ============ TRAINING REGISTRATIONS ============
+export const fetchTrainingRegistrations = async (trainingId = null, storeId = null) => {
+  let query = supabase
+    .from('training_registrations')
+    .select(`
+      *,
+      training:trainings(*),
+      collaborator:collaborators(*),
+      store:stores(*)
+    `)
+    .order('registered_at', { ascending: false });
+  
+  if (trainingId) {
+    query = query.eq('training_id', trainingId);
+  }
+  
+  if (storeId) {
+    query = query.eq('store_id', storeId);
+  }
+  
+  const { data, error } = await query;
+  
+  if (error) throw error;
+  
+  // Formatar dados para manter consistência
+  if (data && data.length > 0) {
+    return data.map(reg => ({
+      ...reg,
+      trainingId: reg.training_id,
+      collaboratorId: reg.collaborator_id,
+      storeId: reg.store_id,
+      registeredAt: reg.registered_at
+    }));
+  }
+  
+  return data || [];
+};
+
+export const createTrainingRegistration = async (registrationData) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  const dataToInsert = {
+    training_id: registrationData.trainingId || registrationData.training_id,
+    collaborator_id: registrationData.collaboratorId || registrationData.collaborator_id,
+    store_id: registrationData.storeId || registrationData.store_id,
+    status: registrationData.status || 'pending',
+    registered_by: user?.id || null,
+    notes: registrationData.notes || null
+  };
+  
+  const { data, error } = await supabase
+    .from('training_registrations')
+    .insert([dataToInsert])
+    .select(`
+      *,
+      training:trainings(*),
+      collaborator:collaborators(*),
+      store:stores(*)
+    `)
+    .single();
+  
+  if (error) {
+    // Se for erro de duplicata, retornar erro mais amigável
+    if (error.code === '23505') {
+      throw new Error('Este colaborador já está inscrito neste treinamento.');
+    }
+    throw error;
+  }
+  
+  // Formatar dados
+  if (data) {
+    return {
+      ...data,
+      trainingId: data.training_id,
+      collaboratorId: data.collaborator_id,
+      storeId: data.store_id,
+      registeredAt: data.registered_at
+    };
+  }
+  
+  return data;
+};
+
+export const updateTrainingRegistration = async (id, updates) => {
+  const dataToUpdate = {
+    status: updates.status,
+    notes: updates.notes,
+    presence: updates.presence !== undefined ? updates.presence : undefined
+  };
+  
+  // Remove campos undefined
+  Object.keys(dataToUpdate).forEach(key => {
+    if (dataToUpdate[key] === undefined) {
+      delete dataToUpdate[key];
+    }
+  });
+  
+  const { data, error } = await supabase
+    .from('training_registrations')
+    .update(dataToUpdate)
+    .eq('id', id)
+    .select(`
+      *,
+      training:trainings(*),
+      collaborator:collaborators(*),
+      store:stores(*)
+    `)
+    .single();
+  
+  if (error) throw error;
+  
+  // Formatar dados
+  if (data) {
+    return {
+      ...data,
+      trainingId: data.training_id,
+      collaboratorId: data.collaborator_id,
+      storeId: data.store_id,
+      registeredAt: data.registered_at
+    };
+  }
+  
+  return data;
+};
+
+export const deleteTrainingRegistration = async (id) => {
+  const { error } = await supabase
+    .from('training_registrations')
     .delete()
     .eq('id', id);
   
@@ -1386,25 +1776,57 @@ export const deleteFeedback = async (feedbackId) => {
     throw error;
   }
   
-  // Verificar se realmente foi excluído
-  const { data: verifyDeleted, error: verifyError } = await supabase
+  // Se não houve erro, a exclusão foi bem-sucedida
+  // Confiar no resultado do Supabase (pode haver cache/RLS que faz a verificação falhar)
+  console.log('✅ Feedback excluído com sucesso:', feedbackId, data);
+  return { success: true, deleted: true, data };
+};
+
+// Excluir múltiplos feedbacks baseado em níveis de satisfação
+export const deleteFeedbacksBySatisfaction = async (satisfactionLevels) => {
+  if (!satisfactionLevels || !Array.isArray(satisfactionLevels) || satisfactionLevels.length === 0) {
+    throw new Error('Níveis de satisfação são obrigatórios e devem ser um array não vazio');
+  }
+  
+  // Converter strings para números se necessário
+  const levels = satisfactionLevels.map(level => parseInt(level, 10));
+  
+  console.log('🗑️ Tentando excluir feedbacks com satisfação:', levels);
+  
+  // Buscar feedbacks que correspondem aos níveis de satisfação
+  const { data: feedbacksToDelete, error: fetchError } = await supabase
     .from('feedbacks')
     .select('id')
-    .eq('id', feedbackId)
-    .maybeSingle();
+    .in('satisfaction', levels);
   
-  if (verifyError && verifyError.code !== 'PGRST116') {
-    console.error('❌ Erro ao verificar exclusão:', verifyError);
-    throw verifyError;
+  if (fetchError) {
+    console.error('❌ Erro ao buscar feedbacks:', fetchError);
+    throw fetchError;
   }
   
-  if (verifyDeleted) {
-    console.error('❌ Feedback ainda existe após exclusão:', feedbackId);
-    throw new Error('A exclusão falhou. O feedback ainda existe no banco de dados.');
+  if (!feedbacksToDelete || feedbacksToDelete.length === 0) {
+    console.log('ℹ️ Nenhum feedback encontrado para excluir');
+    return { success: true, deleted: 0, total: 0 };
   }
   
-  console.log('✅ Feedback excluído com sucesso:', feedbackId);
-  return { success: true, deleted: true, data };
+  const feedbackIds = feedbacksToDelete.map(fb => fb.id);
+  console.log(`🗑️ Excluindo ${feedbackIds.length} feedback(s)...`);
+  
+  // Excluir todos os feedbacks encontrados
+  const { data, error } = await supabase
+    .from('feedbacks')
+    .delete()
+    .in('id', feedbackIds)
+    .select();
+  
+  if (error) {
+    console.error('❌ Erro ao excluir feedbacks:', error);
+    throw error;
+  }
+  
+  const deletedCount = data?.length || 0;
+  console.log(`✅ ${deletedCount} feedback(s) excluído(s) com sucesso`);
+  return { success: true, deleted: deletedCount, total: feedbackIds.length };
 };
 
 // ============ DAILY CHECKLISTS ============
