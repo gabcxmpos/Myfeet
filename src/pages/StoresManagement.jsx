@@ -379,16 +379,20 @@ const StoresManagement = () => {
     }
   };
   
-  const handleDeleteEvaluation = (evalId) => {
+  const handleDeleteEvaluation = async (evalId) => {
      if (window.confirm(`Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita.`)) {
-      deleteEvaluation(evalId);
-      toast({ title: "Avaliação excluída!", description: `A avaliação de teste foi removida.`, variant: 'destructive' });
+      await deleteEvaluation(evalId);
+      // Toast já é exibido pela função deleteEvaluation
     }
   }
 
-  const handleApproveEvaluation = (evalId) => {
-    approveEvaluation(evalId);
-    toast({ title: "Avaliação Aprovada!", description: `A avaliação agora conta para a pontuação.` });
+  const handleApproveEvaluation = async (evalId) => {
+    try {
+      await approveEvaluation(evalId);
+      // Toast já é exibido pela função approveEvaluation
+    } catch (error) {
+      // Error já é tratado pela função approveEvaluation
+    }
   }
 
   const getBrandClass = (bandeira) => {
