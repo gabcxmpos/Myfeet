@@ -16,8 +16,20 @@ const Collaborators = () => {
 
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
+  const [cpf, setCpf] = useState('');
+  const [email, setEmail] = useState('');
 
   const storeCollaborators = collaborators.filter(c => c.storeId === user?.storeId || c.store_id === user?.storeId);
+
+  const formatCPF = (value) => {
+    // Remove tudo que não é dígito
+    const numbers = value.replace(/\D/g, '');
+    // Aplica a máscara
+    if (numbers.length <= 11) {
+      return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    return value;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -30,12 +42,26 @@ const Collaborators = () => {
       toast({ title: 'Erro', description: 'Usuário não possui loja associada.', variant: 'destructive' });
       return;
     }
+
+    // Validar email se fornecido
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast({ title: 'Erro', description: 'Email inválido.', variant: 'destructive' });
+      return;
+    }
     
     try {
-      await addCollaborator({ name, role, storeId: user.storeId });
+      await addCollaborator({ 
+        name, 
+        role, 
+        storeId: user.storeId,
+        cpf: cpf || null,
+        email: email || null
+      });
       toast({ title: 'Sucesso!', description: 'Colaborador adicionado.' });
       setName('');
       setRole('');
+      setCpf('');
+      setEmail('');
     } catch (error) {
       // Erro já é tratado no DataContext
       console.error('Erro ao adicionar colaborador:', error);
@@ -74,6 +100,28 @@ const Collaborators = () => {
               <Label htmlFor="role">Cargo</Label>
               <Input id="role" value={role} onChange={e => setRole(e.target.value)} required className="bg-secondary" />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="cpf">CPF (Opcional)</Label>
+              <Input 
+                id="cpf" 
+                value={cpf} 
+                onChange={e => setCpf(formatCPF(e.target.value))} 
+                placeholder="000.000.000-00"
+                maxLength={14}
+                className="bg-secondary" 
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email (Opcional)</Label>
+              <Input 
+                id="email" 
+                type="email"
+                value={email} 
+                onChange={e => setEmail(e.target.value)} 
+                placeholder="colaborador@exemplo.com"
+                className="bg-secondary" 
+              />
+            </div>
             <Button type="submit" className="w-full bg-gradient-to-r from-primary to-blue-500 text-primary-foreground">Adicionar Colaborador</Button>
           </motion.form>
 
@@ -92,6 +140,8 @@ const Collaborators = () => {
                     <div>
                       <p className="font-medium text-foreground">{c.name}</p>
                       <p className="text-xs text-muted-foreground">{c.role}</p>
+                      {c.cpf && <p className="text-xs text-muted-foreground">CPF: {c.cpf}</p>}
+                      {c.email && <p className="text-xs text-muted-foreground">Email: {c.email}</p>}
                     </div>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
