@@ -1,4 +1,4 @@
-```javascript
+
 import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { useData } from '@/contexts/DataContext';
