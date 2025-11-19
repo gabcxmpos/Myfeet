@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { useData } from '@/contexts/DataContext';
@@ -8,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Calendar, MapPin, Users, GraduationCap, Building2, UserCheck, Clock, Link as LinkIcon } from 'lucide-react';
+import { Calendar, MapPin, Users, GraduationCap, Building2, UserCheck, Clock, Link as LinkIcon, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format, differenceInDays, isToday, isTomorrow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -143,6 +142,16 @@ const Training = () => {
       return;
     }
 
+    // Verificar se as inscrições estão bloqueadas
+    if (selectedTraining.registrations_blocked || selectedTraining.registrationsBlocked) {
+      toast({
+        variant: 'destructive',
+        title: 'Inscrições Bloqueadas',
+        description: 'As inscrições para este treinamento estão bloqueadas.',
+      });
+      return;
+    }
+
     // Verificar se já está inscrito
     if (isCollaboratorRegistered(selectedTraining.id, selectedCollaborator)) {
       toast({
@@ -271,16 +280,22 @@ const Training = () => {
                         {training.max_participants && ` / ${training.max_participants} máximo`}
                       </span>
                     </div>
+                    {(training.registrations_blocked || training.registrationsBlocked) && (
+                      <div className="flex items-center gap-2 text-orange-500 font-medium">
+                        <Lock className="w-4 h-4" />
+                        <span>Inscrições bloqueadas</span>
+                      </div>
+                    )}
                   </div>
                   <Dialog open={isDialogOpen && selectedTraining?.id === training.id} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                       <Button
                         onClick={() => handleOpenDialog(training)}
                         className="w-full gap-2"
-                        disabled={storeCollaborators.length === 0}
+                        disabled={storeCollaborators.length === 0 || training.registrations_blocked || training.registrationsBlocked}
                       >
                         <UserCheck className="w-4 h-4" />
-                        Inscrever Colaborador
+                        {(training.registrations_blocked || training.registrationsBlocked) ? 'Inscrições Bloqueadas' : 'Inscrever Colaborador'}
                       </Button>
                     </DialogTrigger>
                     <DialogContent>
@@ -358,3 +373,4 @@ const Training = () => {
 };
 
 export default Training;
+
