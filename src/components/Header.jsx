@@ -29,6 +29,12 @@ const Header = ({ onToggleSidebar, isSidebarOpen }) => {
     }
   };
 
+  const handleToggleSidebar = () => {
+    if (onToggleSidebar) {
+      onToggleSidebar();
+    }
+  };
+
   return (
     <header className="bg-card border-b border-border px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-3">
@@ -36,19 +42,9 @@ const Header = ({ onToggleSidebar, isSidebarOpen }) => {
         <Button
           variant="ghost"
           size="icon"
-          onClick={onToggleSidebar}
+          onClick={handleToggleSidebar}
           aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
-          className="lg:hidden"
-        >
-          <Menu className="w-5 h-5" />
-        </Button>
-        {/* Botão de toggle também visível em desktop */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggleSidebar}
-          aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
-          className="hidden lg:flex"
+          className="cursor-pointer"
         >
           <Menu className="w-5 h-5" />
         </Button>
