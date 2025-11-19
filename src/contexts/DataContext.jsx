@@ -621,7 +621,23 @@ export const DataProvider = ({ children }) => {
   // Settings
   const updatePatentSettings = (settings) => handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
   const updateChaveContent = (content) => handleApiCall(() => api.upsertAppSettings('chave_content', { initialContent: content }), 'Conteúdo da CHAVE atualizado.');
-  const updateMenuVisibility = (visibility) => handleApiCall(() => api.upsertAppSettings('menu_visibility', visibility), 'Visibilidade do menu atualizada.');
+  const updateMenuVisibility = async (visibility) => {
+    try {
+      // Atualizar estado local imediatamente
+      setMenuVisibility(visibility);
+      // Salvar no banco
+      const result = await api.upsertAppSettings('menu_visibility', visibility);
+      toast({ title: 'Sucesso!', description: 'Visibilidade do menu atualizada.' });
+      // Recarregar dados para garantir sincronização
+      fetchData();
+      return result;
+    } catch (error) {
+      // Reverter estado local em caso de erro
+      fetchData();
+      toast({ variant: 'destructive', title: 'Erro na Operação', description: error.message });
+      throw error;
+    }
+  };
 
   // Checklist operacional ou gerencial
   const updateChecklist = async (storeId, taskId, isChecked, checklistType = 'operacional', updateBoth = false) => {
