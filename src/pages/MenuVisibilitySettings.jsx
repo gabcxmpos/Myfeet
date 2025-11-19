@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { useData } from '@/contexts/DataContext';
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, Eye } from 'lucide-react';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, Eye, GraduationCap } from 'lucide-react';
 
 const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'loja'] },
@@ -22,14 +22,23 @@ const allMenuItems = [
     { path: '/collaborators', icon: Users2, label: 'Colaboradores', roles: ['loja'] },
     { path: '/feedback', icon: MessageSquareQuote, label: 'Dar Feedback', roles: ['loja'] },
     { path: '/feedback-management', icon: BookUser, label: 'Gestão de Feedbacks', roles: ['admin', 'supervisor'] },
+    { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin', 'supervisor'] },
 ];
 
 const roles = ['admin', 'supervisor', 'loja'];
 
 const MenuVisibilitySettings = () => {
-    const { menuVisibility, updateMenuVisibility } = useData();
+    const { menuVisibility, updateMenuVisibility, fetchData } = useData();
     const { toast } = useToast();
-    const [visibility, setVisibility] = useState(menuVisibility);
+    const [visibility, setVisibility] = useState(menuVisibility || {});
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Atualizar estado local quando menuVisibility mudar no contexto
+    useEffect(() => {
+        if (menuVisibility) {
+            setVisibility(menuVisibility);
+        }
+    }, [menuVisibility]);
 
     const handleVisibilityChange = (path, role, isVisible) => {
         setVisibility(prev => ({
@@ -41,10 +50,27 @@ const MenuVisibilitySettings = () => {
         }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        updateMenuVisibility(visibility);
-        toast({ title: "Sucesso!", description: "As configurações de visibilidade do menu foram salvas." });
+        setIsSaving(true);
+        try {
+            await updateMenuVisibility(visibility);
+            // Recarregar dados para garantir sincronização
+            await fetchData();
+            toast({ 
+                title: "Sucesso!", 
+                description: "As configurações de visibilidade do menu foram salvas." 
+            });
+        } catch (error) {
+            console.error('Erro ao salvar visibilidade:', error);
+            toast({ 
+                title: "Erro", 
+                description: "Não foi possível salvar as configurações. Tente novamente.",
+                variant: 'destructive'
+            });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -102,8 +128,12 @@ const MenuVisibilitySettings = () => {
                                 })}
                             </CardContent>
                         </Card>
-                         <Button type="submit" className="mt-6 w-full max-w-sm mx-auto flex bg-gradient-to-r from-primary to-blue-500 text-primary-foreground">
-                            Salvar Configurações de Visibilidade
+                         <Button 
+                            type="submit" 
+                            className="mt-6 w-full max-w-sm mx-auto flex bg-gradient-to-r from-primary to-blue-500 text-primary-foreground"
+                            disabled={isSaving}
+                        >
+                            {isSaving ? 'Salvando...' : 'Salvar Configurações de Visibilidade'}
                         </Button>
                     </form>
                 </motion.div>
