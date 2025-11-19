@@ -141,7 +141,8 @@ const ReturnsManagement = () => {
     nf_value: '',
     volume_quantity: '',
     date: new Date().toISOString().split('T')[0],
-    store_id: user?.storeId || ''
+    store_id: user?.storeId || '',
+    has_no_nf: false
   });
 
   // Estado do formulário de falta física
@@ -663,11 +664,22 @@ const ReturnsManagement = () => {
   const handleCreatePendingReturn = async (e) => {
     e.preventDefault();
     
-    if (!pendingFormData.brand || !pendingFormData.nf_number || !pendingFormData.nf_emission_date || !pendingFormData.volume_quantity || !pendingFormData.date) {
+    // Validar campos obrigatórios (NF só é obrigatória se não tiver marcado "Não possui NF")
+    if (!pendingFormData.brand || !pendingFormData.volume_quantity || !pendingFormData.date) {
       toast({
         variant: 'destructive',
         title: 'Erro',
         description: 'Preencha todos os campos obrigatórios.',
+      });
+      return;
+    }
+
+    // Se não marcou "Não possui NF", então NF é obrigatória
+    if (!pendingFormData.has_no_nf && (!pendingFormData.nf_number || !pendingFormData.nf_emission_date)) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Preencha o número da NF e data de emissão, ou marque "Não possui NF".',
       });
       return;
     }
@@ -682,16 +694,29 @@ const ReturnsManagement = () => {
     }
 
     try {
-      await addReturn({
+      // Preparar dados base
+      const returnData = {
         brand: pendingFormData.brand.trim(),
-        nf_number: pendingFormData.nf_number.trim(),
-        nf_emission_date: pendingFormData.nf_emission_date,
-        nf_value: pendingFormData.nf_value ? parseFloat(pendingFormData.nf_value) : null,
         volume_quantity: parseInt(pendingFormData.volume_quantity),
         date: pendingFormData.date,
         store_id: user.storeId,
         admin_status: 'aguardando_coleta'
-      });
+      };
+
+      // Se não possui NF, usar valores padrão ou não incluir
+      if (pendingFormData.has_no_nf) {
+        // Usar valores padrão que indicam que não há NF
+        returnData.nf_number = 'SEM_NF';
+        returnData.nf_emission_date = null;
+        returnData.nf_value = null;
+      } else {
+        // Incluir dados de NF normalmente
+        returnData.nf_number = pendingFormData.nf_number.trim();
+        returnData.nf_emission_date = pendingFormData.nf_emission_date;
+        returnData.nf_value = pendingFormData.nf_value ? parseFloat(pendingFormData.nf_value) : null;
+      }
+
+      await addReturn(returnData);
 
       // Resetar formulário
       setPendingFormData({
@@ -701,7 +726,8 @@ const ReturnsManagement = () => {
         nf_value: '',
         volume_quantity: '',
         date: new Date().toISOString().split('T')[0],
-        store_id: user.storeId
+        store_id: user.storeId,
+        has_no_nf: false
       });
     } catch (error) {
       console.error('Erro ao criar devolução:', error);
@@ -1437,24 +1463,48 @@ const ReturnsManagement = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="nf_number">Número da NF *</Label>
-                    <Input
-                      id="nf_number"
-                      value={pendingFormData.nf_number}
-                      onChange={(e) => setPendingFormData({ ...pendingFormData, nf_number: e.target.value })}
-                      required
-                      className="bg-secondary"
-                      placeholder="Ex: 123456"
-                    />
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <Label htmlFor="nf_number">Número da NF {!pendingFormData.has_no_nf && '*'}</Label>
+                        <Input
+                          id="nf_number"
+                          value={pendingFormData.nf_number}
+                          onChange={(e) => setPendingFormData({ ...pendingFormData, nf_number: e.target.value })}
+                          required={!pendingFormData.has_no_nf}
+                          disabled={pendingFormData.has_no_nf}
+                          className="bg-secondary"
+                          placeholder="Ex: 123456"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2 pt-6">
+                        <Checkbox
+                          id="has_no_nf"
+                          checked={pendingFormData.has_no_nf}
+                          onCheckedChange={(checked) => {
+                            setPendingFormData({ 
+                              ...pendingFormData, 
+                              has_no_nf: checked,
+                              nf_number: checked ? '' : pendingFormData.nf_number,
+                              nf_emission_date: checked ? '' : pendingFormData.nf_emission_date,
+                              nf_value: checked ? '' : pendingFormData.nf_value
+                            });
+                          }}
+                        />
+                        <Label htmlFor="has_no_nf" className="text-sm font-normal cursor-pointer">
+                          Não possui NF
+                        </Label>
+                      </div>
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="nf_emission_date">Data de Emissão da NF *</Label>
+                    <Label htmlFor="nf_emission_date">Data de Emissão da NF {!pendingFormData.has_no_nf && '*'}</Label>
                     <Input
                       id="nf_emission_date"
                       type="date"
                       value={pendingFormData.nf_emission_date}
                       onChange={(e) => setPendingFormData({ ...pendingFormData, nf_emission_date: e.target.value })}
-                      required
+                      required={!pendingFormData.has_no_nf}
+                      disabled={pendingFormData.has_no_nf}
                       className="bg-secondary"
                     />
                   </div>
@@ -1467,6 +1517,7 @@ const ReturnsManagement = () => {
                       min="0"
                       value={pendingFormData.nf_value}
                       onChange={(e) => setPendingFormData({ ...pendingFormData, nf_value: e.target.value })}
+                      disabled={pendingFormData.has_no_nf}
                       className="bg-secondary"
                       placeholder="Ex: 1500.00"
                     />
@@ -1530,11 +1581,17 @@ const ReturnsManagement = () => {
                         <div className="flex items-start justify-between mb-4">
                           <div className="flex-1">
                             <h3 className="font-semibold text-foreground mb-1">{returnItem.brand}</h3>
-                            <p className="text-sm text-muted-foreground">NF: {returnItem.nf_number}</p>
-                            {returnItem.nf_emission_date && (
-                              <p className="text-sm text-muted-foreground">
-                                Emissão: {new Date(returnItem.nf_emission_date).toLocaleDateString('pt-BR')}
-                              </p>
+                            {returnItem.nf_number && returnItem.nf_number !== 'SEM_NF' ? (
+                              <>
+                                <p className="text-sm text-muted-foreground">NF: {returnItem.nf_number}</p>
+                                {returnItem.nf_emission_date && (
+                                  <p className="text-sm text-muted-foreground">
+                                    Emissão: {new Date(returnItem.nf_emission_date).toLocaleDateString('pt-BR')}
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <p className="text-sm text-amber-500 font-medium">Não possui NF</p>
                             )}
                             <p className="text-sm text-muted-foreground mt-1">
                               {store?.name || 'Loja não encontrada'}
@@ -1562,7 +1619,8 @@ const ReturnsManagement = () => {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
                                   onClick={() => {
-                                    if (window.confirm(`Tem certeza que deseja excluir esta devolução (${returnItem.brand} - NF: ${returnItem.nf_number})? Esta ação não pode ser desfeita.`)) {
+                                    const nfInfo = (returnItem.nf_number && returnItem.nf_number !== 'SEM_NF') ? `NF: ${returnItem.nf_number}` : 'Não possui NF';
+                                    if (window.confirm(`Tem certeza que deseja excluir esta devolução (${returnItem.brand} - ${nfInfo})? Esta ação não pode ser desfeita.`)) {
                                       deleteReturn(returnItem.id);
                                     }
                                   }}
@@ -1701,11 +1759,17 @@ const ReturnsManagement = () => {
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
                           <h3 className="font-semibold text-foreground mb-1">{returnItem.brand}</h3>
-                          <p className="text-sm text-muted-foreground">NF: {returnItem.nf_number}</p>
-                          {returnItem.nf_emission_date && (
-                            <p className="text-sm text-muted-foreground">
-                              Emissão: {new Date(returnItem.nf_emission_date).toLocaleDateString('pt-BR')}
-                            </p>
+                          {returnItem.nf_number && returnItem.nf_number !== 'SEM_NF' ? (
+                            <>
+                              <p className="text-sm text-muted-foreground">NF: {returnItem.nf_number}</p>
+                              {returnItem.nf_emission_date && (
+                                <p className="text-sm text-muted-foreground">
+                                  Emissão: {new Date(returnItem.nf_emission_date).toLocaleDateString('pt-BR')}
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-sm text-amber-500 font-medium">Não possui NF</p>
                           )}
                           <p className="text-sm text-muted-foreground mt-1">
                             {store?.name || 'Loja não encontrada'}
@@ -1722,7 +1786,8 @@ const ReturnsManagement = () => {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem 
                                   onClick={() => {
-                                    if (window.confirm(`Tem certeza que deseja excluir esta devolução coletada (${returnItem.brand} - NF: ${returnItem.nf_number})? Esta ação não pode ser desfeita.`)) {
+                                    const nfInfo = (returnItem.nf_number && returnItem.nf_number !== 'SEM_NF') ? `NF: ${returnItem.nf_number}` : 'Não possui NF';
+                                    if (window.confirm(`Tem certeza que deseja excluir esta devolução coletada (${returnItem.brand} - ${nfInfo})? Esta ação não pode ser desfeita.`)) {
                                       deleteReturn(returnItem.id);
                                     }
                                   }}
