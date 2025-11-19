@@ -1376,7 +1376,8 @@ export const updateTraining = async (id, updates) => {
     store_ids: updates.storeIds !== undefined ? (updates.storeIds || null) : (updates.store_ids !== undefined ? (updates.store_ids || null) : undefined),
     location: updates.location !== undefined ? (updates.location || null) : undefined,
     link: updates.link !== undefined ? (updates.link || null) : undefined,
-    max_participants: updates.maxParticipants !== undefined ? (updates.maxParticipants || null) : (updates.max_participants !== undefined ? updates.max_participants : undefined)
+    max_participants: updates.maxParticipants !== undefined ? (updates.maxParticipants || null) : (updates.max_participants !== undefined ? updates.max_participants : undefined),
+    registrations_blocked: updates.registrationsBlocked !== undefined ? updates.registrationsBlocked : (updates.registrations_blocked !== undefined ? updates.registrations_blocked : undefined)
   };
   
   // Remove campos undefined (não enviar campos que não foram alterados)
@@ -2176,21 +2177,21 @@ export const upsertAppSettings = async (key, value) => {
 export const fetchCurrentUserProfile = async () => {
   try {
     // Tentar obter o usuário atual
-    // Se falhar com 403, pode ser que a sessão esteja expirada
+    // Se falhar com 403, a sessão está expirada e devemos retornar null sem mais tentativas
     let authUser = null;
     try {
       const { data, error: getUserError } = await supabase.auth.getUser();
       if (getUserError) {
-        // Se for erro 403 ou 401, a sessão pode estar expirada
+        // Se for erro 403 ou 401, a sessão está expirada - não tentar mais nada
         if (getUserError.status === 403 || getUserError.status === 401) {
-          console.warn('⚠️ Sessão expirada ou inválida (403/401). Tentando obter da sessão local...');
-          // Tentar obter da sessão local
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session?.user) {
-            authUser = session.user;
-          } else {
-            throw getUserError;
+          console.warn('⚠️ Sessão expirada ou inválida (403/401). Retornando null sem tentar sessão local.');
+          // Limpar sessão local se existir
+          try {
+            localStorage.removeItem('sb-hzwmacltgiyanukgvfvn-auth-token');
+          } catch (e) {
+            // Ignorar erros ao limpar
           }
+          return null;
         } else {
           throw getUserError;
         }
@@ -2198,6 +2199,11 @@ export const fetchCurrentUserProfile = async () => {
         authUser = data?.user;
       }
     } catch (authError) {
+      // Se for erro 403/401, não logar como erro crítico - apenas retornar null
+      if (authError.status === 403 || authError.status === 401) {
+        console.warn('⚠️ Erro de autenticação (403/401). Sessão expirada.');
+        return null;
+      }
       console.error('❌ Erro ao obter usuário:', authError);
       // Se não conseguir obter usuário, retornar null
       return null;
@@ -2258,4 +2264,261 @@ export const fetchCurrentUserProfile = async () => {
     console.error('Erro ao buscar perfil do usuário:', error);
     return null;
   }
+};
+
+// ============ RETURNS (DEVOLUÇÕES) ============
+export const fetchReturns = async () => {
+  const { data, error } = await supabase
+    .from('returns')
+    .select('*')
+    .order('created_at', { ascending: false });
+  
+  if (error) {
+    // Se a tabela não existir, retornar array vazio (para não quebrar a aplicação)
+    if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+      console.warn('⚠️ Tabela returns não existe ainda. Retornando array vazio.');
+      return [];
+    }
+    throw error;
+  }
+  
+  return data || [];
+};
+
+export const createReturn = async (returnData) => {
+  // Converter camelCase para snake_case
+  const dataToInsert = {
+    store_id: returnData.store_id || returnData.storeId,
+    brand: returnData.brand,
+    nf_number: returnData.nf_number || returnData.nfNumber,
+    nf_emission_date: returnData.nf_emission_date || returnData.nfEmissionDate || null,
+    nf_value: returnData.nf_value !== undefined && returnData.nf_value !== null ? returnData.nf_value : (returnData.nfValue !== undefined && returnData.nfValue !== null ? returnData.nfValue : null),
+    volume_quantity: returnData.volume_quantity || returnData.volumeQuantity,
+    date: returnData.date,
+    admin_status: returnData.admin_status || returnData.adminStatus || 'aguardando_coleta',
+    collected_at: returnData.collected_at || returnData.collectedAt || null,
+    created_by: returnData.created_by || returnData.createdBy || null
+  };
+
+  const { data, error } = await supabase
+    .from('returns')
+    .insert([dataToInsert])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateReturn = async (id, updates) => {
+  // Buscar status anterior para histórico
+  const { data: currentReturn } = await supabase
+    .from('returns')
+    .select('admin_status')
+    .eq('id', id)
+    .single();
+  
+  const oldStatus = currentReturn?.admin_status;
+  
+  // Converter camelCase para snake_case
+  const dataToUpdate = {};
+  
+  if (updates.store_id !== undefined || updates.storeId !== undefined) {
+    dataToUpdate.store_id = updates.store_id || updates.storeId;
+  }
+  if (updates.brand !== undefined) dataToUpdate.brand = updates.brand;
+  if (updates.nf_number !== undefined || updates.nfNumber !== undefined) {
+    dataToUpdate.nf_number = updates.nf_number || updates.nfNumber;
+  }
+  if (updates.nf_emission_date !== undefined || updates.nfEmissionDate !== undefined) {
+    dataToUpdate.nf_emission_date = updates.nf_emission_date || updates.nfEmissionDate;
+  }
+  if (updates.nf_value !== undefined || updates.nfValue !== undefined) {
+    dataToUpdate.nf_value = updates.nf_value !== undefined && updates.nf_value !== null ? updates.nf_value : (updates.nfValue !== undefined && updates.nfValue !== null ? updates.nfValue : null);
+  }
+  if (updates.volume_quantity !== undefined || updates.volumeQuantity !== undefined) {
+    dataToUpdate.volume_quantity = updates.volume_quantity || updates.volumeQuantity;
+  }
+  if (updates.date !== undefined) dataToUpdate.date = updates.date;
+  if (updates.admin_status !== undefined || updates.adminStatus !== undefined) {
+    dataToUpdate.admin_status = updates.admin_status || updates.adminStatus;
+  }
+  if (updates.collected_at !== undefined || updates.collectedAt !== undefined) {
+    dataToUpdate.collected_at = updates.collected_at || updates.collectedAt;
+  }
+
+  const { data, error } = await supabase
+    .from('returns')
+    .update(dataToUpdate)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  
+  // Salvar histórico se status mudou
+  const newStatus = dataToUpdate.admin_status;
+  if (oldStatus && newStatus && oldStatus !== newStatus) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      await saveReturnStatusHistory(id, oldStatus, newStatus, user?.id || null);
+    } catch (historyError) {
+      console.warn('⚠️ Erro ao salvar histórico de status:', historyError);
+    }
+  }
+  
+  return data;
+};
+
+export const deleteReturn = async (id) => {
+  const { error } = await supabase
+    .from('returns')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+  return true;
+};
+
+// Salvar histórico de mudanças de status de devolução
+export const saveReturnStatusHistory = async (returnId, oldStatus, newStatus, changedBy = null) => {
+  try {
+    const historyData = {
+      return_id: returnId,
+      old_status: oldStatus,
+      new_status: newStatus,
+      changed_at: new Date().toISOString()
+    };
+    
+    if (changedBy) {
+      historyData.changed_by = changedBy;
+    }
+    
+    const { error } = await supabase
+      .from('returns_status_history')
+      .insert([historyData]);
+    
+    // Não lançar erro se a tabela não existir ainda
+    if (error && error.code !== '42P01') {
+      console.warn('⚠️ Erro ao salvar histórico de status (continuando mesmo assim):', error);
+    }
+  } catch (error) {
+    console.warn('⚠️ Erro ao salvar histórico de status (continuando mesmo assim):', error);
+  }
+};
+
+// ============ PHYSICAL MISSING (FALTA FÍSICA) ============
+export const fetchPhysicalMissing = async () => {
+  const { data, error } = await supabase
+    .from('physical_missing')
+    .select('*')
+    .order('created_at', { ascending: false });
+  
+  if (error) {
+    // Se a tabela não existir, retornar array vazio
+    if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+      console.warn('⚠️ Tabela physical_missing não existe ainda. Retornando array vazio.');
+      return [];
+    }
+    throw error;
+  }
+  
+  return data || [];
+};
+
+export const createPhysicalMissing = async (missingData) => {
+  const dataToInsert = {
+    store_id: missingData.store_id || missingData.storeId,
+    brand: missingData.brand || null,
+    nf_number: missingData.nf_number || missingData.nfNumber || null,
+    sku: missingData.sku || null,
+    color: missingData.color || null,
+    size: missingData.size || null,
+    sku_info: missingData.sku_info || missingData.skuInfo || null,
+    cost_value: missingData.cost_value !== undefined && missingData.cost_value !== null ? missingData.cost_value : (missingData.costValue !== undefined && missingData.costValue !== null ? missingData.costValue : null),
+    quantity: missingData.quantity !== undefined && missingData.quantity !== null ? missingData.quantity : null,
+    total_value: missingData.total_value !== undefined && missingData.total_value !== null ? missingData.total_value : (missingData.totalValue !== undefined && missingData.totalValue !== null ? missingData.totalValue : null),
+    moved_to_defect: missingData.moved_to_defect !== undefined ? missingData.moved_to_defect : (missingData.movedToDefect !== undefined ? missingData.movedToDefect : false),
+    status: missingData.status || 'processo_aberto',
+    created_by: missingData.created_by || missingData.createdBy || null
+  };
+  
+  // Campos antigos para compatibilidade (só incluir se fornecidos)
+  if (missingData.product_name || missingData.productName) {
+    dataToInsert.product_name = missingData.product_name || missingData.productName;
+  }
+  if (missingData.product_code || missingData.productCode) {
+    dataToInsert.product_code = missingData.product_code || missingData.productCode;
+  }
+  if (missingData.notes) {
+    dataToInsert.notes = missingData.notes;
+  }
+
+  const { data, error } = await supabase
+    .from('physical_missing')
+    .insert([dataToInsert])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updatePhysicalMissing = async (id, updates) => {
+  const dataToUpdate = {};
+  
+  if (updates.store_id !== undefined || updates.storeId !== undefined) {
+    dataToUpdate.store_id = updates.store_id || updates.storeId;
+  }
+  if (updates.brand !== undefined) dataToUpdate.brand = updates.brand;
+  if (updates.nf_number !== undefined || updates.nfNumber !== undefined) {
+    dataToUpdate.nf_number = updates.nf_number || updates.nfNumber;
+  }
+  if (updates.sku !== undefined) dataToUpdate.sku = updates.sku;
+  if (updates.color !== undefined) dataToUpdate.color = updates.color;
+  if (updates.size !== undefined) dataToUpdate.size = updates.size;
+  if (updates.sku_info !== undefined || updates.skuInfo !== undefined) {
+    dataToUpdate.sku_info = updates.sku_info || updates.skuInfo;
+  }
+  if (updates.cost_value !== undefined || updates.costValue !== undefined) {
+    dataToUpdate.cost_value = updates.cost_value !== undefined && updates.cost_value !== null ? updates.cost_value : (updates.costValue !== undefined && updates.costValue !== null ? updates.costValue : null);
+  }
+  if (updates.quantity !== undefined && updates.quantity !== null) {
+    dataToUpdate.quantity = updates.quantity;
+  }
+  if (updates.total_value !== undefined || updates.totalValue !== undefined) {
+    dataToUpdate.total_value = updates.total_value !== undefined && updates.total_value !== null ? updates.total_value : (updates.totalValue !== undefined && updates.totalValue !== null ? updates.totalValue : null);
+  }
+  if (updates.moved_to_defect !== undefined || updates.movedToDefect !== undefined) {
+    dataToUpdate.moved_to_defect = updates.moved_to_defect !== undefined ? updates.moved_to_defect : updates.movedToDefect;
+  }
+  // Campos antigos para compatibilidade
+  if (updates.product_name !== undefined || updates.productName !== undefined) {
+    dataToUpdate.product_name = updates.product_name || updates.productName;
+  }
+  if (updates.product_code !== undefined || updates.productCode !== undefined) {
+    dataToUpdate.product_code = updates.product_code || updates.productCode;
+  }
+  if (updates.notes !== undefined) dataToUpdate.notes = updates.notes;
+  if (updates.status !== undefined) dataToUpdate.status = updates.status;
+
+  const { data, error } = await supabase
+    .from('physical_missing')
+    .update(dataToUpdate)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deletePhysicalMissing = async (id) => {
+  const { error } = await supabase
+    .from('physical_missing')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+  return true;
 };
