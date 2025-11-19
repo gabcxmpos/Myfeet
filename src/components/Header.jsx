@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Bell, Settings, UserPlus, Eye } from 'lucide-react';
+import { LogOut, User, Bell, Settings, UserPlus, Eye, Menu } from 'lucide-react';
 import { useNavigate, NavLink } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -12,20 +12,46 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const Header = () => {
+const Header = ({ onToggleSidebar, isSidebarOpen }) => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
 
   const handleLogout = async () => {
-    await signOut();
-    navigate('/login');
+    try {
+      await signOut();
+    } catch (error) {
+      console.warn('Erro ao fazer logout:', error);
+      // Continuar mesmo com erro para garantir logout local
+    } finally {
+      // Sempre redirecionar para login, mesmo se houver erro
+      navigate('/login');
+    }
   };
 
   return (
     <header className="bg-card border-b border-border px-6 py-3 flex items-center justify-between">
-      <div>
-        {/* Placeholder for breadcrumbs or page title */}
+      <div className="flex items-center gap-3">
+        {/* Botão de toggle da sidebar - sempre visível */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleSidebar}
+          aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+          className="lg:hidden"
+        >
+          <Menu className="w-5 h-5" />
+        </Button>
+        {/* Botão de toggle também visível em desktop */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onToggleSidebar}
+          aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+          className="hidden lg:flex"
+        >
+          <Menu className="w-5 h-5" />
+        </Button>
       </div>
       
       <div className="flex items-center gap-4 ml-auto">
