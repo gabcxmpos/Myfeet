@@ -2290,7 +2290,7 @@ export const createReturn = async (returnData) => {
   const dataToInsert = {
     store_id: returnData.store_id || returnData.storeId,
     brand: returnData.brand,
-    nf_number: returnData.nf_number || returnData.nfNumber,
+    nf_number: returnData.nf_number || returnData.nfNumber || 'SEM_NF',
     nf_emission_date: returnData.nf_emission_date || returnData.nfEmissionDate || null,
     nf_value: returnData.nf_value !== undefined && returnData.nf_value !== null ? returnData.nf_value : (returnData.nfValue !== undefined && returnData.nfValue !== null ? returnData.nfValue : null),
     volume_quantity: returnData.volume_quantity || returnData.volumeQuantity,
