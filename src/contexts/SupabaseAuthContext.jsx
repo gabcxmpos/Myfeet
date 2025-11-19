@@ -134,16 +134,66 @@ export const AuthProvider = ({ children }) => {
   }, [toast]);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      loadUserProfile(session?.user);
-    });
+    // Handler para sessão expirada detectada pelo interceptor
+    const handleSessionExpired = () => {
+      console.warn('⚠️ Evento de sessão expirada recebido. Limpando dados...');
+      setSession(null);
+      setUser(null);
+      setLoading(false);
+    };
+    
+    // Ouvir evento customizado de sessão expirada
+    window.addEventListener('supabase-session-expired', handleSessionExpired);
+    
+    // Get initial session com tratamento de erro
+    supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) {
+          // Se houver erro 403/401, limpar dados locais
+          if (error.status === 403 || error.status === 401) {
+            console.warn('⚠️ Sessão inicial expirada (403/401). Limpando dados locais...');
+            setSession(null);
+            setUser(null);
+            // Limpar storage
+            try {
+              localStorage.removeItem('sb-hzwmacltgiyanukgvfvn-auth-token');
+              sessionStorage.clear();
+            } catch (e) {
+              console.warn('Erro ao limpar storage:', e);
+            }
+            setLoading(false);
+            return;
+          }
+        }
+        setSession(session);
+        loadUserProfile(session?.user);
+      })
+      .catch((err) => {
+        console.error('Erro ao obter sessão inicial:', err);
+        // Se houver erro inesperado, limpar dados e continuar
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+      });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         console.log('🔔 Evento de autenticação:', event, session?.user?.id);
+        
+        // Se o evento for de sessão expirada ou erro, limpar dados
+        if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+          console.warn('⚠️ Sessão expirada ou inválida. Limpando dados...');
+          setSession(null);
+          setUser(null);
+          try {
+            localStorage.removeItem('sb-hzwmacltgiyanukgvfvn-auth-token');
+            sessionStorage.clear();
+          } catch (e) {
+            console.warn('Erro ao limpar storage:', e);
+          }
+          return;
+        }
         
         // IMPORTANTE: Se o evento for SIGNED_IN e a sessão for de um usuário recém-criado,
         // verificar se é realmente um login legítimo ou se é apenas resultado de criar um usuário
@@ -170,6 +220,12 @@ export const AuthProvider = ({ children }) => {
           } catch (error) {
             // Se houver erro ao verificar, processar normalmente
             console.warn('Erro ao verificar perfil durante SIGNED_IN:', error);
+            // Se for erro 403/401, limpar dados
+            if (error.status === 403 || error.status === 401) {
+              setSession(null);
+              setUser(null);
+              return;
+            }
           }
         }
         
@@ -179,7 +235,11 @@ export const AuthProvider = ({ children }) => {
       }
     );
 
-    return () => subscription.unsubscribe();
+    // Cleanup: remover event listener e unsubscribe da subscription
+    return () => {
+      window.removeEventListener('supabase-session-expired', handleSessionExpired);
+      subscription.unsubscribe();
+    };
   }, [loadUserProfile]);
 
   const signIn = useCallback(async (email, password) => {
@@ -309,23 +369,77 @@ export const AuthProvider = ({ children }) => {
   }, [toast]);
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
+    try {
+      // Tentar fazer signOut no Supabase
+      const { error } = await supabase.auth.signOut();
 
-    if (error) {
+      // IMPORTANTE: Sempre limpar dados locais, mesmo se houver erro
+      // O erro "Session from session_id claim in JWT does not exist" é comum
+      // quando a sessão já expirou no servidor, mas ainda precisamos limpar localmente
+      
+      // Limpar estado local independentemente de erro
+      setSession(null);
+      setUser(null);
+      
+      // Limpar storage local
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch (storageError) {
+        console.warn('Erro ao limpar storage:', storageError);
+      }
+
+      // Se o erro for sobre sessão não encontrada, ignorar (é esperado em sessões expiradas)
+      if (error) {
+        const isSessionNotFoundError = 
+          error.message?.includes('session_id') || 
+          error.message?.includes('does not exist') ||
+          error.message?.includes('Session from session_id');
+        
+        if (isSessionNotFoundError) {
+          // Sessão já expirou - logout local foi bem-sucedido mesmo assim
+          toast({
+            title: "Logout realizado",
+            description: "Sessão encerrada com sucesso.",
+          });
+          return { error: null };
+        } else {
+          // Outro tipo de erro - ainda assim limpar localmente
+          toast({
+            variant: "warning",
+            title: "Logout realizado",
+            description: "Dados locais limpos. A sessão já havia expirado.",
+          });
+          return { error: null };
+        }
+      }
+
+      // Logout bem-sucedido
       toast({
-        variant: "destructive",
-        title: "Erro ao Sair",
-        description: error.message,
+        title: "Logout realizado",
+        description: "Até logo!",
       });
-      return { error };
+
+      return { error: null };
+    } catch (err) {
+      // Em caso de erro inesperado, ainda limpar dados locais
+      setSession(null);
+      setUser(null);
+      
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch (storageError) {
+        console.warn('Erro ao limpar storage:', storageError);
+      }
+
+      toast({
+        title: "Logout realizado",
+        description: "Dados locais limpos.",
+      });
+
+      return { error: null };
     }
-
-    toast({
-      title: "Logout realizado",
-      description: "Até logo!",
-    });
-
-    return { error: null };
   }, [toast]);
 
   // Reset de senha - reseta para senha padrão "afeet10" sem enviar email
