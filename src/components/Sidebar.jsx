@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useData } from '@/contexts/DataContext';
-import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, GraduationCap, X, Menu } from 'lucide-react';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, GraduationCap, RotateCcw, X, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const allMenuItems = [
@@ -21,6 +21,7 @@ const allMenuItems = [
     { path: '/feedback-management', icon: BookUser, label: 'Gestão de Feedbacks', roles: ['admin', 'supervisor'] },
     { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin'] },
     { path: '/training', icon: GraduationCap, label: 'Treinamentos', roles: ['loja'] },
+    { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja'] },
 ];
 
 const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
