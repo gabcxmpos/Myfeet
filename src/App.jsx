@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
@@ -26,6 +25,7 @@ import DailyChecklist from '@/pages/DailyChecklist';
 import MenuVisibilitySettings from '@/pages/MenuVisibilitySettings';
 import TrainingManagement from '@/pages/TrainingManagement';
 import Training from '@/pages/Training';
+import ReturnsManagement from '@/pages/ReturnsManagement';
 
 function App() {
   return (
@@ -57,6 +57,7 @@ function App() {
                 <Route path="feedback-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><FeedbackManagement /></ProtectedRoute>} />
                 <Route path="training-management" element={<ProtectedRoute allowedRoles={['admin']}><TrainingManagement /></ProtectedRoute>} />
                 <Route path="training" element={<ProtectedRoute allowedRoles={['loja']}><Training /></ProtectedRoute>} />
+                <Route path="returns" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'loja']}><ReturnsManagement /></ProtectedRoute>} />
                 <Route path="chave" element={<Chave />} />
                 <Route path="checklist" element={<DailyChecklist />} />
               </Route>
