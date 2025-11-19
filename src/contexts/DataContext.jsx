@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import * as api from '@/lib/supabaseService';
+import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { format } from 'date-fns';
 
@@ -82,6 +83,8 @@ export const DataProvider = ({ children }) => {
   const [feedbacks, setFeedbacks] = useState([]);
   const [trainings, setTrainings] = useState([]);
   const [trainingRegistrations, setTrainingRegistrations] = useState([]);
+  const [returns, setReturns] = useState([]);
+  const [physicalMissing, setPhysicalMissing] = useState([]);
   
   // App Settings
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
@@ -111,6 +114,8 @@ export const DataProvider = ({ children }) => {
         fetchedFeedbacks,
         fetchedTrainings,
         fetchedTrainingRegistrations,
+        fetchedReturns,
+        fetchedPhysicalMissing,
         fetchedPatents,
         fetchedChave,
         fetchedMenu,
@@ -125,6 +130,8 @@ export const DataProvider = ({ children }) => {
         api.fetchFeedbacks(),
         api.fetchTrainings(storeIdForTrainings),
         api.fetchTrainingRegistrations(),
+        api.fetchReturns(),
+        api.fetchPhysicalMissing(),
         api.fetchAppSettings('patent_settings'),
         api.fetchAppSettings('chave_content'),
         api.fetchAppSettings('menu_visibility'),
@@ -140,6 +147,8 @@ export const DataProvider = ({ children }) => {
       setFeedbacks(fetchedFeedbacks);
       setTrainings(fetchedTrainings);
       setTrainingRegistrations(fetchedTrainingRegistrations);
+      setReturns(fetchedReturns || []);
+      setPhysicalMissing(fetchedPhysicalMissing || []);
       
       if (fetchedPatents) setPatentSettings(fetchedPatents);
       // Garantir que chaveContent sempre seja uma string
@@ -203,6 +212,8 @@ export const DataProvider = ({ children }) => {
       setFeedbacks([]);
       setTrainings([]);
       setTrainingRegistrations([]);
+      setReturns([]);
+      setPhysicalMissing([]);
     }
   }, [isAuthenticated, fetchData]);
 
@@ -218,12 +229,16 @@ export const DataProvider = ({ children }) => {
         api.fetchCollaborators(),
         api.fetchTrainings(user?.role === 'loja' ? user?.storeId : null),
         api.fetchTrainingRegistrations(),
-      ]).then(([newEvaluations, newFeedbacks, newCollaborators, newTrainings, newRegistrations]) => {
+        api.fetchReturns(),
+        api.fetchPhysicalMissing(),
+      ]).then(([newEvaluations, newFeedbacks, newCollaborators, newTrainings, newRegistrations, newReturns, newPhysicalMissing]) => {
         setEvaluations(newEvaluations);
         setFeedbacks(newFeedbacks);
         setCollaborators(newCollaborators);
         setTrainings(newTrainings);
         setTrainingRegistrations(newRegistrations);
+        setReturns(newReturns || []);
+        setPhysicalMissing(newPhysicalMissing || []);
       }).catch(error => {
         console.warn('Erro ao atualizar dados em background:', error);
       });
@@ -685,6 +700,104 @@ export const DataProvider = ({ children }) => {
     }
   };
 
+  // Returns (Devoluções)
+  const addReturn = async (returnData) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const newReturn = await api.createReturn({
+        ...returnData,
+        created_by: user?.id || null
+      });
+      setReturns(prev => [newReturn, ...prev]);
+      toast({ title: 'Sucesso!', description: 'Devolução cadastrada com sucesso e enviada para administradores.' });
+      return newReturn;
+    } catch (error) {
+      // Se a tabela não existe, mostrar mensagem amigável
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Tabela não encontrada', 
+          description: 'As tabelas de devoluções ainda não foram criadas no banco. Execute o script SQL CRIAR_TABELAS_DEVOLUCOES.sql no Supabase.' 
+        });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao cadastrar devolução', description: error.message });
+      }
+      throw error;
+    }
+  };
+
+  const updateReturn = async (id, updates) => {
+    try {
+      const updatedReturn = await api.updateReturn(id, updates);
+      setReturns(prev => prev.map(ret => ret.id === id ? updatedReturn : ret));
+      toast({ title: 'Sucesso!', description: 'Devolução atualizada com sucesso.' });
+      return updatedReturn;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar devolução', description: error.message });
+      throw error;
+    }
+  };
+
+  const deleteReturn = async (id) => {
+    try {
+      await api.deleteReturn(id);
+      setReturns(prev => prev.filter(ret => ret.id !== id));
+      toast({ title: 'Sucesso!', description: 'Devolução excluída com sucesso.' });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir devolução', description: error.message });
+      throw error;
+    }
+  };
+
+  // Physical Missing (Falta Física)
+  const addPhysicalMissing = async (missingData) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const newMissing = await api.createPhysicalMissing({
+        ...missingData,
+        created_by: user?.id || null
+      });
+      setPhysicalMissing(prev => [newMissing, ...prev]);
+      toast({ title: 'Sucesso!', description: 'Falta física registrada com sucesso e enviada para administradores.' });
+      return newMissing;
+    } catch (error) {
+      // Se a tabela não existe, mostrar mensagem amigável
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Tabela não encontrada', 
+          description: 'As tabelas de devoluções ainda não foram criadas no banco. Execute o script SQL CRIAR_TABELAS_DEVOLUCOES.sql no Supabase.' 
+        });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao registrar falta física', description: error.message });
+      }
+      throw error;
+    }
+  };
+
+  const updatePhysicalMissing = async (id, updates) => {
+    try {
+      const updatedMissing = await api.updatePhysicalMissing(id, updates);
+      setPhysicalMissing(prev => prev.map(item => item.id === id ? updatedMissing : item));
+      toast({ title: 'Sucesso!', description: 'Falta física atualizada com sucesso.' });
+      return updatedMissing;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar falta física', description: error.message });
+      throw error;
+    }
+  };
+
+  const deletePhysicalMissing = async (id) => {
+    try {
+      await api.deletePhysicalMissing(id);
+      setPhysicalMissing(prev => prev.filter(item => item.id !== id));
+      toast({ title: 'Sucesso!', description: 'Falta física excluída com sucesso.' });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir falta física', description: error.message });
+      throw error;
+    }
+  };
+
   const value = {
     loading,
     users,
@@ -734,6 +847,14 @@ export const DataProvider = ({ children }) => {
     fetchChecklistHistory,
     menuVisibility,
     updateMenuVisibility,
+    returns,
+    addReturn,
+    updateReturn,
+    deleteReturn,
+    physicalMissing,
+    addPhysicalMissing,
+    updatePhysicalMissing,
+    deletePhysicalMissing,
     fetchData, // Expor fetchData para permitir refresh manual em componentes
   };
 
