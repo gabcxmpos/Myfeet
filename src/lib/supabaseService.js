@@ -1,2524 +1,862 @@
+
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
+import * as api from '@/lib/supabaseService';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useToast } from '@/components/ui/use-toast';
+import { format } from 'date-fns';
 
-// ============ STORES ============
-export const fetchStores = async () => {
-  const { data, error } = await supabase
-    .from('stores')
-    .select('*')
-    .order('name');
-  
-  if (error) throw error;
-  
-  // Se houver dados, ordenar numericamente pelo código (ex: af011, af013)
-  // Isso garante que códigos como "af11" venham depois de "af011"
-  if (data && data.length > 0) {
-    return data.sort((a, b) => {
-      const codeA = (a.code || '').toLowerCase();
-      const codeB = (b.code || '').toLowerCase();
-      
-      // Extrair prefixo alfabético e número
-      const matchA = codeA.match(/^([a-z]+)(\d+)$/);
-      const matchB = codeB.match(/^([a-z]+)(\d+)$/);
-      
-      if (matchA && matchB) {
-        const prefixA = matchA[1];
-        const prefixB = matchB[1];
-        const numA = parseInt(matchA[2], 10);
-        const numB = parseInt(matchB[2], 10);
-        
-        // Comparar prefixo primeiro
-        if (prefixA !== prefixB) {
-          return prefixA.localeCompare(prefixB);
-        }
-        
-        // Se prefixo igual, comparar numericamente
-        return numA - numB;
-      }
-      
-      // Fallback para comparação alfabética se não houver padrão
-      return codeA.localeCompare(codeB);
-    });
+const DataContext = createContext();
+
+export const useData = () => {
+  const context = useContext(DataContext);
+  if (!context) {
+    throw new Error('useData must be used within a DataProvider');
   }
-  
-  return data || [];
+  return context;
 };
 
-export const createStore = async (storeData) => {
-  const { data, error } = await supabase
-    .from('stores')
-    .insert([storeData])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
+// Tarefas padrão do checklist (usadas apenas se não houver tarefas no banco)
+const defaultDailyTasks = [
+    { id: 'task-1', text: 'Abertura Operacional' },
+    { id: 'task-2', text: 'Limpeza da loja' },
+    { id: 'task-3', text: 'Five Minutes - KPIs' },
+    { id: 'task-4', text: 'Pedidos SFS - Manhã' },
+    { id: 'task-5', text: 'Caixa dia anterior e Depósito' },
+    { id: 'task-6', text: 'Relatório de Performance KPIs' },
+    { id: 'task-7', text: 'Relatório de Performance Produto' },
+    { id: 'task-8', text: 'Acompanhamento Planilha Chegada de Pedidos' },
+    { id: 'task-9', text: 'Ativações CRM' },
+    { id: 'task-10', text: 'Organização de Loja Operacional durante dia' },
+    { id: 'task-11', text: 'Organização de Loja Visual Merchandising' },
+    { id: 'task-12', text: 'Pedidos SFS - Tarde' },
+    { id: 'task-13', text: 'Jornada de atendimento' },
+    { id: 'task-14', text: 'Pedidos Digital Haass noite' },
+    { id: 'task-15', text: 'Pedidos Digital Haass fechamento' },
+    { id: 'task-16', text: 'Virtual Gate' },
+    { id: 'task-17', text: 'Perdas e Danos' },
+    { id: 'task-18', text: 'Tom Ticket' },
+    { id: 'task-19', text: 'SLA/NPS Digital' },
+];
 
-// Salvar histórico de metas antes de atualizar
-export const saveGoalsHistory = async (storeId, goals, weights, changedBy = null) => {
-  try {
-    const historyData = {
-      store_id: storeId,
-      goals: goals || {},
-      weights: weights || {}
-    };
-    
-    // Se tiver informação do usuário que está fazendo a mudança, adicionar
-    if (changedBy) {
-      historyData.changed_by = changedBy;
+// Tarefas padrão do checklist gerencial (PPAD GERENCIAL)
+const defaultGerencialTasks = [
+    { id: 'gerencial-1', text: 'TAG SIZE' },
+    { id: 'gerencial-2', text: 'TAG PRICE' },
+    { id: 'gerencial-3', text: 'TWALL' },
+    { id: 'gerencial-4', text: 'SOM' },
+    { id: 'gerencial-5', text: 'UNIFORME' },
+    { id: 'gerencial-6', text: 'ENGAGE' },
+    { id: 'gerencial-7', text: 'PASSADORIA' },
+    { id: 'gerencial-8', text: 'LIMPEZA' },
+    { id: 'gerencial-9', text: 'REPOSICAO' },
+    { id: 'gerencial-10', text: 'TELAS DIGITAIS' },
+    { id: 'gerencial-11', text: 'SLA' },
+    { id: 'gerencial-12', text: 'CANCELAMENTOS' },
+    { id: 'gerencial-13', text: 'CLIENTES' },
+    { id: 'gerencial-14', text: 'DEVOLUCOES' },
+    { id: 'gerencial-15', text: 'RECEBIMENTO' },
+    { id: 'gerencial-16', text: 'DEPOSITOS' },
+    { id: 'gerencial-17', text: 'NOTAS TRANSF PENDENTES' },
+    { id: 'gerencial-18', text: 'FECHAMENTO CAIXA' },
+    { id: 'gerencial-19', text: 'INVENTARIO' },
+    { id: 'gerencial-20', text: 'MALOTES' },
+    { id: 'gerencial-21', text: 'ESCALA' },
+    { id: 'gerencial-22', text: 'HEADCOUNT' },
+    { id: 'gerencial-23', text: 'FÉRIAS' },
+    { id: 'gerencial-24', text: 'BENEFICIOS' },
+    { id: 'gerencial-25', text: 'PREMIACOES' },
+    { id: 'gerencial-26', text: 'FB LIDERANÇA' },
+];
+
+export const DataProvider = ({ children }) => {
+  const { isAuthenticated, user } = useAuth();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+
+  // States
+  const [users, setUsers] = useState([]);
+  const [stores, setStores] = useState([]);
+  const [evaluations, setEvaluations] = useState([]);
+  const [forms, setForms] = useState([]);
+  const [collaborators, setCollaborators] = useState([]);
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [trainings, setTrainings] = useState([]);
+  const [trainingRegistrations, setTrainingRegistrations] = useState([]);
+  const [returns, setReturns] = useState([]);
+  const [physicalMissing, setPhysicalMissing] = useState([]);
+  
+  // App Settings
+  const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
+  const [chaveContent, setChaveContent] = useState('');
+  const [menuVisibility, setMenuVisibility] = useState({});
+  const [checklist, setChecklist] = useState({});
+  const [dailyTasks, setDailyTasks] = useState(defaultDailyTasks); // Tarefas do checklist operacional (agora vem do banco)
+  const [gerencialTasks, setGerencialTasks] = useState(defaultGerencialTasks); // Tarefas do checklist gerencial
+
+  const fetchData = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      return;
     }
     
-    const { error } = await supabase
-      .from('goals_history')
-      .insert([historyData]);
-    
-    // Não lançar erro se a tabela não existir ainda (para não quebrar a aplicação)
-    if (error && error.code !== '42P01') { // 42P01 = table does not exist
-      console.warn('⚠️ Erro ao salvar histórico de metas (continuando mesmo assim):', error);
-    }
-  } catch (error) {
-    // Não lançar erro - apenas logar
-    console.warn('⚠️ Erro ao salvar histórico de metas (continuando mesmo assim):', error);
-  }
-};
-
-export const updateStore = async (id, updates) => {
-  // Se estiver atualizando goals ou weights, salvar histórico primeiro
-  if (updates.goals || updates.weights) {
+    setLoading(true);
     try {
-      // Buscar dados atuais da loja
-      const { data: currentStore } = await supabase
-        .from('stores')
-        .select('goals, weights')
-        .eq('id', id)
-        .single();
+      // Para lojas, passar storeId para filtrar treinamentos
+      const storeIdForTrainings = user?.role === 'loja' ? user?.storeId : null;
       
-      // Se encontrou a loja, salvar histórico
-      if (currentStore) {
-        // Buscar usuário atual se possível
-        const { data: { user } } = await supabase.auth.getUser();
-        const changedBy = user?.id || null;
-        
-        // Salvar histórico com os valores que serão atualizados
-        await saveGoalsHistory(
-          id,
-          updates.goals || currentStore.goals,
-          updates.weights || currentStore.weights,
-          changedBy
-        );
+      const [
+        fetchedStores,
+        fetchedUsers,
+        fetchedForms,
+        fetchedEvaluations,
+        fetchedCollaborators,
+        fetchedFeedbacks,
+        fetchedTrainings,
+        fetchedTrainingRegistrations,
+        fetchedReturns,
+        fetchedPhysicalMissing,
+        fetchedPatents,
+        fetchedChave,
+        fetchedMenu,
+        fetchedChecklistTasks,
+        fetchedGerencialChecklistTasks,
+      ] = await Promise.all([
+        api.fetchStores(),
+        api.fetchAppUsers(),
+        api.fetchForms(),
+        api.fetchEvaluations(),
+        api.fetchCollaborators(),
+        api.fetchFeedbacks(),
+        api.fetchTrainings(storeIdForTrainings),
+        api.fetchTrainingRegistrations(),
+        api.fetchReturns(),
+        api.fetchPhysicalMissing(),
+        api.fetchAppSettings('patent_settings'),
+        api.fetchAppSettings('chave_content'),
+        api.fetchAppSettings('menu_visibility'),
+        api.fetchChecklistTasks(),
+        api.fetchGerencialChecklistTasks(),
+      ]);
+
+      setStores(fetchedStores);
+      setUsers(fetchedUsers);
+      setForms(fetchedForms);
+      setEvaluations(fetchedEvaluations);
+      setCollaborators(fetchedCollaborators);
+      setFeedbacks(fetchedFeedbacks);
+      setTrainings(fetchedTrainings);
+      setTrainingRegistrations(fetchedTrainingRegistrations);
+      setReturns(fetchedReturns || []);
+      setPhysicalMissing(fetchedPhysicalMissing || []);
+      
+      if (fetchedPatents) setPatentSettings(fetchedPatents);
+      // Garantir que chaveContent sempre seja uma string
+      // fetchAppSettings retorna data?.value diretamente
+      // Se o value for um objeto com initialContent, usar isso; caso contrário, usar o value diretamente ou string vazia
+      if (fetchedChave) {
+        if (typeof fetchedChave === 'object' && fetchedChave !== null && 'initialContent' in fetchedChave) {
+          setChaveContent(fetchedChave.initialContent || '');
+        } else if (typeof fetchedChave === 'string') {
+          setChaveContent(fetchedChave);
+        } else {
+          setChaveContent('');
+        }
+      } else {
+        setChaveContent(''); // Valor padrão se não houver conteúdo
       }
+      if (fetchedMenu) setMenuVisibility(fetchedMenu);
+      
+      // Configurar tarefas do checklist operacional
+      if (fetchedChecklistTasks && fetchedChecklistTasks.length > 0) {
+        setDailyTasks(fetchedChecklistTasks);
+      } else {
+        // Se não houver tarefas no banco, usar as padrão e salvar no banco
+        setDailyTasks(defaultDailyTasks);
+        // Salvar tarefas padrão no banco (assíncrono, não precisa aguardar)
+        api.saveChecklistTasks(defaultDailyTasks).catch(err => {
+          console.warn('Erro ao salvar tarefas padrão do checklist operacional:', err);
+        });
+      }
+
+      // Configurar tarefas do checklist gerencial
+      if (fetchedGerencialChecklistTasks && fetchedGerencialChecklistTasks.length > 0) {
+        setGerencialTasks(fetchedGerencialChecklistTasks);
+      } else {
+        // Se não houver tarefas no banco, usar as padrão e salvar no banco
+        setGerencialTasks(defaultGerencialTasks);
+        // Salvar tarefas padrão no banco (assíncrono, não precisa aguardar)
+        api.saveGerencialChecklistTasks(defaultGerencialTasks).catch(err => {
+          console.warn('Erro ao salvar tarefas padrão do checklist gerencial:', err);
+        });
+      }
+
     } catch (error) {
-      // Não bloquear a atualização se o histórico falhar
-      console.warn('⚠️ Erro ao preparar histórico de metas (continuando mesmo assim):', error);
+      toast({ variant: 'destructive', title: 'Erro ao carregar dados', description: error.message });
+    } finally {
+      setLoading(false);
     }
-  }
-  const { data, error } = await supabase
-    .from('stores')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
+  }, [toast, isAuthenticated, user?.role, user?.storeId]);
 
-// Buscar histórico de metas de uma loja
-export const fetchGoalsHistory = async (storeId, limit = 50) => {
-  try {
-    const { data, error } = await supabase
-      .from('goals_history')
-      .select('*')
-      .eq('store_id', storeId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    // Se a tabela não existir ainda, retornar array vazio
-    if (error.code === '42P01') { // 42P01 = table does not exist
-      console.warn('⚠️ Tabela goals_history não existe ainda. Execute o script CRIAR_HISTORICO_METAS.sql');
-      return [];
-    }
-    throw error;
-  }
-};
-
-export const deleteStore = async (id) => {
-  const { error } = await supabase
-    .from('stores')
-    .delete()
-    .eq('id', id);
-  
-  if (error) throw error;
-};
-
-// ============ USERS ============
-export const fetchAppUsers = async () => {
-  // Buscar usuários da tabela app_users (sem relacionamento automático)
-  const { data, error } = await supabase
-    .from('app_users')
-    .select('*')
-    .order('username');
-  
-  if (error) throw error;
-  
-  // Se houver usuários com store_id, buscar dados das lojas
-  if (data && data.length > 0) {
-    const storeIds = data
-      .map(user => user.store_id)
-      .filter(id => id !== null && id !== undefined);
-    
-    if (storeIds.length > 0) {
-      try {
-        const { data: storesData } = await supabase
-          .from('stores')
-          .select('id, name, code')
-          .in('id', storeIds)
-          .order('code', { ascending: true });
-        
-        // Adicionar dados da loja a cada usuário
-        if (storesData) {
-          const storesMap = new Map(storesData.map(store => [store.id, store]));
-          data.forEach(user => {
-            if (user.store_id && storesMap.has(user.store_id)) {
-              user.store = storesMap.get(user.store_id);
-            }
-          });
-        }
-      } catch (storeError) {
-        // Se falhar ao buscar lojas, continuar sem os dados das lojas
-        console.log('Erro ao buscar dados das lojas:', storeError);
-      }
-    }
-  }
-  
-  return data || [];
-};
-
-// Buscar email do usuário através do auth.users
-// Nota: Isso requer uma função edge ou RPC no Supabase que use a service role key
-// Por enquanto, vamos armazenar o email na tabela app_users ou buscar de outra forma
-export const getUserEmail = async (userId) => {
-  // Tentar buscar o email do usuário
-  // Como não temos acesso direto ao auth.users com anon key,
-  // vamos tentar buscar através de uma função RPC ou edge function
-  // Por enquanto, retornamos null e vamos armazenar o email na tabela app_users
-  
-  // Solução: Armazenar o email na tabela app_users quando criar o usuário
-  // ou buscar através de uma função RPC/Edge que use service role key
-  
-  return null;
-};
-
-export const createAppUser = async (email, password, userData) => {
-  // Senha padrão para primeiro acesso
-  const DEFAULT_PASSWORD = 'afeet10';
-  
-  // Se não houver senha fornecida, usar senha padrão
-  // Todos os novos usuários terão a senha padrão e precisarão definir uma nova senha no primeiro acesso
-  const userPassword = password || DEFAULT_PASSWORD;
-  const sanitizedEmail = email.trim().toLowerCase();
-  
-  // IMPORTANTE: Salvar a sessão atual do admin ANTES de criar o usuário
-  // Isso permite restaurar a sessão após criar o usuário
-  let adminSession = null;
-  let adminAccessToken = null;
-  let adminRefreshToken = null;
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      adminSession = session;
-      adminAccessToken = session.access_token;
-      adminRefreshToken = session.refresh_token;
-      console.log('✅ Sessão do admin salva antes de criar usuário (ID:', session.user.id, ')');
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData();
     } else {
-      console.log('⚠️ Nenhuma sessão ativa antes de criar usuário');
+      setLoading(false);
+      // Clear data on logout
+      setStores([]);
+      setUsers([]);
+      setForms([]);
+      setEvaluations([]);
+      setCollaborators([]);
+      setFeedbacks([]);
+      setTrainings([]);
+      setTrainingRegistrations([]);
+      setReturns([]);
+      setPhysicalMissing([]);
     }
-  } catch (sessionError) {
-    console.warn('Erro ao salvar sessão do admin:', sessionError);
-  }
-  
-  // Criar usuário no auth SEM confirmação de email
-  // O trigger handle_new_user() criará o registro em app_users automaticamente
-  // Não é necessário confirmar email - usuários são criados imediatamente
-  
-  // IMPORTANTE: Garantir que o role seja passado corretamente
-  // Se userData.role não existir ou for vazio, usar 'user' como padrão
-  // Mas priorizar o role passado no userData
-  // DEBUG: Vamos garantir que o role seja sempre passado explicitamente
-  const userRole = userData?.role || 'user';
-  const userStatus = userData?.status || 'active';
-  const userUsername = userData?.username || sanitizedEmail.split('@')[0];
-  const userStoreId = userData?.store_id || null;
-  
-  // DEBUG: Log dos valores que serão passados
-  console.log('📝 Criando usuário com os seguintes dados:', {
-    email: sanitizedEmail,
-    username: userUsername,
-    role: userRole,
-    status: userStatus,
-    store_id: userStoreId
-  });
-  
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: sanitizedEmail,
-    password: userPassword,
-    options: {
-      // Não enviar email de confirmação
-      emailRedirectTo: undefined,
-      // Incluir dados do usuário nos metadados para o trigger usar
-      // IMPORTANTE: Usar os valores explícitos, não o spread que pode sobrescrever
-      // DEBUG: Vamos garantir que o role seja passado como string explícita
-      data: {
-        username: userUsername,
-        role: String(userRole), // Garantir que seja string
-        status: String(userStatus), // Garantir que seja string
-        store_id: userStoreId ? String(userStoreId) : null
+  }, [isAuthenticated, fetchData]);
+
+  // Refresh periódico de dados críticos para multi-usuário (a cada 30 segundos)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(() => {
+      // Refresh dados críticos que mudam frequentemente
+      Promise.all([
+        api.fetchEvaluations(),
+        api.fetchFeedbacks(),
+        api.fetchCollaborators(),
+        api.fetchTrainings(user?.role === 'loja' ? user?.storeId : null),
+        api.fetchTrainingRegistrations(),
+        api.fetchReturns(),
+        api.fetchPhysicalMissing(),
+      ]).then(([newEvaluations, newFeedbacks, newCollaborators, newTrainings, newRegistrations, newReturns, newPhysicalMissing]) => {
+        setEvaluations(newEvaluations);
+        setFeedbacks(newFeedbacks);
+        setCollaborators(newCollaborators);
+        setTrainings(newTrainings);
+        setTrainingRegistrations(newRegistrations);
+        setReturns(newReturns || []);
+        setPhysicalMissing(newPhysicalMissing || []);
+      }).catch(error => {
+        console.warn('Erro ao atualizar dados em background:', error);
+      });
+    }, 30000); // 30 segundos
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, user?.role, user?.storeId]);
+
+  // Refresh quando a janela volta ao foco (usuário volta para a aba)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Refresh dados quando a página volta a ser visível
+        Promise.all([
+        api.fetchEvaluations(),
+        api.fetchFeedbacks(),
+        api.fetchCollaborators(),
+        api.fetchStores(),
+        api.fetchTrainings(user?.role === 'loja' ? user?.storeId : null),
+        api.fetchTrainingRegistrations(),
+        ]).then(([newEvaluations, newFeedbacks, newCollaborators, newStores, newTrainings, newRegistrations]) => {
+          setEvaluations(newEvaluations);
+          setFeedbacks(newFeedbacks);
+          setCollaborators(newCollaborators);
+          setStores(newStores);
+          setTrainings(newTrainings);
+          setTrainingRegistrations(newRegistrations);
+        }).catch(error => {
+          console.warn('Erro ao atualizar dados ao voltar ao foco:', error);
+        });
       }
-    }
-  });
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isAuthenticated]);
   
-  if (authError) {
-    // Se o erro for de usuário já existente
-    if (authError.message?.includes('User already registered') || 
-        authError.message?.includes('already registered') ||
-        (authError.message?.includes('email') && authError.message?.includes('already'))) {
-      throw new Error(`Usuário com o email ${sanitizedEmail} já existe no sistema. Use a função de reset de senha se necessário.`);
-    }
-    throw authError;
-  }
-  
-  // Verificar se o usuário foi criado
-  // Se authData.user for null, pode ser que a confirmação de email esteja habilitada
-  // Nesse caso, ainda podemos continuar - o trigger será executado quando o email for confirmado
-  if (!authData?.user?.id) {
-    // Se o usuário não foi criado imediatamente, pode ser que a confirmação de email esteja habilitada
-    // Mas ainda podemos criar o perfil quando o email for confirmado
-    // Por enquanto, lançar um erro informativo
-    throw new Error(`O usuário não foi criado imediatamente. Isso pode acontecer se a confirmação de email estiver habilitada. Por favor, desabilite a confirmação de email em Authentication > Settings > Email Auth > Desabilite "Enable email confirmations". O sistema não envia email de confirmação, apenas para reset de senha.`);
-  }
-  
-  const userId = authData.user.id;
-  
-  // IMPORTANTE: O signUp do Supabase cria uma sessão automaticamente para o novo usuário
-  // Isso substitui a sessão do admin que está criando o usuário
-  // Precisamos restaurar a sessão do admin imediatamente após criar o usuário
-  // Usando setSession para restaurar a sessão do admin diretamente
-  
-  // O trigger handle_new_user() DEVE criar o perfil automaticamente quando um usuário é criado no auth
-  // IMPORTANTE: Aguardar ANTES de restaurar a sessão para dar tempo ao trigger executar
-  // O trigger precisa que a sessão do novo usuário esteja ativa para funcionar corretamente
-  // Aguardar um pouco para o trigger processar (o trigger é executado imediatamente após INSERT no auth.users)
-  console.log('⏳ Aguardando trigger criar o perfil...');
-  await new Promise(resolve => setTimeout(resolve, 3000)); // Aumentar para 3 segundos para dar mais tempo ao trigger
-  
-  // Restaurar a sessão do admin DEPOIS de aguardar o trigger
-  // Isso garante que o trigger tenha tempo de executar com a sessão do novo usuário
-  if (adminSession && adminAccessToken && adminRefreshToken) {
+  // Wrapper for API calls to refresh local state
+  const handleApiCall = async (apiCall, successMsg) => {
     try {
-      // Restaurar a sessão do admin usando setSession
-      const { data: restoreData, error: restoreError } = await supabase.auth.setSession({
-        access_token: adminAccessToken,
-        refresh_token: adminRefreshToken
+      const result = await apiCall();
+      toast({ title: 'Sucesso!', description: successMsg });
+      fetchData(); // Refresh all data
+      return result;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro na Operação', description: error.message });
+      throw error;
+    }
+  };
+
+  // Stores
+  const addStore = (store) => handleApiCall(() => api.createStore(store), 'Loja adicionada.');
+  const updateStore = (id, data) => handleApiCall(() => api.updateStore(id, data), 'Loja atualizada.');
+  const deleteStore = (id) => handleApiCall(() => api.deleteStore(id), 'Loja removida.');
+
+  // Users
+  const addUser = async (email, password, data) => {
+    try {
+      const result = await api.createAppUser(email, password, data);
+      toast({ 
+        title: 'Sucesso!', 
+        description: 'Usuário criado com sucesso.' 
+      });
+      fetchData(); // Refresh all data
+      return result;
+    } catch (error) {
+      // Mensagem de erro mais específica para foreign key
+      let errorMessage = error.message || 'Erro ao criar usuário';
+      
+      // Se o erro já contém instruções detalhadas (do supabaseService.js), usar a mensagem completa
+      if (error.message?.includes('SOLUCAO_COMPLETA.sql') || error.message?.includes('SOLUÇÃO OBRIGATÓRIA')) {
+        // A mensagem já está completa, usar ela
+        errorMessage = error.message;
+      } else if (error.message?.includes('foreign key') || error.code === '23503') {
+        // Mensagem simplificada para o toast
+        errorMessage = '❌ Erro de configuração do banco de dados.\n\nExecute o script SOLUCAO_COMPLETA.sql no Supabase SQL Editor.\n\nVeja o console ou o arquivo INSTRUCOES_CORRECAO.md para instruções detalhadas.';
+      }
+      
+      // Exibir toast com mensagem (limitada a 500 caracteres para o toast)
+      const toastMessage = errorMessage.length > 500 
+        ? errorMessage.substring(0, 500) + '...\n\nVeja o console para mais detalhes.'
+        : errorMessage;
+      
+      toast({ 
+        variant: 'destructive', 
+        title: 'Erro ao criar usuário', 
+        description: toastMessage,
+        duration: 10000 // 10 segundos para dar tempo de ler
       });
       
-      if (!restoreError && restoreData.session) {
-        console.log('✅ Sessão do admin restaurada com sucesso (ID:', restoreData.session.user.id, ')');
-        
-        // Verificar se a sessão foi realmente restaurada
-        const { data: { session: verifySession } } = await supabase.auth.getSession();
-        if (verifySession && verifySession.user.id === adminSession.user.id) {
-          console.log('✅ Verificação: Sessão do admin confirmada - você permanecerá logado');
-        } else {
-          console.warn('⚠️ Verificação: Sessão pode não ter sido restaurada corretamente');
-          // Se a verificação falhou, tentar restaurar novamente
-          try {
-            await supabase.auth.setSession({
-              access_token: adminAccessToken,
-              refresh_token: adminRefreshToken
-            });
-            console.log('✅ Tentativa de restaurar sessão novamente');
-          } catch (retryError) {
-            console.warn('⚠️ Erro ao tentar restaurar sessão novamente:', retryError);
-          }
-        }
-      } else {
-        console.warn('⚠️ Não foi possível restaurar a sessão do admin:', restoreError);
-        // Se não conseguir restaurar, o admin precisará fazer login novamente
-        console.warn('⚠️ Você precisará fazer login novamente');
-      }
-    } catch (restoreError) {
-      console.error('Erro ao tentar restaurar sessão do admin:', restoreError);
-      // Não fazer signOut automaticamente - deixar o usuário decidir
-      console.warn('⚠️ Você precisará fazer login novamente');
+      // Sempre lançar o erro para que o componente possa tratá-lo também
+      throw error;
     }
-  } else {
-    // Se não temos a sessão do admin salva, não podemos restaurar
-    console.warn('⚠️ Não foi possível salvar a sessão do admin');
-    console.warn('⚠️ Você será deslogado após criar o usuário e precisará fazer login novamente');
-  }
-  
-  // Verificar se o perfil foi criado pelo trigger
-  let profile = null;
-  let attempts = 0;
-  const maxAttempts = 8; // Aguardar até 8 segundos (2s inicial + 6 tentativas de 1s)
-  
-  while (attempts < maxAttempts && !profile) {
-    const { data: existingProfile, error: fetchError } = await supabase
-      .from('app_users')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+  };
+  const updateUser = (id, data) => handleApiCall(() => api.updateAppUser(id, data), 'Usuário atualizado.');
+  const deleteUser = async (id) => {
+    try {
+      await api.deleteAppUser(id);
+      toast({ 
+        title: 'Usuário Excluído!', 
+        description: 'O usuário foi removido completamente do sistema (servidor e web).' 
+      });
+      fetchData(); // Refresh data
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir usuário', description: error.message });
+      throw error;
+    }
+  };
+  const toggleUserStatus = async (id) => {
+    try {
+      const user = users.find(u => u.id === id);
+      if (!user) throw new Error('Usuário não encontrado');
+      
+      // Se status for null/undefined, tratar como 'active' e mudar para 'blocked'
+      const currentStatus = user.status || 'active';
+      const newStatus = currentStatus === 'active' ? 'blocked' : 'active';
+      await handleApiCall(() => api.updateAppUser(id, { status: newStatus }), `Usuário ${newStatus === 'active' ? 'ativado' : 'bloqueado'}.`);
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao alterar status', description: error.message });
+    }
+  };
+  const resetUserPassword = async (email) => {
+    try {
+      await api.resetUserPassword(email);
+      toast({ 
+        title: 'Senha Resetada!', 
+        description: 'A senha do usuário foi resetada para a senha padrão "afeet10". O usuário poderá fazer login com essa senha.' 
+      });
+      fetchData(); // Refresh data
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao resetar senha', description: error.message });
+      throw error;
+    }
+  };
+
+  // Forms
+  const saveForm = (form) => handleApiCall(() => api.createForm(form), 'Formulário salvo.');
+  const updateForm = (id, data) => handleApiCall(() => api.updateForm(id, data), 'Formulário atualizado.');
+  const deleteForm = async (id) => {
+    if (!id) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'ID do formulário é obrigatório' });
+      return;
+    }
     
-    if (existingProfile && !fetchError) {
-      profile = existingProfile;
+    // Salvar o formulário que será excluído para reverter se necessário
+    const formToDelete = forms.find(f => f.id === id);
+    
+    if (!formToDelete) {
+      console.warn('⚠️ Formulário não encontrado no estado local:', id);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Formulário não encontrado' });
+      return;
+    }
+    
+    // Remover IMEDIATAMENTE do estado local (optimistic update)
+    console.log('🗑️ Removendo formulário do estado local imediatamente:', id);
+    setForms(prev => {
+      const filtered = prev.filter(f => f.id !== id);
+      console.log('📊 Formulário removido do estado. Total restante:', filtered.length);
+      return filtered;
+    });
+    
+    // Mostrar toast de sucesso imediatamente
+    toast({ title: 'Sucesso!', description: 'Formulário excluído.' });
+    
+    // Fazer a exclusão no banco de forma assíncrona (não bloquear UI)
+    try {
+      console.log('🗑️ Excluindo formulário no banco de dados:', id);
+      await api.deleteForm(id);
+      console.log('✅ Formulário excluído com sucesso no banco:', id);
       
-      // Se o perfil foi criado pelo trigger, atualizar com os dados adicionais se necessário
-      // IMPORTANTE: Garantir que o role seja atualizado corretamente
-      const userRole = userData?.role || 'user';
-      const userStatus = userData?.status || 'active';
-      const userUsername = userData?.username || sanitizedEmail.split('@')[0];
-      const userStoreId = userData?.store_id || null;
+      // Refresh dados para garantir sincronização (mas não deve trazer o item de volta se foi excluído)
+      setTimeout(() => {
+        fetchData();
+      }, 500);
+    } catch (error) {
+      console.error('❌ Erro ao excluir formulário no banco:', error);
       
-      const needsUpdate = 
-        (userUsername && existingProfile.username !== userUsername) ||
-        (userRole && existingProfile.role !== userRole) ||
-        (userStoreId !== null && existingProfile.store_id !== userStoreId);
+      // Reverter: adicionar o formulário de volta ao estado local
+      console.log('↩️ Revertendo exclusão: adicionando formulário de volta ao estado');
+      setForms(prev => {
+        const exists = prev.find(f => f.id === id);
+        if (!exists) {
+          return [...prev, formToDelete];
+        }
+        return prev;
+      });
       
-      if (needsUpdate) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Erro ao excluir formulário', 
+        description: error.message || 'Não foi possível excluir o formulário. Tente novamente.' 
+      });
+    }
+  };
+
+  // Evaluations
+  const addEvaluation = (evalData) => handleApiCall(() => api.createEvaluation(evalData), 'Avaliação enviada.');
+  const updateEvaluationStatus = (id, status) => handleApiCall(() => api.updateEvaluation(id, { status }), 'Status da avaliação atualizado.');
+  const approveEvaluation = (id) => handleApiCall(() => api.updateEvaluation(id, { status: 'approved' }), 'Avaliação aprovada! A avaliação agora conta para a pontuação.');
+  const deleteEvaluation = async (id) => {
+    if (!id) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'ID da avaliação é obrigatório' });
+      return;
+    }
+    
+    // Salvar a avaliação que será excluída para reverter se necessário
+    const evaluationToDelete = evaluations.find(e => e.id === id);
+    
+    if (!evaluationToDelete) {
+      console.warn('⚠️ Avaliação não encontrada no estado local:', id);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Avaliação não encontrada' });
+      return;
+    }
+    
+    // Remover IMEDIATAMENTE do estado local (optimistic update)
+    // Isso força o recálculo INSTANTÂNEO das pontuações no Dashboard e Ranking
+    console.log('🗑️ Removendo avaliação do estado local imediatamente:', id);
+    setEvaluations(prev => {
+      const filtered = prev.filter(e => e.id !== id);
+      console.log('📊 Avaliação removida do estado. Total restante:', filtered.length);
+      console.log('📊 IDs restantes:', filtered.map(e => e.id));
+      return filtered;
+    });
+    
+    // Mostrar toast de sucesso imediatamente
+    toast({ title: 'Sucesso!', description: 'Avaliação removida.' });
+    
+    // Fazer a exclusão no banco de forma assíncrona (não bloquear UI)
+    // Se falhar, vamos reverter o estado
+    api.deleteEvaluation(id)
+      .then((result) => {
+        if (!result || !result.success) {
+          throw new Error('A exclusão não foi confirmada pelo servidor');
+        }
+        
+        console.log('✅ Avaliação excluída do banco de dados:', result);
+        
+        // Aguardar um pouco para garantir que a exclusão foi commitada
+        return new Promise(resolve => setTimeout(resolve, 2000));
+      })
+      .then(() => {
+        // Recarregar dados do banco APENAS para sincronizar com outros usuários
+        // Mas filtrar para não trazer a avaliação excluída de volta
+        console.log('🔄 Recarregando dados para sincronização...');
+        return fetchData();
+      })
+      .then(() => {
+        // Verificar se a avaliação ainda está no estado (não deveria estar)
+        const stillExists = evaluations.some(e => e.id === id);
+        if (stillExists) {
+          console.warn('⚠️ Avaliação ainda aparece após recarregar. Removendo novamente...');
+          setEvaluations(prev => prev.filter(e => e.id !== id));
+        }
+        console.log('✅ Sincronização concluída. Avaliação excluída permanentemente.');
+      })
+      .catch((error) => {
+        // Se falhar, reverter o optimistic update
+        console.error('❌ Erro ao excluir avaliação do banco:', error);
+        
+        // Reverter o estado
+        setEvaluations(prev => {
+          const exists = prev.find(e => e.id === id);
+          if (!exists && evaluationToDelete) {
+            console.log('🔄 Revertendo exclusão. Adicionando avaliação de volta ao estado.');
+            return [...prev, evaluationToDelete];
+          }
+          return prev;
+        });
+        
+        // Recarregar dados para garantir consistência
+        fetchData().catch(err => console.error('Erro ao recarregar dados:', err));
+        
+        toast({ 
+          variant: 'destructive', 
+          title: 'Erro na Operação', 
+          description: error.message || 'Não foi possível excluir a avaliação. Ela foi restaurada.' 
+        });
+      });
+  };
+  
+  // Collaborators
+  const addCollaborator = (collabData) => handleApiCall(() => api.createCollaborator(collabData), 'Colaborador adicionado.');
+  const deleteCollaborator = (id) => handleApiCall(() => api.deleteCollaborator(id), 'Colaborador removido.');
+
+  // Trainings
+  const addTraining = (trainingData) => handleApiCall(() => api.createTraining(trainingData), 'Treinamento criado.');
+  const updateTraining = (id, data) => handleApiCall(() => api.updateTraining(id, data), 'Treinamento atualizado.');
+  const deleteTraining = (id) => handleApiCall(() => api.deleteTraining(id), 'Treinamento removido.');
+  
+  // Training Registrations
+  const addTrainingRegistration = (registrationData) => handleApiCall(() => api.createTrainingRegistration(registrationData), 'Inscrição realizada com sucesso.');
+  const updateTrainingRegistration = (id, data) => handleApiCall(() => api.updateTrainingRegistration(id, data), 'Inscrição atualizada.');
+  const deleteTrainingRegistration = (id) => handleApiCall(() => api.deleteTrainingRegistration(id), 'Inscrição cancelada.');
+
+  // Feedback
+  const addFeedback = (feedbackData) => handleApiCall(() => api.createFeedback(feedbackData), 'Feedback enviado.');
+  const deleteFeedbacksBySatisfaction = async (satisfactionLevels) => {
+    if (!satisfactionLevels || !Array.isArray(satisfactionLevels) || satisfactionLevels.length === 0) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'Níveis de satisfação são obrigatórios' });
+      return;
+    }
+    
+    try {
+      const result = await api.deleteFeedbacksBySatisfaction(satisfactionLevels);
+      const count = result.deleted || 0;
+      toast({ 
+        title: 'Sucesso!', 
+        description: `${count} feedback(s) excluído(s) com sucesso.` 
+      });
+      fetchData(); // Refresh dados
+      return result;
+    } catch (error) {
+      toast({ 
+        variant: 'destructive', 
+        title: 'Erro ao excluir feedbacks', 
+        description: error.message || 'Não foi possível excluir os feedbacks.' 
+      });
+      throw error;
+    }
+  };
+  const deleteFeedback = async (feedbackId) => {
+    if (!feedbackId) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'ID do feedback é obrigatório' });
+      return;
+    }
+    
+    // Salvar o feedback que será excluído para reverter se necessário
+    const feedbackToDelete = feedbacks.find(f => f.id === feedbackId);
+    
+    if (!feedbackToDelete) {
+      console.warn('⚠️ Feedback não encontrado no estado local:', feedbackId);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Feedback não encontrado' });
+      return;
+    }
+    
+    // Remover IMEDIATAMENTE do estado local (optimistic update)
+    console.log('🗑️ Removendo feedback do estado local imediatamente:', feedbackId);
+    setFeedbacks(prev => {
+      const filtered = prev.filter(f => f.id !== feedbackId);
+      console.log('📊 Feedback removido do estado. Total restante:', filtered.length);
+      return filtered;
+    });
+    
+    // Mostrar toast de sucesso imediatamente
+    toast({ title: 'Sucesso!', description: 'Feedback excluído.' });
+    
+    // Fazer a exclusão no banco de forma assíncrona (não bloquear UI)
+    try {
+      console.log('🗑️ Excluindo feedback no banco de dados:', feedbackId);
+      const result = await api.deleteFeedback(feedbackId);
+      console.log('✅ Feedback excluído com sucesso no banco:', result);
+      
+      // Refresh dados para garantir sincronização (mas não deve trazer o item de volta se foi excluído)
+      setTimeout(() => {
+        fetchData();
+      }, 500);
+    } catch (error) {
+      console.error('❌ Erro ao excluir feedback no banco:', error);
+      
+      // Reverter: adicionar o feedback de volta ao estado local
+      console.log('↩️ Revertendo exclusão: adicionando feedback de volta ao estado');
+      setFeedbacks(prev => {
+        const exists = prev.find(f => f.id === feedbackId);
+        if (!exists) {
+          return [...prev, feedbackToDelete];
+        }
+        return prev;
+      });
+      
+      toast({ 
+        variant: 'destructive', 
+        title: 'Erro ao excluir feedback', 
+        description: error.message || 'Não foi possível excluir o feedback. Tente novamente.' 
+      });
+    }
+  };
+
+  // Settings
+  const updatePatentSettings = (settings) => handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
+  const updateChaveContent = (content) => handleApiCall(() => api.upsertAppSettings('chave_content', { initialContent: content }), 'Conteúdo da CHAVE atualizado.');
+  const updateMenuVisibility = (visibility) => handleApiCall(() => api.upsertAppSettings('menu_visibility', visibility), 'Visibilidade do menu atualizada.');
+
+  // Checklist operacional ou gerencial
+  const updateChecklist = async (storeId, taskId, isChecked, checklistType = 'operacional', updateBoth = false) => {
+    try {
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const currentChecklist = await api.fetchDailyChecklist(storeId, todayStr, checklistType);
+      
+      const newTasks = { ...(currentChecklist?.tasks || {}), [taskId]: isChecked };
+      
+      // Salvar o checklist atual
+      await api.upsertDailyChecklist(storeId, todayStr, newTasks, checklistType);
+      
+      // Se updateBoth for true, atualizar também o outro checklist
+      // Isso é útil quando admin/supervisor edita e quer garantir que ambos estejam sincronizados
+      if (updateBoth) {
+        const otherType = checklistType === 'operacional' ? 'gerencial' : 'operacional';
         try {
-          const { data: updatedProfile, error: updateError } = await supabase
-            .from('app_users')
-            .update({
-              username: userUsername,
-              role: userRole,
-              status: userStatus,
-              store_id: userStoreId
-            })
-            .eq('id', userId)
-            .select()
-            .single();
-          
-          if (!updateError && updatedProfile) {
-            profile = updatedProfile;
-            console.log('✅ Perfil atualizado com dados corretos');
+          // Buscar o checklist do outro tipo
+          const otherChecklist = await api.fetchDailyChecklist(storeId, todayStr, otherType);
+          // Atualizar com as mesmas tarefas (mas apenas se o taskId existir no outro checklist)
+          if (otherChecklist?.tasks && otherChecklist.tasks.hasOwnProperty(taskId)) {
+            const otherNewTasks = { ...otherChecklist.tasks, [taskId]: isChecked };
+            await api.upsertDailyChecklist(storeId, todayStr, otherNewTasks, otherType);
           }
-        } catch (updateErr) {
-          // Se falhar ao atualizar, usar o perfil que já existe
-          console.warn('Erro ao atualizar perfil:', updateErr);
+        } catch (otherError) {
+          // Se falhar ao atualizar o outro checklist, não bloquear a atualização do atual
+          console.warn('Erro ao atualizar outro checklist:', otherError);
         }
       }
       
-      // Sessão do admin já foi restaurada no início da função (se possível)
-      break;
+      setChecklist(prev => ({
+        ...prev,
+        [storeId]: { ...(prev[storeId] || { date: todayStr }), tasks: newTasks, checklist_type: checklistType }
+      }));
+      
+    } catch(error){
+      toast({ variant: 'destructive', title: 'Erro no Checklist', description: error.message });
     }
-    
-    // Se não encontrou, aguardar e tentar novamente
-    attempts++;
-    if (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-  
-  // Se o trigger não criou o perfil após todas as tentativas, tentar criar manualmente
-  if (!profile) {
-    console.warn('Trigger não criou o perfil, tentando criar manualmente...');
-    
+  };
+
+  // Gerenciamento de tarefas do checklist operacional (admin)
+  const updateChecklistTasks = async (tasks) => {
     try {
-      // PRIMEIRO: Tentar usar a função RPC (mais confiável - usa SECURITY DEFINER)
-      // Aguardar um pouco mais para garantir que o usuário foi commitado no banco
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Tentar usar a função RPC com retry (mais confiável - usa SECURITY DEFINER)
-      let rpcSuccess = false;
-      let rpcAttempts = 0;
-      const maxRpcAttempts = 3;
-      
-      while (!rpcSuccess && rpcAttempts < maxRpcAttempts) {
-        try {
-          const { data: rpcResult, error: rpcError } = await supabase.rpc('create_user_profile', {
-            p_user_id: userId,
-            p_username: userUsername,
-            p_role: userRole,
-            p_status: userStatus,
-            p_store_id: userStoreId,
-          });
-          
-          if (!rpcError && rpcResult?.success) {
-            // Se a função RPC funcionou, buscar o perfil criado
-            await new Promise(resolve => setTimeout(resolve, 500)); // Aguardar um pouco para garantir
-            
-            const { data: createdProfile, error: fetchError } = await supabase
-              .from('app_users')
-              .select('*')
-              .eq('id', userId)
-              .single();
-            
-            if (createdProfile && !fetchError) {
-              profile = createdProfile;
-              console.log('✅ Perfil criado via função RPC com sucesso');
-              
-              // Verificar se o role está correto e atualizar se necessário
-              if (profile.role !== userRole) {
-                console.warn(`Role do perfil (${profile.role}) diferente do esperado (${userRole}), atualizando...`);
-                try {
-                  const { data: updatedProfile, error: updateError } = await supabase
-                    .from('app_users')
-                    .update({ role: userRole, status: userStatus, store_id: userStoreId })
-                    .eq('id', userId)
-                    .select()
-                    .single();
-                  
-                  if (!updateError && updatedProfile) {
-                    profile = updatedProfile;
-                    console.log('✅ Perfil atualizado com role correto');
-                  }
-                } catch (updateErr) {
-                  console.warn('Erro ao atualizar role do perfil:', updateErr);
-                }
-              }
-              
-              rpcSuccess = true;
-              
-              // SignOut já foi feito no início da função, não precisa fazer novamente
-              return profile;
-            } else if (fetchError) {
-              console.warn(`Perfil criado via RPC mas erro ao buscar (tentativa ${rpcAttempts + 1}/${maxRpcAttempts}):`, fetchError);
-            }
-          } else if (rpcError) {
-            // Se o erro for 404, a função não existe
-            if (rpcError.code === 'PGRST202' || rpcError.message?.includes('not found')) {
-              console.warn(`Função RPC não encontrada (tentativa ${rpcAttempts + 1}/${maxRpcAttempts}). Execute o script CRIAR_FUNCAO_RPC_AGORA.sql no Supabase SQL Editor.`);
-              break; // Não tentar novamente se a função não existe
-            } else {
-              console.warn(`Função RPC falhou (tentativa ${rpcAttempts + 1}/${maxRpcAttempts}):`, rpcError);
-            }
-          }
-        } catch (rpcErr) {
-          console.warn(`Erro ao chamar função RPC (tentativa ${rpcAttempts + 1}/${maxRpcAttempts}):`, rpcErr);
-        }
-        
-        rpcAttempts++;
-        if (!rpcSuccess && rpcAttempts < maxRpcAttempts) {
-          // Aguardar antes de tentar novamente
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-      
-      // Se a função RPC não funcionou após todas as tentativas, continuar para inserir diretamente
-      if (!rpcSuccess) {
-        console.warn('Função RPC não funcionou após todas as tentativas, tentando inserir diretamente...');
-      }
-      
-      // SEGUNDO: Se a função RPC não funcionou, tentar inserir diretamente
-      // Aguardar mais um pouco para garantir que o usuário foi commitado
-      if (!profile) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        const profileData = {
-          id: userId,
-          status: userStatus,
-          username: userUsername,
-          role: userRole,
-          store_id: userStoreId,
-        };
-        
-        const { data: createdProfile, error: createError } = await supabase
-    .from('app_users')
-          .insert([profileData])
-    .select()
-    .single();
-  
-        if (createError) {
-          // Se o erro for de foreign key, verificar se é problema de timing ou foreign key incorreta
-          if (createError.code === '23503' || createError.message?.includes('foreign key')) {
-            // Verificar se o usuário realmente existe no auth.users
-            // Se não existir, pode ser problema de timing ou confirmação de email
-            const errorDetails = createError.message || '';
-            
-            // Tentar verificar se o usuário existe no auth.users
-            // Se a função RPC não funcionou e a inserção direta falhou, pode ser que:
-            // 1. O usuário ainda não foi commitado (problema de timing)
-            // 2. A confirmação de email está habilitada e o usuário não está ativo
-            // 3. A foreign key está incorreta (mas o script disse que está correta)
-            
-            const errorMsg = `❌ ERRO: Não foi possível criar o perfil do usuário.
-
-Usuário criado no auth.users (ID: ${userId}), mas não foi possível criar o perfil em app_users.
-
-CAUSA POSSÍVEL: 
-- O trigger não executou automaticamente
-- A função RPC create_user_profile não está disponível ou falhou
-- Problema de timing: o usuário pode ainda não estar disponível no banco
-- A confirmação de email pode estar habilitada (desabilite em Authentication > Settings)
-
-SOLUÇÃO:
-1. Verifique se a confirmação de email está DESABILITADA:
-   - Authentication > Settings > Email Auth
-   - Desabilite "Enable email confirmations"
-   - Clique em "Save"
-
-2. Verifique se a função RPC create_user_profile foi criada:
-   - Execute o script: SOLUCAO_DEFINITIVA.sql no Supabase SQL Editor
-   - Verifique se a função foi criada no PASSO 9
-
-3. Verifique os logs do Supabase para ver se o trigger está executando
-
-4. Tente criar o usuário novamente após alguns segundos
-
-Detalhes do erro: ${createError.message}
-Código do erro: ${createError.code}`;
-            
-            throw new Error(errorMsg);
-          }
-          
-          // Se for outro erro, lançar normalmente
-          throw createError;
-        }
-        
-        // Se conseguiu criar manualmente, retornar o perfil criado
-        profile = createdProfile;
-        console.log('✅ Perfil criado diretamente com sucesso');
-        
-        // SignOut já foi feito no início da função, não precisa fazer novamente
-      }
-    } catch (manualCreateError) {
-      // Se falhar ao criar manualmente, lançar erro detalhado
-      const errorMessage = manualCreateError.message || String(manualCreateError);
-      const isForeignKeyError = errorMessage.includes('foreign key') || 
-                                errorMessage.includes('23503') ||
-                                errorMessage.includes('Key is not present in table');
-      
-      let errorMsg;
-      if (isForeignKeyError) {
-        errorMsg = `❌ ERRO: Não foi possível criar o perfil do usuário.
-
-Usuário criado no auth.users (ID: ${userId}), mas não foi possível criar o perfil em app_users.
-
-CAUSA POSSÍVEL:
-- Problema de timing: o usuário pode ainda não estar disponível no banco quando tentamos criar o perfil
-- A confirmação de email pode estar habilitada (desabilite em Authentication > Settings)
-- O trigger não executou e a função RPC não está disponível
-
-SOLUÇÃO:
-1. IMPORTANTE: Desabilite a confirmação de email:
-   - Authentication > Settings > Email Auth
-   - Desabilite "Enable email confirmations"
-   - Clique em "Save"
-
-2. Verifique se a função RPC create_user_profile foi criada:
-   - Execute o script: SOLUCAO_DEFINITIVA.sql no Supabase SQL Editor
-   - Verifique se a função foi criada no PASSO 9
-
-3. Aguarde alguns segundos e tente criar o usuário novamente
-
-4. Se o problema persistir, verifique os logs do Supabase
-
-Detalhes do erro: ${errorMessage}`;
-      } else {
-        errorMsg = `❌ ERRO: Não foi possível criar o perfil do usuário.
-
-Usuário criado no auth.users (ID: ${userId}), mas não foi possível criar o perfil em app_users.
-
-ERRO: ${errorMessage}
-
-SOLUÇÃO:
-1. Desabilite a confirmação de email em Authentication > Settings
-2. Execute o script SQL: SOLUCAO_DEFINITIVA.sql no Supabase SQL Editor
-3. Verifique se a função create_user_profile foi criada
-4. Tente criar o usuário novamente após alguns segundos`;
-      }
-      
-      throw new Error(errorMsg);
-    }
-  }
-  
-  // IMPORTANTE: Verificar se o perfil foi criado com o role correto
-  // Se não, atualizar o perfil com o role correto
-  if (profile) {
-    // Verificar se o role está correto
-    if (profile.role !== userRole) {
-      console.warn(`⚠️ Role do perfil (${profile.role}) diferente do esperado (${userRole}), atualizando...`);
-      try {
-        const { data: updatedProfile, error: updateError } = await supabase
-          .from('app_users')
-          .update({ 
-            role: userRole,
-            status: userStatus,
-            username: userUsername,
-            store_id: userStoreId
-          })
-          .eq('id', userId)
-          .select()
-          .single();
-        
-        if (!updateError && updatedProfile) {
-          profile = updatedProfile;
-          console.log(`✅ Perfil atualizado com role correto: ${userRole}`);
-        } else {
-          console.error('❌ Erro ao atualizar role do perfil:', updateError);
-        }
-      } catch (updateErr) {
-        console.error('❌ Erro ao atualizar role do perfil:', updateErr);
-      }
-    } else {
-      console.log(`✅ Perfil criado com role correto: ${userRole}`);
-    }
-  }
-  
-  // A sessão do admin já foi restaurada (se possível) no início da função
-  // Não precisamos fazer nada adicional aqui
-  
-  return profile;
-};
-
-export const updateAppUser = async (id, updates) => {
-  const { data, error } = await supabase
-    .from('app_users')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const deleteAppUser = async (id) => {
-  // Validar ID do usuário
-  if (!id) {
-    throw new Error('ID do usuário é obrigatório');
-  }
-  
-  // Tentar usar a função RPC para excluir o usuário completamente
-  try {
-    const { data, error } = await supabase.rpc('delete_user_completely', {
-      p_user_id: id
-    });
-    
-    if (error) {
-      // Se a função RPC não existir, tentar alternativa
-      if (error.code === 'PGRST202' || error.message?.includes('not found')) {
-        console.warn('Função RPC não encontrada, tentando método alternativo...');
-        
-        // Método alternativo: excluir apenas de app_users
-        // Nota: Isso não excluirá o usuário de auth.users
-        // O usuário ainda existirá no sistema de autenticação
-        const { error: deleteError } = await supabase
-          .from('app_users')
-          .delete()
-          .eq('id', id);
-        
-        if (deleteError) {
-          throw deleteError;
-        }
-        
-        // Avisar que a exclusão foi parcial
-        console.warn('⚠️ Usuário excluído apenas de app_users. Execute o script CRIAR_FUNCAO_EXCLUIR_USUARIO.sql no Supabase SQL Editor para excluir completamente.');
-        throw new Error('Função RPC não disponível. Execute o script CRIAR_FUNCAO_EXCLUIR_USUARIO.sql no Supabase SQL Editor para excluir completamente.');
-      }
-      
+      await api.saveChecklistTasks(tasks);
+      setDailyTasks(tasks);
+      toast({ title: 'Sucesso!', description: 'Tarefas do checklist operacional atualizadas.' });
+      // Recarregar dados para atualizar as tarefas em toda a aplicação
+      fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar tarefas', description: error.message });
       throw error;
     }
-    
-    // Verificar se a função retornou sucesso
-    if (data && data.success) {
-      console.log('✅ Usuário excluído com sucesso:', data.message);
-      return true;
-    } else if (data && !data.success) {
-      throw new Error(data.error || 'Erro ao excluir usuário');
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Erro ao excluir usuário:', error);
-    throw error;
-  }
-};
-
-// Reset de senha de um usuário específico (admin)
-// Recebe o email do usuário e envia email de recuperação
-export const resetUserPassword = async (email) => {
-  const sanitizedEmail = email.trim().toLowerCase();
-  const DEFAULT_PASSWORD = 'afeet10';
-  
-  // Validar email
-  if (!sanitizedEmail) {
-    throw new Error('Email é obrigatório');
-  }
-  
-  // Tentar usar a função RPC para resetar a senha para a senha padrão
-  try {
-    const { data, error } = await supabase.rpc('reset_user_password_to_default', {
-      p_email: sanitizedEmail
-    });
-    
-    if (error) {
-      // Se a função RPC não existir, tentar alternativa
-      if (error.code === 'PGRST202' || error.message?.includes('not found')) {
-        console.warn('Função RPC não encontrada, tentando método alternativo...');
-        
-        // Método alternativo: usar a API Admin do Supabase
-        // Como não temos acesso direto à API Admin, vamos usar uma abordagem diferente
-        // Buscar o usuário pelo email e usar updateUser se o usuário estiver logado
-        // Mas isso não funciona para outros usuários
-        
-        // Por enquanto, vamos lançar um erro com instruções
-        throw new Error(`Não foi possível resetar a senha. A função RPC não está disponível. Execute o script CRIAR_FUNCAO_RESET_SENHA.sql no Supabase SQL Editor para criar a função necessária.`);
-      }
-      
-      throw error;
-    }
-    
-    // Verificar se a função retornou sucesso
-    if (data && data.success) {
-      console.log('✅ Senha resetada com sucesso:', data.message);
-      return true;
-    } else if (data && !data.success) {
-      throw new Error(data.error || 'Erro ao resetar senha');
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Erro ao resetar senha:', error);
-    throw error;
-  }
-};
-
-// ============ FORMS ============
-export const fetchForms = async () => {
-  const { data, error } = await supabase
-    .from('forms')
-    .select('*')
-    .order('created_at', { ascending: false });
-  
-  if (error) throw error;
-  return data || [];
-};
-
-export const createForm = async (formData) => {
-  const { data, error } = await supabase
-    .from('forms')
-    .insert([formData])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const updateForm = async (id, updates) => {
-  const { data, error } = await supabase
-    .from('forms')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const deleteForm = async (id) => {
-  if (!id) {
-    throw new Error('ID do formulário é obrigatório');
-  }
-  
-  console.log('🗑️ Tentando excluir formulário:', id);
-  
-  // Primeiro, verificar se o formulário existe
-  const { data: existingForm, error: fetchError } = await supabase
-    .from('forms')
-    .select('id')
-    .eq('id', id)
-    .maybeSingle();
-  
-  if (fetchError) {
-    console.error('❌ Erro ao verificar formulário:', fetchError);
-    throw fetchError;
-  }
-  
-  if (!existingForm) {
-    console.warn('⚠️ Formulário não encontrado:', id);
-    // Se não existe, considerar como sucesso (já foi excluído)
-    return { success: true, deleted: false };
-  }
-  
-  // Tentar excluir
-  const { data, error } = await supabase
-    .from('forms')
-    .delete()
-    .eq('id', id)
-    .select();
-  
-  if (error) {
-    console.error('❌ Erro ao excluir formulário:', error);
-    throw error;
-  }
-  
-  // Verificar se realmente foi excluído
-  const { data: verifyDeleted, error: verifyError } = await supabase
-    .from('forms')
-    .select('id')
-    .eq('id', id)
-    .maybeSingle();
-  
-  if (verifyError && verifyError.code !== 'PGRST116') {
-    console.error('❌ Erro ao verificar exclusão:', verifyError);
-    throw verifyError;
-  }
-  
-  if (verifyDeleted) {
-    console.error('❌ Formulário ainda existe após exclusão:', id);
-    throw new Error('A exclusão falhou. O formulário ainda existe no banco de dados.');
-  }
-  
-  console.log('✅ Formulário excluído com sucesso:', id);
-  return { success: true, deleted: true, data };
-};
-
-// ============ EVALUATIONS ============
-export const fetchEvaluations = async () => {
-  // Buscar avaliações sem relacionamento automático
-  const { data, error } = await supabase
-    .from('evaluations')
-    .select('*')
-    .order('created_at', { ascending: false });
-  
-  if (error) throw error;
-  
-  // Se houver dados, buscar informações das lojas e usuários separadamente
-  if (data && data.length > 0) {
-    // Buscar store_ids únicos
-    const storeIds = [...new Set(data.map(evaluation => evaluation.store_id).filter(id => id))];
-    const userIds = [...new Set(data.map(evaluation => evaluation.user_id).filter(id => id))];
-    
-    // Buscar dados das lojas
-    if (storeIds.length > 0) {
-      try {
-        const { data: storesData } = await supabase
-          .from('stores')
-          .select('id, name, code')
-          .in('id', storeIds)
-          .order('code', { ascending: true });
-        
-        if (storesData) {
-          const storesMap = new Map(storesData.map(store => [store.id, store]));
-          data.forEach(evaluation => {
-            if (evaluation.store_id && storesMap.has(evaluation.store_id)) {
-              evaluation.store = storesMap.get(evaluation.store_id);
-            }
-          });
-        }
-      } catch (storeError) {
-        console.log('Erro ao buscar dados das lojas:', storeError);
-      }
-    }
-    
-    // Buscar dados dos usuários
-    if (userIds.length > 0) {
-      try {
-        const { data: usersData } = await supabase
-          .from('app_users')
-          .select('id, username')
-          .in('id', userIds);
-        
-        if (usersData) {
-          const usersMap = new Map(usersData.map(user => [user.id, user]));
-          data.forEach(evaluation => {
-            if (evaluation.user_id && usersMap.has(evaluation.user_id)) {
-              evaluation.app_user = usersMap.get(evaluation.user_id);
-            }
-          });
-        }
-      } catch (userError) {
-        console.log('Erro ao buscar dados dos usuários:', userError);
-      }
-    }
-    
-    // Converter snake_case para camelCase para manter consistência com o frontend
-    return data.map(evaluation => ({
-      ...evaluation,
-      storeId: evaluation.store_id,
-      formId: evaluation.form_id,
-      userId: evaluation.user_id,
-      date: evaluation.created_at || evaluation.date
-    }));
-  }
-  
-  return data || [];
-};
-
-export const createEvaluation = async (evaluationData) => {
-  // Converter camelCase para snake_case
-  // NOTA: A tabela evaluations não tem coluna user_id, então não incluímos
-  
-  // Validar campos obrigatórios
-  if (!evaluationData.storeId && !evaluationData.store_id) {
-    throw new Error('storeId é obrigatório');
-  }
-  if (!evaluationData.formId && !evaluationData.form_id) {
-    throw new Error('formId é obrigatório');
-  }
-  
-  const dataToInsert = {
-    store_id: evaluationData.storeId || evaluationData.store_id,
-    form_id: evaluationData.formId || evaluationData.form_id,
-    score: evaluationData.score || 0,
-    answers: evaluationData.answers || {},
-    pillar: evaluationData.pillar || null,
-    status: evaluationData.status || 'pending'
   };
-  
-  // Limpar campos undefined para evitar problemas
-  Object.keys(dataToInsert).forEach(key => {
-    if (dataToInsert[key] === undefined) {
-      delete dataToInsert[key];
-    }
-  });
-  
-  // Garantir que estamos usando apenas snake_case
-  // Remover qualquer propriedade em camelCase que possa ter sobrado
-  const cleanData = {
-    store_id: dataToInsert.store_id,
-    form_id: dataToInsert.form_id,
-    score: dataToInsert.score,
-    answers: dataToInsert.answers,
-    pillar: dataToInsert.pillar,
-    status: dataToInsert.status
-  };
-  
-  console.log('📤 Enviando avaliação para o banco:', cleanData);
-  
-  // Especificar explicitamente as colunas no select para evitar incluir user_id
-  const { data, error } = await supabase
-    .from('evaluations')
-    .insert([cleanData])
-    .select('id, store_id, form_id, score, answers, pillar, status, created_at, updated_at')
-    .single();
-  
-  if (error) {
-    console.error('❌ Erro ao criar avaliação:', error);
-    console.error('📋 Dados que tentaram ser inseridos:', cleanData);
-    console.error('🔍 Código do erro:', error.code);
-    console.error('📝 Mensagem do erro:', error.message);
-    throw error;
-  }
-  
-  console.log('✅ Avaliação criada com sucesso:', data);
-  
-  // Converter snake_case para camelCase no retorno para consistência
-  return {
-    ...data,
-    storeId: data.store_id,
-    formId: data.form_id,
-    userId: data.user_id || null
-  };
-};
 
-export const updateEvaluation = async (id, updates) => {
-  const { data, error } = await supabase
-    .from('evaluations')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const deleteEvaluation = async (id) => {
-  if (!id) {
-    throw new Error('ID da avaliação é obrigatório');
-  }
-  
-  console.log('🗑️ Tentando excluir avaliação:', id);
-  
-  // Primeiro, verificar se a avaliação existe
-  const { data: existingEvaluation, error: fetchError } = await supabase
-    .from('evaluations')
-    .select('id')
-    .eq('id', id)
-    .maybeSingle();
-  
-  if (fetchError) {
-    console.error('❌ Erro ao verificar avaliação:', fetchError);
-    throw fetchError;
-  }
-  
-  if (!existingEvaluation) {
-    console.warn('⚠️ Avaliação não encontrada:', id);
-    // Se não existe, considerar como sucesso (já foi excluída)
-    return { success: true, deleted: false };
-  }
-  
-  // Tentar excluir
-  const { data, error } = await supabase
-    .from('evaluations')
-    .delete()
-    .eq('id', id)
-    .select();
-  
-  if (error) {
-    console.error('❌ Erro ao excluir avaliação:', error);
-    throw error;
-  }
-  
-  // Se não houve erro, a exclusão foi bem-sucedida
-  // Confiar no resultado do Supabase (pode haver cache/RLS que faz a verificação falhar)
-  console.log('✅ Avaliação excluída com sucesso:', id, data);
-  return { success: true, deleted: true, data };
-};
-
-// ============ COLLABORATORS ============
-export const fetchCollaborators = async (storeId = null) => {
-  let query = supabase
-    .from('collaborators')
-    .select('*')
-    .order('name');
-  
-  if (storeId) {
-    query = query.eq('store_id', storeId);
-  }
-  
-  const { data, error } = await query;
-  
-  if (error) throw error;
-  
-  // Converter store_id para storeId no retorno para manter consistência com o frontend
-  if (data && data.length > 0) {
-    return data.map(collab => ({
-      ...collab,
-      storeId: collab.store_id
-    }));
-  }
-  
-  return data || [];
-};
-
-export const createCollaborator = async (collaboratorData) => {
-  // Converter storeId (camelCase) para store_id (snake_case) se necessário
-  const dataToInsert = {
-    name: collaboratorData.name,
-    role: collaboratorData.role,
-    store_id: collaboratorData.store_id || collaboratorData.storeId,
-    cpf: collaboratorData.cpf || null,
-    email: collaboratorData.email || null
-  };
-  
-  const { data, error } = await supabase
-    .from('collaborators')
-    .insert([dataToInsert])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  
-  // Converter store_id para storeId no retorno para manter consistência com o frontend
-  if (data) {
-    return {
-      ...data,
-      storeId: data.store_id
-    };
-  }
-  
-  return data;
-};
-
-export const deleteCollaborator = async (id) => {
-  const { error } = await supabase
-    .from('collaborators')
-    .delete()
-    .eq('id', id);
-  
-  if (error) throw error;
-};
-
-// ============ TRAININGS ============
-export const fetchTrainings = async (storeId = null) => {
-  console.log('🔍 [fetchTrainings] Iniciando busca, storeId:', storeId);
-  
-  let query = supabase
-    .from('trainings')
-    .select('*')
-    .order('training_date', { ascending: true });
-  
-  // Se for loja, filtrar por lojas específicas ou treinamentos sem lojas específicas
-  if (storeId) {
-    // Buscar todos os treinamentos para filtrar no código
-    // IMPORTANTE: RLS deve permitir que lojas vejam treinamentos disponíveis
-    const { data: allTrainings, error: fetchError } = await supabase
-      .from('trainings')
-      .select('*')
-      .order('training_date', { ascending: true });
-    
-    if (fetchError) {
-      console.error('❌ [fetchTrainings] Erro ao buscar treinamentos:', fetchError);
-      console.error('❌ [fetchTrainings] Detalhes do erro:', {
-        message: fetchError.message,
-        code: fetchError.code,
-        details: fetchError.details,
-        hint: fetchError.hint
-      });
-      throw fetchError;
-    }
-    
-    console.log('🔍 [fetchTrainings] StoreId:', storeId);
-    console.log('🔍 [fetchTrainings] Total treinamentos no banco:', allTrainings?.length || 0);
-    
-    // Log de todos os treinamentos para debug
-    if (allTrainings && allTrainings.length > 0) {
-      console.log('📋 [fetchTrainings] Todos os treinamentos encontrados:');
-      allTrainings.forEach(t => {
-        console.log(`  - "${t.title}"`, {
-          id: t.id,
-          store_ids: t.store_ids,
-          store_ids_type: typeof t.store_ids,
-          store_ids_value: t.store_ids,
-          training_date: t.training_date,
-          format: t.format
-        });
-      });
-    } else {
-      console.warn('⚠️ [fetchTrainings] NENHUM treinamento encontrado no banco!');
-      console.warn('⚠️ [fetchTrainings] Verifique se há treinamentos cadastrados e se as políticas RLS estão corretas.');
-    }
-    
-    // Filtrar no código para verificar se a loja está no array de lojas
-    const filtered = (allTrainings || []).filter(training => {
-      // Se o treinamento não tem lojas específicas (store_ids), está disponível para todos
-      if (!training.store_ids || training.store_ids === null || training.store_ids === '') {
-        console.log('✅ [fetchTrainings] Treinamento sem lojas específicas (disponível para todos):', training.title);
-        // Verificar se é futuro
-        const trainingDate = new Date(training.training_date);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        trainingDate.setHours(0, 0, 0, 0);
-        const isFuture = trainingDate >= today;
-        if (!isFuture) {
-          console.log('❌ [fetchTrainings] Treinamento já passou:', training.title);
-        }
-        return isFuture;
-      }
-      
-      try {
-        let storeIds;
-        // JSONB pode vir como array ou como objeto, dependendo de como foi salvo
-        if (typeof training.store_ids === 'string') {
-          // Tentar parsear como JSON
-          try {
-            storeIds = JSON.parse(training.store_ids);
-          } catch {
-            // Se não for JSON válido, pode ser que esteja em outro formato
-            console.warn('⚠️ [fetchTrainings] store_ids não é JSON válido, tentando como string simples:', training.store_ids);
-            storeIds = [training.store_ids];
-          }
-        } else if (Array.isArray(training.store_ids)) {
-          // Se já é array (JSONB retorna array diretamente)
-          storeIds = training.store_ids;
-        } else if (training.store_ids && typeof training.store_ids === 'object') {
-          // Se for objeto, tentar converter
-          storeIds = Object.values(training.store_ids);
-        } else {
-          storeIds = null;
-        }
-        
-        if (Array.isArray(storeIds) && storeIds.length > 0) {
-          // Converter todos para string para comparação (caso alguns sejam UUID e outros string)
-          const storeIdsStr = storeIds.map(id => String(id).toLowerCase().trim());
-          const storeIdStr = String(storeId).toLowerCase().trim();
-          const isIncluded = storeIdsStr.includes(storeIdStr);
-          console.log(`🔍 [fetchTrainings] Treinamento "${training.title}":`, {
-            store_ids_original: storeIds,
-            store_ids_string: storeIdsStr,
-            store_id_buscado: storeIdStr,
-            incluído: isIncluded,
-            match_exato: storeIdsStr.some(id => id === storeIdStr)
-          });
-          
-          if (isIncluded) {
-            // Verificar se é futuro
-            const trainingDate = new Date(training.training_date);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            trainingDate.setHours(0, 0, 0, 0);
-            const isFuture = trainingDate >= today;
-            if (!isFuture) {
-              console.log('❌ [fetchTrainings] Treinamento já passou:', training.title);
-            }
-            return isFuture;
-          }
-          return false;
-        }
-        console.log('❌ [fetchTrainings] Treinamento sem array válido:', training.title, {
-          store_ids: training.store_ids,
-          store_ids_type: typeof training.store_ids
-        });
-        return false;
-      } catch (error) {
-        console.error('❌ [fetchTrainings] Erro ao processar store_ids:', error, {
-          training_title: training.title,
-          store_ids: training.store_ids
-        });
-        return false;
-      }
-    });
-    
-    console.log('✅ [fetchTrainings] Treinamentos filtrados:', filtered.length);
-    if (filtered.length > 0) {
-      filtered.forEach(t => {
-        console.log(`  - ${t.title} (${t.training_date})`);
-      });
-    }
-    return filtered || [];
-  }
-  
-  // Se for admin, buscar todos os treinamentos
-  console.log('🔍 [fetchTrainings] Buscando todos os treinamentos (admin)');
-  const { data, error } = await query;
-  
-  if (error) {
-    console.error('❌ [fetchTrainings] Erro ao buscar treinamentos:', error);
-    throw error;
-  }
-  
-  console.log('✅ [fetchTrainings] Treinamentos encontrados (admin):', data?.length || 0);
-  if (data && data.length > 0) {
-    data.forEach(t => {
-      console.log(`  - ${t.title} (store_ids: ${t.store_ids})`);
-    });
-  }
-  
-  return data || [];
-};
-
-export const createTraining = async (trainingData) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  // Processar store_ids: se for string JSON, manter; se for array, converter para JSONB
-  let storeIdsValue = null;
-  if (trainingData.storeIds || trainingData.store_ids) {
-    const rawStoreIds = trainingData.storeIds || trainingData.store_ids;
-    if (typeof rawStoreIds === 'string') {
-      // Se já é string, pode ser JSON string ou precisa ser parseado
-      try {
-        const parsed = JSON.parse(rawStoreIds);
-        storeIdsValue = Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
-      } catch {
-        // Se não for JSON válido, tratar como null
-        storeIdsValue = null;
-      }
-    } else if (Array.isArray(rawStoreIds) && rawStoreIds.length > 0) {
-      // Se é array, usar diretamente (Supabase JSONB aceita arrays)
-      storeIdsValue = rawStoreIds;
-    }
-  }
-  
-  const dataToInsert = {
-    title: trainingData.title,
-    description: trainingData.description || null,
-    training_date: trainingData.trainingDate || trainingData.training_date,
-    time: trainingData.time || null,
-    format: trainingData.format,
-    brand: trainingData.brand || null,
-    store_ids: storeIdsValue, // JSONB aceita array diretamente
-    location: trainingData.location || null,
-    link: trainingData.link || null,
-    max_participants: trainingData.maxParticipants || trainingData.max_participants || null,
-    created_by: user?.id || null
-  };
-  
-  console.log('💾 [createTraining] Dados a serem salvos:', {
-    title: dataToInsert.title,
-    store_ids: dataToInsert.store_ids,
-    store_ids_type: typeof dataToInsert.store_ids,
-    format: dataToInsert.format,
-    link: dataToInsert.link
-  });
-  
-  const { data, error } = await supabase
-    .from('trainings')
-    .insert([dataToInsert])
-    .select()
-    .single();
-  
-  if (error) {
-    console.error('❌ [createTraining] Erro ao criar:', error);
-    console.error('❌ [createTraining] Detalhes do erro:', {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint
-    });
-    throw error;
-  }
-  
-  console.log('✅ [createTraining] Treinamento criado:', {
-    id: data.id,
-    title: data.title,
-    store_ids: data.store_ids,
-    store_ids_type: typeof data.store_ids
-  });
-  return data;
-};
-
-export const updateTraining = async (id, updates) => {
-  const dataToUpdate = {
-    title: updates.title,
-    description: updates.description !== undefined ? (updates.description || null) : undefined,
-    training_date: updates.trainingDate || updates.training_date,
-    time: updates.time !== undefined ? (updates.time || null) : undefined,
-    format: updates.format,
-    brand: updates.brand !== undefined ? (updates.brand || null) : undefined,
-    store_ids: updates.storeIds !== undefined ? (updates.storeIds || null) : (updates.store_ids !== undefined ? (updates.store_ids || null) : undefined),
-    location: updates.location !== undefined ? (updates.location || null) : undefined,
-    link: updates.link !== undefined ? (updates.link || null) : undefined,
-    max_participants: updates.maxParticipants !== undefined ? (updates.maxParticipants || null) : (updates.max_participants !== undefined ? updates.max_participants : undefined),
-    registrations_blocked: updates.registrationsBlocked !== undefined ? updates.registrationsBlocked : (updates.registrations_blocked !== undefined ? updates.registrations_blocked : undefined)
-  };
-  
-  // Remove campos undefined (não enviar campos que não foram alterados)
-  Object.keys(dataToUpdate).forEach(key => {
-    if (dataToUpdate[key] === undefined) {
-      delete dataToUpdate[key];
-    }
-  });
-  
-  const { data, error } = await supabase
-    .from('trainings')
-    .update(dataToUpdate)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-export const deleteTraining = async (id) => {
-  const { error } = await supabase
-    .from('trainings')
-    .delete()
-    .eq('id', id);
-  
-  if (error) throw error;
-};
-
-// ============ TRAINING REGISTRATIONS ============
-export const fetchTrainingRegistrations = async (trainingId = null, storeId = null) => {
-  let query = supabase
-    .from('training_registrations')
-    .select(`
-      *,
-      training:trainings(*),
-      collaborator:collaborators(*),
-      store:stores(*)
-    `)
-    .order('registered_at', { ascending: false });
-  
-  if (trainingId) {
-    query = query.eq('training_id', trainingId);
-  }
-  
-  if (storeId) {
-    query = query.eq('store_id', storeId);
-  }
-  
-  const { data, error } = await query;
-  
-  if (error) throw error;
-  
-  // Formatar dados para manter consistência
-  if (data && data.length > 0) {
-    return data.map(reg => ({
-      ...reg,
-      trainingId: reg.training_id,
-      collaboratorId: reg.collaborator_id,
-      storeId: reg.store_id,
-      registeredAt: reg.registered_at
-    }));
-  }
-  
-  return data || [];
-};
-
-export const createTrainingRegistration = async (registrationData) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  const dataToInsert = {
-    training_id: registrationData.trainingId || registrationData.training_id,
-    collaborator_id: registrationData.collaboratorId || registrationData.collaborator_id,
-    store_id: registrationData.storeId || registrationData.store_id,
-    status: registrationData.status || 'pending',
-    registered_by: user?.id || null,
-    notes: registrationData.notes || null
-  };
-  
-  const { data, error } = await supabase
-    .from('training_registrations')
-    .insert([dataToInsert])
-    .select(`
-      *,
-      training:trainings(*),
-      collaborator:collaborators(*),
-      store:stores(*)
-    `)
-    .single();
-  
-  if (error) {
-    // Se for erro de duplicata, retornar erro mais amigável
-    if (error.code === '23505') {
-      throw new Error('Este colaborador já está inscrito neste treinamento.');
-    }
-    throw error;
-  }
-  
-  // Formatar dados
-  if (data) {
-    return {
-      ...data,
-      trainingId: data.training_id,
-      collaboratorId: data.collaborator_id,
-      storeId: data.store_id,
-      registeredAt: data.registered_at
-    };
-  }
-  
-  return data;
-};
-
-export const updateTrainingRegistration = async (id, updates) => {
-  const dataToUpdate = {
-    status: updates.status,
-    notes: updates.notes,
-    presence: updates.presence !== undefined ? updates.presence : undefined
-  };
-  
-  // Remove campos undefined
-  Object.keys(dataToUpdate).forEach(key => {
-    if (dataToUpdate[key] === undefined) {
-      delete dataToUpdate[key];
-    }
-  });
-  
-  const { data, error } = await supabase
-    .from('training_registrations')
-    .update(dataToUpdate)
-    .eq('id', id)
-    .select(`
-      *,
-      training:trainings(*),
-      collaborator:collaborators(*),
-      store:stores(*)
-    `)
-    .single();
-  
-  if (error) throw error;
-  
-  // Formatar dados
-  if (data) {
-    return {
-      ...data,
-      trainingId: data.training_id,
-      collaboratorId: data.collaborator_id,
-      storeId: data.store_id,
-      registeredAt: data.registered_at
-    };
-  }
-  
-  return data;
-};
-
-export const deleteTrainingRegistration = async (id) => {
-  const { error } = await supabase
-    .from('training_registrations')
-    .delete()
-    .eq('id', id);
-  
-  if (error) throw error;
-};
-
-// ============ FEEDBACKS ============
-export const fetchFeedbacks = async (storeId = null) => {
-  // Buscar feedbacks sem relacionamento automático
-  let query = supabase
-    .from('feedbacks')
-    .select('*')
-    .order('created_at', { ascending: false });
-  
-  if (storeId) {
-    query = query.eq('store_id', storeId);
-  }
-  
-  const { data, error } = await query;
-  
-  if (error) throw error;
-  
-  // Se houver dados, buscar informações das lojas e colaboradores separadamente
-  if (data && data.length > 0) {
-    // Buscar store_ids únicos
-    const storeIds = [...new Set(data.map(feedback => feedback.store_id).filter(id => id))];
-    const collaboratorIds = [...new Set(data.map(feedback => feedback.collaborator_id).filter(id => id))];
-    
-    // Buscar dados das lojas
-    if (storeIds.length > 0) {
-      try {
-        const { data: storesData } = await supabase
-          .from('stores')
-          .select('id, name, code')
-          .in('id', storeIds)
-          .order('code', { ascending: true });
-        
-        if (storesData) {
-          const storesMap = new Map(storesData.map(store => [store.id, store]));
-          data.forEach(feedback => {
-            if (feedback.store_id && storesMap.has(feedback.store_id)) {
-              feedback.store = storesMap.get(feedback.store_id);
-            }
-          });
-        }
-      } catch (storeError) {
-        console.log('Erro ao buscar dados das lojas:', storeError);
-      }
-    }
-    
-    // Buscar dados dos colaboradores
-    if (collaboratorIds.length > 0) {
-      try {
-        const { data: collaboratorsData } = await supabase
-          .from('collaborators')
-          .select('id, name')
-          .in('id', collaboratorIds);
-        
-        if (collaboratorsData) {
-          const collaboratorsMap = new Map(collaboratorsData.map(collab => [collab.id, collab]));
-          data.forEach(feedback => {
-            if (feedback.collaborator_id && collaboratorsMap.has(feedback.collaborator_id)) {
-              feedback.collaborator = collaboratorsMap.get(feedback.collaborator_id);
-            }
-          });
-        }
-      } catch (collabError) {
-        console.log('Erro ao buscar dados dos colaboradores:', collabError);
-      }
-    }
-    
-    // Converter store_id e collaborator_id para storeId e collaboratorId no retorno para manter consistência com o frontend
-    return data.map(feedback => ({
-      ...feedback,
-      storeId: feedback.store_id,
-      collaboratorId: feedback.collaborator_id,
-      feedbackText: feedback.feedback_text,
-      developmentPoint: feedback.development_point || null,
-      isPromotionCandidate: feedback.is_promotion_candidate || false,
-      satisfaction: feedback.satisfaction || 3,
-      date: feedback.created_at || feedback.date
-    }));
-  }
-  
-  return data || [];
-};
-
-export const createFeedback = async (feedbackData) => {
-  // Validar campos obrigatórios
-  const feedbackText = feedbackData.feedback_text || feedbackData.feedbackText || '';
-  const storeId = feedbackData.store_id || feedbackData.storeId;
-  const collaboratorId = feedbackData.collaborator_id || feedbackData.collaboratorId;
-  
-  if (!storeId) {
-    throw new Error('store_id é obrigatório');
-  }
-  if (!collaboratorId) {
-    throw new Error('collaborator_id é obrigatório');
-  }
-  if (!feedbackText) {
-    throw new Error('feedback_text é obrigatório');
-  }
-  
-  try {
-    // Buscar o nome do colaborador antes de inserir
-    // A tabela feedbacks requer collaborator_name (NOT NULL)
-    const { data: collaborator, error: collaboratorError } = await supabase
-      .from('collaborators')
-      .select('name')
-      .eq('id', collaboratorId)
-      .single();
-    
-    if (collaboratorError || !collaborator) {
-      throw new Error(`Colaborador não encontrado: ${collaboratorError?.message || 'ID inválido'}`);
-    }
-    
-    // Criar objeto com campos obrigatórios (incluindo collaborator_name)
-    const basicData = {
-      feedback_text: feedbackText,
-      store_id: storeId,
-      collaborator_id: collaboratorId,
-      collaborator_name: collaborator.name  // Campo obrigatório NOT NULL
-    };
-    
-    // Preparar campos opcionais (serão adicionados depois da inserção básica se necessário)
-    const optionalFields = {};
-    if (feedbackData.development_point || feedbackData.developmentPoint) {
-      optionalFields.development_point = feedbackData.development_point || feedbackData.developmentPoint;
-    }
-    if (feedbackData.satisfaction !== undefined) {
-      optionalFields.satisfaction = feedbackData.satisfaction;
-    }
-    if (feedbackData.is_promotion_candidate !== undefined || feedbackData.isPromotionCandidate !== undefined) {
-      optionalFields.is_promotion_candidate = feedbackData.is_promotion_candidate !== undefined 
-        ? feedbackData.is_promotion_candidate 
-        : feedbackData.isPromotionCandidate;
-    }
-    
-    // Se temos campos opcionais, adicionar ao objeto básico para inserir tudo de uma vez
-    // Isso evita fazer UPDATE depois e funciona melhor com cache do PostgREST
-    const dataToInsert = {
-      ...basicData,
-      ...optionalFields
-    };
-    
-    // Inserir todos os dados de uma vez
-    const { data: insertedData, error: insertError } = await supabase
-      .from('feedbacks')
-      .insert([dataToInsert])
-      .select('*')
-      .single();
-    
-    if (insertError) {
-      // Se o INSERT falhar com campos opcionais, tentar apenas com campos obrigatórios
-      if (insertError.code === 'PGRST204' || Object.keys(optionalFields).length > 0) {
-        console.warn('⚠️ Tentando inserir apenas com campos obrigatórios...');
-        
-        const { data: basicInsertData, error: basicInsertError } = await supabase
-          .from('feedbacks')
-          .insert([basicData])
-          .select('*')
-          .single();
-        
-        if (basicInsertError) {
-          console.error('Erro ao inserir feedback (campos básicos):', basicInsertError);
-          throw new Error(`Erro ao criar feedback: ${basicInsertError.message}`);
-        }
-        
-        // Se inserção básica funcionou, retornar dados
-        return {
-          ...basicInsertData,
-          storeId: basicInsertData.store_id,
-          collaboratorId: basicInsertData.collaborator_id,
-          feedbackText: basicInsertData.feedback_text,
-          developmentPoint: optionalFields.development_point || null,
-          isPromotionCandidate: optionalFields.is_promotion_candidate || false,
-          satisfaction: optionalFields.satisfaction || 3
-        };
-      }
-      
-      console.error('Erro ao inserir feedback:', insertError);
-      throw new Error(`Erro ao criar feedback: ${insertError.message}`);
-    }
-    
-    // Se inserção funcionou, retornar dados formatados
-    if (insertedData) {
-      return {
-        ...insertedData,
-        storeId: insertedData.store_id,
-        collaboratorId: insertedData.collaborator_id,
-        feedbackText: insertedData.feedback_text,
-        developmentPoint: insertedData.development_point || null,
-        isPromotionCandidate: insertedData.is_promotion_candidate || false,
-        satisfaction: insertedData.satisfaction || 3
-      };
-    }
-    
-    throw new Error('Erro ao criar feedback: Nenhum dado retornado');
-    
-  } catch (error) {
-    console.error('Erro ao criar feedback:', error);
-    throw error;
-  }
-};
-
-export const deleteFeedback = async (feedbackId) => {
-  if (!feedbackId) {
-    throw new Error('ID do feedback é obrigatório');
-  }
-  
-  console.log('🗑️ Tentando excluir feedback:', feedbackId);
-  
-  // Primeiro, verificar se o feedback existe
-  const { data: existingFeedback, error: fetchError } = await supabase
-    .from('feedbacks')
-    .select('id')
-    .eq('id', feedbackId)
-    .maybeSingle();
-  
-  if (fetchError) {
-    console.error('❌ Erro ao verificar feedback:', fetchError);
-    throw fetchError;
-  }
-  
-  if (!existingFeedback) {
-    console.warn('⚠️ Feedback não encontrado:', feedbackId);
-    // Se não existe, considerar como sucesso (já foi excluído)
-    return { success: true, deleted: false };
-  }
-  
-  // Tentar excluir
-  const { data, error } = await supabase
-    .from('feedbacks')
-    .delete()
-    .eq('id', feedbackId)
-    .select();
-  
-  if (error) {
-    console.error('❌ Erro ao excluir feedback:', error);
-    throw error;
-  }
-  
-  // Se não houve erro, a exclusão foi bem-sucedida
-  // Confiar no resultado do Supabase (pode haver cache/RLS que faz a verificação falhar)
-  console.log('✅ Feedback excluído com sucesso:', feedbackId, data);
-  return { success: true, deleted: true, data };
-};
-
-// Excluir múltiplos feedbacks baseado em níveis de satisfação
-export const deleteFeedbacksBySatisfaction = async (satisfactionLevels) => {
-  if (!satisfactionLevels || !Array.isArray(satisfactionLevels) || satisfactionLevels.length === 0) {
-    throw new Error('Níveis de satisfação são obrigatórios e devem ser um array não vazio');
-  }
-  
-  // Converter strings para números se necessário
-  const levels = satisfactionLevels.map(level => parseInt(level, 10));
-  
-  console.log('🗑️ Tentando excluir feedbacks com satisfação:', levels);
-  
-  // Buscar feedbacks que correspondem aos níveis de satisfação
-  const { data: feedbacksToDelete, error: fetchError } = await supabase
-    .from('feedbacks')
-    .select('id')
-    .in('satisfaction', levels);
-  
-  if (fetchError) {
-    console.error('❌ Erro ao buscar feedbacks:', fetchError);
-    throw fetchError;
-  }
-  
-  if (!feedbacksToDelete || feedbacksToDelete.length === 0) {
-    console.log('ℹ️ Nenhum feedback encontrado para excluir');
-    return { success: true, deleted: 0, total: 0 };
-  }
-  
-  const feedbackIds = feedbacksToDelete.map(fb => fb.id);
-  console.log(`🗑️ Excluindo ${feedbackIds.length} feedback(s)...`);
-  
-  // Excluir todos os feedbacks encontrados
-  const { data, error } = await supabase
-    .from('feedbacks')
-    .delete()
-    .in('id', feedbackIds)
-    .select();
-  
-  if (error) {
-    console.error('❌ Erro ao excluir feedbacks:', error);
-    throw error;
-  }
-  
-  const deletedCount = data?.length || 0;
-  console.log(`✅ ${deletedCount} feedback(s) excluído(s) com sucesso`);
-  return { success: true, deleted: deletedCount, total: feedbackIds.length };
-};
-
-// ============ DAILY CHECKLISTS ============
-// Função genérica para buscar checklist por tipo (operacional ou gerencial)
-export const fetchDailyChecklist = async (storeId, date, checklistType = 'operacional') => {
-  // Validar parâmetros
-  if (!storeId) {
-    console.error('❌ storeId é obrigatório para buscar checklist');
-    throw new Error('storeId é obrigatório');
-  }
-  if (!date) {
-    console.error('❌ date é obrigatório para buscar checklist');
-    throw new Error('date é obrigatório');
-  }
-  
-  // Buscar todos os checklists para essa loja e data (pode haver operacional e gerencial)
-  const { data: checklists, error } = await supabase
-    .from('daily_checklists')
-    .select('*')
-    .eq('store_id', storeId)
-    .eq('date', date);
-  
-  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
-  
-  // Se não encontrou dados, retornar null
-  if (!checklists || checklists.length === 0) return null;
-  
-  // Buscar checklist com o tipo específico
-  const checklistWithType = checklists.find(c => c.checklist_type === checklistType);
-  
-  if (checklistWithType) {
-    return checklistWithType;
-  }
-  
-  // Se não encontrou com tipo e estamos buscando operacional, buscar legado (sem tipo)
-  if (checklistType === 'operacional') {
-    const legacyChecklist = checklists.find(c => !c.checklist_type || c.checklist_type === null);
-    if (legacyChecklist) {
-      return legacyChecklist;
-    }
-  }
-  
-  // Não encontrou checklist do tipo solicitado
-  return null;
-};
-
-export const upsertDailyChecklist = async (storeId, date, tasks, checklistType = 'operacional') => {
-  // Validar parâmetros
-  if (!storeId) {
-    console.error('❌ storeId é obrigatório para salvar checklist');
-    throw new Error('storeId é obrigatório');
-  }
-  if (!date) {
-    console.error('❌ date é obrigatório para salvar checklist');
-    throw new Error('date é obrigatório');
-  }
-  
-  // IMPORTANTE: A constraint única agora é store_id + date + checklist_type
-  // Isso significa que pode haver DOIS checklists separados (operacional e gerencial) para a mesma loja/data
-  // Agora podemos fazer UPDATE/INSERT normalmente por tipo
-  
-  // Preparar dados do checklist
-  const checklistData = {
-    store_id: storeId,
-    date,
-    tasks,
-    checklist_type: checklistType
-  };
-  
-  // ESTRATÉGIA: Verificar se existe checklist com o tipo específico
-  // 1. Buscar checklist com store_id + date + checklist_type
-  // 2. Se existe, fazer UPDATE
-  // 3. Se não existe, fazer INSERT
-  
-  try {
-    // Primeiro, verificar se existe checklist legado (sem tipo) para operacional
-    if (checklistType === 'operacional') {
-      try {
-        const { data: existingChecklist, error: fetchError } = await supabase
-          .from('daily_checklists')
-          .select('id')
-          .eq('store_id', storeId)
-          .eq('date', date)
-          .is('checklist_type', null)
-          .maybeSingle();
-        
-        // Se encontrou checklist legado, atualizar ele para incluir o tipo
-        if (!fetchError && existingChecklist) {
-          const { error: updateError } = await supabase
-            .from('daily_checklists')
-            .update({ tasks, checklist_type: 'operacional' })
-            .eq('id', existingChecklist.id);
-          
-          if (!updateError) {
-            // Buscar dados atualizados
-            const { data: updatedData, error: refetchError } = await supabase
-              .from('daily_checklists')
-              .select('*')
-              .eq('id', existingChecklist.id)
-              .single();
-            
-            if (!refetchError) return updatedData;
-          }
-          // Se update falhou, continuar para verificar se existe com tipo
-        }
-      } catch (legacyError) {
-        // Se houver erro ao buscar legado, continuar normalmente
-        console.warn('Erro ao buscar checklist legado:', legacyError);
-      }
-    }
-    
-    // Verificar se existe checklist com o tipo específico
-    const { data: existingWithType, error: fetchError } = await supabase
-      .from('daily_checklists')
-      .select('id')
-      .eq('store_id', storeId)
-      .eq('date', date)
-      .eq('checklist_type', checklistType)
-      .maybeSingle();
-    
-    if (!fetchError && existingWithType) {
-      // Existe um checklist com este tipo, fazer UPDATE
-      // IMPORTANTE: Não usar .select() no UPDATE para evitar erro 406
-      const { error: updateError } = await supabase
-        .from('daily_checklists')
-        .update({ tasks })
-        .eq('id', existingWithType.id);
-      
-      if (updateError) {
-        // Se UPDATE falhar, buscar novamente para retornar o que existe
-        console.warn('Erro ao atualizar checklist, buscando registro existente:', updateError);
-        const { data: currentData, error: refetchError } = await supabase
-          .from('daily_checklists')
-          .select('*')
-          .eq('id', existingWithType.id)
-          .single();
-        
-        if (refetchError) {
-          // Se não conseguir buscar, lançar o erro do update
-          throw updateError;
-        }
-        
-        return currentData;
-      }
-      
-      // Buscar dados atualizados após o update
-      const { data: updatedData, error: refetchError } = await supabase
-        .from('daily_checklists')
-        .select('*')
-        .eq('id', existingWithType.id)
-        .single();
-      
-      if (refetchError) {
-        // Se não conseguir buscar, retornar os dados esperados
-        return {
-          ...existingWithType,
-          store_id: storeId,
-          date,
-          tasks,
-          checklist_type: checklistType
-        };
-      }
-      
-      return updatedData;
-    }
-    
-    // Se não existe, fazer INSERT
-    // Se falhar com 409/23505 (já existe), fazer UPDATE como fallback
-    const { data: insertedData, error: insertError } = await supabase
-      .from('daily_checklists')
-      .insert([checklistData])
-      .select('*')
-      .single();
-    
-    if (!insertError && insertedData) {
-      return insertedData;
-    }
-    
-    // Se insert falhou com conflito, fazer UPDATE
-    if (insertError) {
-      const isConflict = insertError.code === '23505' || 
-                        insertError.code === 'PGRST301' || 
-                        insertError.code === '409' ||
-                        insertError.message?.includes('duplicate') || 
-                        insertError.message?.includes('unique') ||
-                        insertError.message?.includes('conflict');
-      
-      if (isConflict) {
-        // Tentar UPDATE novamente (pode ter sido criado entre a busca e o insert)
-        const { error: updateError } = await supabase
-          .from('daily_checklists')
-          .update({ tasks })
-          .eq('store_id', storeId)
-          .eq('date', date)
-          .eq('checklist_type', checklistType);
-        
-        if (updateError) {
-          // Se UPDATE falhar, buscar o que existe
-          const { data: existingData, error: fetchExistingError } = await supabase
-            .from('daily_checklists')
-            .select('*')
-            .eq('store_id', storeId)
-            .eq('date', date)
-            .eq('checklist_type', checklistType)
-            .maybeSingle();
-          
-          if (fetchExistingError) {
-            // Se não conseguir buscar, lançar o erro do insert
-            throw insertError;
-          }
-          
-          return existingData;
-        }
-        
-        // Buscar dados atualizados
-        const { data: updatedData, error: fetchUpdatedError } = await supabase
-          .from('daily_checklists')
-          .select('*')
-          .eq('store_id', storeId)
-          .eq('date', date)
-          .eq('checklist_type', checklistType)
-          .single();
-        
-        if (fetchUpdatedError) {
-          // Se não conseguir buscar, lançar o erro do insert
-          throw insertError;
-        }
-        
-        return updatedData;
-      }
-      
-      // Se não é erro de conflito, lançar o erro
-      throw insertError;
-    }
-    
-    return insertedData;
-    
-  } catch (error) {
-    console.error('Erro ao fazer upsert do checklist:', error);
-    throw error;
-  }
-};
-
-// Buscar histórico de checklists por loja e intervalo de datas e tipo
-export const fetchChecklistHistory = async (storeId, startDate, endDate, checklistType = 'operacional') => {
-  let query = supabase
-    .from('daily_checklists')
-    .select('*')
-    .eq('store_id', storeId)
-    .gte('date', startDate)
-    .lte('date', endDate);
-  
-  // Se a tabela tiver campo checklist_type, filtrar
-  // Caso contrário, retornar todos e filtrar depois
-  const { data, error } = await query.order('date', { ascending: false });
-  
-  if (error) throw error;
-  
-  // Filtrar por tipo se necessário
-  if (data && data.length > 0) {
-    return data.filter(item => {
-      // Se tem tipo, comparar
-      if (item.checklist_type) {
-        return item.checklist_type === checklistType;
-      }
-      // Se não tem tipo, é checklist operacional (legado)
-      return checklistType === 'operacional';
-    });
-  }
-  
-  return data || [];
-};
-
-// Buscar todas as tarefas do checklist operacional (configuração)
-export const fetchChecklistTasks = async () => {
-  const tasks = await fetchAppSettings('daily_checklist_tasks');
-  // Se não houver tarefas salvas, retornar array vazio (será criado pela primeira vez)
-  if (!tasks) return [];
-  // Se tasks for um array, retornar diretamente
-  if (Array.isArray(tasks)) return tasks;
-  // Se tasks for um objeto com tasks, retornar tasks
-  if (tasks && tasks.tasks && Array.isArray(tasks.tasks)) return tasks.tasks;
-  return [];
-};
-
-// Buscar todas as tarefas do checklist gerencial (configuração)
-export const fetchGerencialChecklistTasks = async () => {
-  const tasks = await fetchAppSettings('daily_checklist_gerencial_tasks');
-  // Se não houver tarefas salvas, retornar array vazio (será criado pela primeira vez)
-  if (!tasks) return [];
-  // Se tasks for um array, retornar diretamente
-  if (Array.isArray(tasks)) return tasks;
-  // Se tasks for um objeto com tasks, retornar tasks
-  if (tasks && tasks.tasks && Array.isArray(tasks.tasks)) return tasks.tasks;
-  return [];
-};
-
-// Salvar tarefas do checklist operacional (configuração)
-export const saveChecklistTasks = async (tasks) => {
-  return await upsertAppSettings('daily_checklist_tasks', tasks);
-};
-
-// Salvar tarefas do checklist gerencial (configuração)
-export const saveGerencialChecklistTasks = async (tasks) => {
-  return await upsertAppSettings('daily_checklist_gerencial_tasks', tasks);
-};
-
-// Buscar checklist de uma data específica para histórico (operacional)
-export const fetchChecklistByDate = async (storeId, date) => {
-  return await fetchDailyChecklist(storeId, date, 'operacional');
-};
-
-// Buscar checklist gerencial de uma data específica para histórico
-export const fetchGerencialChecklistByDate = async (storeId, date) => {
-  return await fetchDailyChecklist(storeId, date, 'gerencial');
-};
-
-// ============ APP SETTINGS ============
-export const fetchAppSettings = async (key) => {
-  const { data, error } = await supabase
-    .from('app_settings')
-    .select('*')
-    .eq('key', key)
-    .single();
-  
-  if (error && error.code !== 'PGRST116') throw error;
-  return data?.value;
-};
-
-export const upsertAppSettings = async (key, value) => {
-  const { data, error } = await supabase
-    .from('app_settings')
-    .upsert({
-      key,
-      value
-    }, {
-      onConflict: 'key'
-    })
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
-
-// ============ CURRENT USER ============
-export const fetchCurrentUserProfile = async () => {
-  try {
-    // Tentar obter o usuário atual
-    // Se falhar com 403, a sessão está expirada e devemos retornar null sem mais tentativas
-    let authUser = null;
+  // Gerenciamento de tarefas do checklist gerencial (admin)
+  const updateGerencialChecklistTasks = async (tasks) => {
     try {
-      const { data, error: getUserError } = await supabase.auth.getUser();
-      if (getUserError) {
-        // Se for erro 403 ou 401, a sessão está expirada - não tentar mais nada
-        if (getUserError.status === 403 || getUserError.status === 401) {
-          console.warn('⚠️ Sessão expirada ou inválida (403/401). Retornando null sem tentar sessão local.');
-          // Limpar sessão local se existir
-          try {
-            localStorage.removeItem('sb-hzwmacltgiyanukgvfvn-auth-token');
-          } catch (e) {
-            // Ignorar erros ao limpar
-          }
-          return null;
-        } else {
-          throw getUserError;
-        }
-      } else {
-        authUser = data?.user;
-      }
-    } catch (authError) {
-      // Se for erro 403/401, não logar como erro crítico - apenas retornar null
-      if (authError.status === 403 || authError.status === 401) {
-        console.warn('⚠️ Erro de autenticação (403/401). Sessão expirada.');
-        return null;
-      }
-      console.error('❌ Erro ao obter usuário:', authError);
-      // Se não conseguir obter usuário, retornar null
-      return null;
-    }
-  
-  if (!authUser) return null;
-  
-    // Buscar perfil do usuário (sem relacionamento automático com stores)
-  const { data, error } = await supabase
-    .from('app_users')
-      .select('*')
-    .eq('id', authUser.id)
-      .maybeSingle();
-    
-    if (error) {
-      // Se o erro for que não encontrou o perfil, retornar null
-      if (error.code === 'PGRST116') {
-        return null;
-      }
-      // Se o erro for de relacionamento não encontrado (PGRST200), 
-      // ainda tentar buscar sem relacionamento
-      if (error.code === 'PGRST200') {
-        // Já estamos buscando sem relacionamento, então este erro não deveria acontecer
-        // Mas se acontecer, retornar null para permitir que o código continue
-        console.warn('Erro PGRST200 ao buscar perfil:', error);
-        return null;
-      }
+      await api.saveGerencialChecklistTasks(tasks);
+      setGerencialTasks(tasks);
+      toast({ title: 'Sucesso!', description: 'Tarefas do checklist gerencial atualizadas.' });
+      // Recarregar dados para atualizar as tarefas em toda a aplicação
+      fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar tarefas', description: error.message });
       throw error;
     }
-    
-    // Se não houver dados, retornar null
-    if (!data) {
-      return null;
-    }
-    
-    // Se houver store_id, buscar dados da loja separadamente
-    if (data?.store_id) {
-      try {
-        const { data: storeData } = await supabase
-          .from('stores')
-          .select('id, name, code')
-          .eq('id', data.store_id)
-          .maybeSingle();
-        
-        if (storeData) {
-          data.store = storeData;
-        }
-      } catch (storeError) {
-        // Se falhar ao buscar a loja, não impedir o login
-        // Apenas logar o erro sem propagar
-        console.log('Erro ao buscar dados da loja (não crítico):', storeError);
-      }
-    }
-    
-  return data;
-  } catch (error) {
-    // Capturar qualquer erro inesperado e retornar null em vez de propagar
-    console.error('Erro ao buscar perfil do usuário:', error);
-    return null;
-  }
-};
-
-// ============ RETURNS (DEVOLUÇÕES) ============
-export const fetchReturns = async () => {
-  const { data, error } = await supabase
-    .from('returns')
-    .select('*')
-    .order('created_at', { ascending: false });
-  
-  if (error) {
-    // Se a tabela não existir, retornar array vazio (para não quebrar a aplicação)
-    if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
-      console.warn('⚠️ Tabela returns não existe ainda. Retornando array vazio.');
-      return [];
-    }
-    throw error;
-  }
-  
-  return data || [];
-};
-
-export const createReturn = async (returnData) => {
-  // Converter camelCase para snake_case
-  const dataToInsert = {
-    store_id: returnData.store_id || returnData.storeId,
-    brand: returnData.brand,
-    nf_number: returnData.nf_number || returnData.nfNumber,
-    nf_emission_date: returnData.nf_emission_date || returnData.nfEmissionDate || null,
-    nf_value: returnData.nf_value !== undefined && returnData.nf_value !== null ? returnData.nf_value : (returnData.nfValue !== undefined && returnData.nfValue !== null ? returnData.nfValue : null),
-    volume_quantity: returnData.volume_quantity || returnData.volumeQuantity,
-    date: returnData.date,
-    admin_status: returnData.admin_status || returnData.adminStatus || 'aguardando_coleta',
-    collected_at: returnData.collected_at || returnData.collectedAt || null,
-    created_by: returnData.created_by || returnData.createdBy || null
   };
 
-  const { data, error } = await supabase
-    .from('returns')
-    .insert([dataToInsert])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
+  // Buscar histórico de checklist (operacional ou gerencial)
+  const fetchChecklistHistory = async (storeId, startDate, endDate, checklistType = 'operacional') => {
+    try {
+      return await api.fetchChecklistHistory(storeId, startDate, endDate, checklistType);
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao buscar histórico', description: error.message });
+      throw error;
+    }
+  };
 
-export const updateReturn = async (id, updates) => {
-  // Buscar status anterior para histórico
-  const { data: currentReturn } = await supabase
-    .from('returns')
-    .select('admin_status')
-    .eq('id', id)
-    .single();
-  
-  const oldStatus = currentReturn?.admin_status;
-  
-  // Converter camelCase para snake_case
-  const dataToUpdate = {};
-  
-  if (updates.store_id !== undefined || updates.storeId !== undefined) {
-    dataToUpdate.store_id = updates.store_id || updates.storeId;
-  }
-  if (updates.brand !== undefined) dataToUpdate.brand = updates.brand;
-  if (updates.nf_number !== undefined || updates.nfNumber !== undefined) {
-    dataToUpdate.nf_number = updates.nf_number || updates.nfNumber;
-  }
-  if (updates.nf_emission_date !== undefined || updates.nfEmissionDate !== undefined) {
-    dataToUpdate.nf_emission_date = updates.nf_emission_date || updates.nfEmissionDate;
-  }
-  if (updates.nf_value !== undefined || updates.nfValue !== undefined) {
-    dataToUpdate.nf_value = updates.nf_value !== undefined && updates.nf_value !== null ? updates.nf_value : (updates.nfValue !== undefined && updates.nfValue !== null ? updates.nfValue : null);
-  }
-  if (updates.volume_quantity !== undefined || updates.volumeQuantity !== undefined) {
-    dataToUpdate.volume_quantity = updates.volume_quantity || updates.volumeQuantity;
-  }
-  if (updates.date !== undefined) dataToUpdate.date = updates.date;
-  if (updates.admin_status !== undefined || updates.adminStatus !== undefined) {
-    dataToUpdate.admin_status = updates.admin_status || updates.adminStatus;
-  }
-  if (updates.collected_at !== undefined || updates.collectedAt !== undefined) {
-    dataToUpdate.collected_at = updates.collected_at || updates.collectedAt;
-  }
-
-  const { data, error } = await supabase
-    .from('returns')
-    .update(dataToUpdate)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  
-  // Salvar histórico se status mudou
-  const newStatus = dataToUpdate.admin_status;
-  if (oldStatus && newStatus && oldStatus !== newStatus) {
+  // Returns (Devoluções)
+  const addReturn = async (returnData) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      await saveReturnStatusHistory(id, oldStatus, newStatus, user?.id || null);
-    } catch (historyError) {
-      console.warn('⚠️ Erro ao salvar histórico de status:', historyError);
+      const newReturn = await api.createReturn({
+        ...returnData,
+        created_by: user?.id || null
+      });
+      setReturns(prev => [newReturn, ...prev]);
+      toast({ title: 'Sucesso!', description: 'Devolução cadastrada com sucesso e enviada para administradores.' });
+      return newReturn;
+    } catch (error) {
+      // Se a tabela não existe, mostrar mensagem amigável
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Tabela não encontrada', 
+          description: 'As tabelas de devoluções ainda não foram criadas no banco. Execute o script SQL CRIAR_TABELAS_DEVOLUCOES.sql no Supabase.' 
+        });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao cadastrar devolução', description: error.message });
+      }
+      throw error;
     }
-  }
-  
-  return data;
-};
-
-export const deleteReturn = async (id) => {
-  const { error } = await supabase
-    .from('returns')
-    .delete()
-    .eq('id', id);
-  
-  if (error) throw error;
-  return true;
-};
-
-// Salvar histórico de mudanças de status de devolução
-export const saveReturnStatusHistory = async (returnId, oldStatus, newStatus, changedBy = null) => {
-  try {
-    const historyData = {
-      return_id: returnId,
-      old_status: oldStatus,
-      new_status: newStatus,
-      changed_at: new Date().toISOString()
-    };
-    
-    if (changedBy) {
-      historyData.changed_by = changedBy;
-    }
-    
-    const { error } = await supabase
-      .from('returns_status_history')
-      .insert([historyData]);
-    
-    // Não lançar erro se a tabela não existir ainda
-    if (error && error.code !== '42P01') {
-      console.warn('⚠️ Erro ao salvar histórico de status (continuando mesmo assim):', error);
-    }
-  } catch (error) {
-    console.warn('⚠️ Erro ao salvar histórico de status (continuando mesmo assim):', error);
-  }
-};
-
-// ============ PHYSICAL MISSING (FALTA FÍSICA) ============
-export const fetchPhysicalMissing = async () => {
-  const { data, error } = await supabase
-    .from('physical_missing')
-    .select('*')
-    .order('created_at', { ascending: false });
-  
-  if (error) {
-    // Se a tabela não existir, retornar array vazio
-    if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
-      console.warn('⚠️ Tabela physical_missing não existe ainda. Retornando array vazio.');
-      return [];
-    }
-    throw error;
-  }
-  
-  return data || [];
-};
-
-export const createPhysicalMissing = async (missingData) => {
-  const dataToInsert = {
-    store_id: missingData.store_id || missingData.storeId,
-    brand: missingData.brand || null,
-    nf_number: missingData.nf_number || missingData.nfNumber || null,
-    sku: missingData.sku || null,
-    color: missingData.color || null,
-    size: missingData.size || null,
-    sku_info: missingData.sku_info || missingData.skuInfo || null,
-    cost_value: missingData.cost_value !== undefined && missingData.cost_value !== null ? missingData.cost_value : (missingData.costValue !== undefined && missingData.costValue !== null ? missingData.costValue : null),
-    quantity: missingData.quantity !== undefined && missingData.quantity !== null ? missingData.quantity : null,
-    total_value: missingData.total_value !== undefined && missingData.total_value !== null ? missingData.total_value : (missingData.totalValue !== undefined && missingData.totalValue !== null ? missingData.totalValue : null),
-    moved_to_defect: missingData.moved_to_defect !== undefined ? missingData.moved_to_defect : (missingData.movedToDefect !== undefined ? missingData.movedToDefect : false),
-    status: missingData.status || 'processo_aberto',
-    created_by: missingData.created_by || missingData.createdBy || null
   };
-  
-  // Campos antigos para compatibilidade (só incluir se fornecidos)
-  if (missingData.product_name || missingData.productName) {
-    dataToInsert.product_name = missingData.product_name || missingData.productName;
-  }
-  if (missingData.product_code || missingData.productCode) {
-    dataToInsert.product_code = missingData.product_code || missingData.productCode;
-  }
-  if (missingData.notes) {
-    dataToInsert.notes = missingData.notes;
-  }
 
-  const { data, error } = await supabase
-    .from('physical_missing')
-    .insert([dataToInsert])
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
+  const updateReturn = async (id, updates) => {
+    try {
+      const updatedReturn = await api.updateReturn(id, updates);
+      setReturns(prev => prev.map(ret => ret.id === id ? updatedReturn : ret));
+      toast({ title: 'Sucesso!', description: 'Devolução atualizada com sucesso.' });
+      return updatedReturn;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar devolução', description: error.message });
+      throw error;
+    }
+  };
 
-export const updatePhysicalMissing = async (id, updates) => {
-  const dataToUpdate = {};
-  
-  if (updates.store_id !== undefined || updates.storeId !== undefined) {
-    dataToUpdate.store_id = updates.store_id || updates.storeId;
-  }
-  if (updates.brand !== undefined) dataToUpdate.brand = updates.brand;
-  if (updates.nf_number !== undefined || updates.nfNumber !== undefined) {
-    dataToUpdate.nf_number = updates.nf_number || updates.nfNumber;
-  }
-  if (updates.sku !== undefined) dataToUpdate.sku = updates.sku;
-  if (updates.color !== undefined) dataToUpdate.color = updates.color;
-  if (updates.size !== undefined) dataToUpdate.size = updates.size;
-  if (updates.sku_info !== undefined || updates.skuInfo !== undefined) {
-    dataToUpdate.sku_info = updates.sku_info || updates.skuInfo;
-  }
-  if (updates.cost_value !== undefined || updates.costValue !== undefined) {
-    dataToUpdate.cost_value = updates.cost_value !== undefined && updates.cost_value !== null ? updates.cost_value : (updates.costValue !== undefined && updates.costValue !== null ? updates.costValue : null);
-  }
-  if (updates.quantity !== undefined && updates.quantity !== null) {
-    dataToUpdate.quantity = updates.quantity;
-  }
-  if (updates.total_value !== undefined || updates.totalValue !== undefined) {
-    dataToUpdate.total_value = updates.total_value !== undefined && updates.total_value !== null ? updates.total_value : (updates.totalValue !== undefined && updates.totalValue !== null ? updates.totalValue : null);
-  }
-  if (updates.moved_to_defect !== undefined || updates.movedToDefect !== undefined) {
-    dataToUpdate.moved_to_defect = updates.moved_to_defect !== undefined ? updates.moved_to_defect : updates.movedToDefect;
-  }
-  // Campos antigos para compatibilidade
-  if (updates.product_name !== undefined || updates.productName !== undefined) {
-    dataToUpdate.product_name = updates.product_name || updates.productName;
-  }
-  if (updates.product_code !== undefined || updates.productCode !== undefined) {
-    dataToUpdate.product_code = updates.product_code || updates.productCode;
-  }
-  if (updates.notes !== undefined) dataToUpdate.notes = updates.notes;
-  if (updates.status !== undefined) dataToUpdate.status = updates.status;
+  const deleteReturn = async (id) => {
+    try {
+      await api.deleteReturn(id);
+      setReturns(prev => prev.filter(ret => ret.id !== id));
+      toast({ title: 'Sucesso!', description: 'Devolução excluída com sucesso.' });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir devolução', description: error.message });
+      throw error;
+    }
+  };
 
-  const { data, error } = await supabase
-    .from('physical_missing')
-    .update(dataToUpdate)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  return data;
-};
+  // Physical Missing (Falta Física)
+  const addPhysicalMissing = async (missingData) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const newMissing = await api.createPhysicalMissing({
+        ...missingData,
+        created_by: user?.id || null
+      });
+      setPhysicalMissing(prev => [newMissing, ...prev]);
+      toast({ title: 'Sucesso!', description: 'Falta física registrada com sucesso e enviada para administradores.' });
+      return newMissing;
+    } catch (error) {
+      // Se a tabela não existe, mostrar mensagem amigável
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Tabela não encontrada', 
+          description: 'As tabelas de devoluções ainda não foram criadas no banco. Execute o script SQL CRIAR_TABELAS_DEVOLUCOES.sql no Supabase.' 
+        });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao registrar falta física', description: error.message });
+      }
+      throw error;
+    }
+  };
 
-export const deletePhysicalMissing = async (id) => {
-  const { error } = await supabase
-    .from('physical_missing')
-    .delete()
-    .eq('id', id);
-  
-  if (error) throw error;
-  return true;
+  const updatePhysicalMissing = async (id, updates) => {
+    try {
+      const updatedMissing = await api.updatePhysicalMissing(id, updates);
+      setPhysicalMissing(prev => prev.map(item => item.id === id ? updatedMissing : item));
+      toast({ title: 'Sucesso!', description: 'Falta física atualizada com sucesso.' });
+      return updatedMissing;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar falta física', description: error.message });
+      throw error;
+    }
+  };
+
+  const deletePhysicalMissing = async (id) => {
+    try {
+      await api.deletePhysicalMissing(id);
+      setPhysicalMissing(prev => prev.filter(item => item.id !== id));
+      toast({ title: 'Sucesso!', description: 'Falta física excluída com sucesso.' });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir falta física', description: error.message });
+      throw error;
+    }
+  };
+
+  const value = {
+    loading,
+    users,
+    addUser,
+    updateUser,
+    deleteUser,
+    toggleUserStatus,
+    resetUserPassword,
+    stores,
+    addStore,
+    updateStore,
+    deleteStore,
+    evaluations,
+    addEvaluation,
+    updateEvaluationStatus,
+    approveEvaluation,
+    deleteEvaluation,
+    forms,
+    saveForm,
+    updateForm,
+    deleteForm,
+    patentSettings,
+    updatePatentSettings,
+    collaborators,
+    addCollaborator,
+    deleteCollaborator,
+    feedbacks,
+    trainings,
+    addTraining,
+    updateTraining,
+    deleteTraining,
+    trainingRegistrations,
+    addTrainingRegistration,
+    updateTrainingRegistration,
+    deleteTrainingRegistration,
+    addFeedback,
+    deleteFeedback,
+    deleteFeedbacksBySatisfaction,
+    chaveContent,
+    updateChaveContent,
+    dailyTasks,
+    gerencialTasks,
+    checklist,
+    updateChecklist,
+    updateChecklistTasks,
+    updateGerencialChecklistTasks,
+    fetchChecklistHistory,
+    menuVisibility,
+    updateMenuVisibility,
+    returns,
+    addReturn,
+    updateReturn,
+    deleteReturn,
+    physicalMissing,
+    addPhysicalMissing,
+    updatePhysicalMissing,
+    deletePhysicalMissing,
+    fetchData, // Expor fetchData para permitir refresh manual em componentes
+  };
+
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 };
