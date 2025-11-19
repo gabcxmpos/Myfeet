@@ -19,7 +19,7 @@ const allMenuItems = [
     { path: '/collaborators', icon: Users2, label: 'Colaboradores', roles: ['loja'] },
     { path: '/feedback', icon: MessageSquareQuote, label: 'Dar Feedback', roles: ['loja'] },
     { path: '/feedback-management', icon: BookUser, label: 'Gestão de Feedbacks', roles: ['admin', 'supervisor'] },
-    { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin'] },
+    { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin', 'supervisor'] },
     { path: '/training', icon: GraduationCap, label: 'Treinamentos', roles: ['loja'] },
     { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja'] },
 ];
@@ -64,24 +64,23 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
     }
   }, [location.pathname, isDesktop, isOpen, onClose]);
 
-  // Em desktop (lg+), sempre mostrar; em mobile, só se estiver aberta
-  const shouldShow = isDesktop || isOpen;
-
-  if (!shouldShow) return null;
+  // Mostrar sidebar se estiver aberta (tanto em desktop quanto mobile)
+  // Em desktop, pode estar aberta mas minimizada
+  if (!isOpen) return null;
 
   return (
     <motion.aside
-      initial={!isDesktop ? { x: -300, opacity: 0 } : false}
+      initial={!isDesktop ? { x: -300, opacity: 0 } : { opacity: 0 }}
       animate={{ 
         x: 0, 
         opacity: 1,
         width: isDesktop && isCollapsed ? 80 : 256
       }}
-      exit={!isDesktop ? { x: -300, opacity: 0 } : false}
+      exit={!isDesktop ? { x: -300, opacity: 0 } : { opacity: 0 }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
       className={`${
         isDesktop 
-          ? 'static' 
+          ? 'fixed z-40' 
           : 'fixed z-50'
       } inset-y-0 left-0 bg-card border-r border-border flex flex-col shadow-lg lg:shadow-none overflow-hidden`}
     >
