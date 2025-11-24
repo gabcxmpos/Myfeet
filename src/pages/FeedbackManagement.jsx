@@ -7,6 +7,7 @@ import { Diamond, Frown, Meh, Smile, Laugh, Search, Download, Trash2 } from 'luc
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { useToast } from '@/components/ui/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -100,21 +101,16 @@ const FeedbackCard = ({ feedback, store, collaborator, onDelete, canDelete }) =>
 };
 
 const FeedbackManagement = () => {
-  const { feedbacks, collaborators, stores, fetchData, deleteFeedback } = useData();
+  const { feedbacks, collaborators, stores, fetchData, deleteFeedback, deleteFeedbacksBySatisfaction } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [showHighlights, setShowHighlights] = useState(false);
   const [satisfactionFilter, setSatisfactionFilter] = useState([]);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // Refresh automático a cada 30 segundos para ver novos feedbacks em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  // Refresh automático otimizado para mobile
+  useOptimizedRefresh(fetchData);
 
   const groupedFeedbacks = useMemo(() => {
     const filtered = feedbacks
@@ -163,7 +159,47 @@ const FeedbackManagement = () => {
     }
   };
 
+  const handleDeleteAllBySatisfaction = async () => {
+    if (satisfactionFilter.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Selecione pelo menos um filtro de satisfação para excluir.',
+      });
+      return;
+    }
+
+    // Contar quantos feedbacks serão excluídos
+    const filteredCount = Object.values(groupedFeedbacks).reduce((total, { feedbacks: storeFeedbacks }) => {
+      return total + storeFeedbacks.length;
+    }, 0);
+
+    if (filteredCount === 0) {
+      toast({
+        title: 'Aviso',
+        description: 'Nenhum feedback encontrado para excluir com os filtros selecionados.',
+      });
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteFeedbacksBySatisfaction(satisfactionFilter);
+      // Limpar filtro após exclusão bem-sucedida
+      setSatisfactionFilter([]);
+    } catch (error) {
+      console.error('Erro ao excluir feedbacks:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const canDelete = user?.role === 'admin' || user?.role === 'supervisor';
+  
+  // Contar feedbacks filtrados
+  const filteredCount = Object.values(groupedFeedbacks).reduce((total, { feedbacks: storeFeedbacks }) => {
+    return total + storeFeedbacks.length;
+  }, 0);
   
   const storeIdsWithFeedbacks = Object.keys(groupedFeedbacks);
 
@@ -203,7 +239,54 @@ const FeedbackManagement = () => {
                     </div>
                 </div>
                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Filtrar por satisfação:</Label>
+                    <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium">Filtrar por satisfação:</Label>
+                        {canDelete && satisfactionFilter.length > 0 && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                disabled={isDeleting || filteredCount === 0}
+                                className="gap-2"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                {isDeleting ? 'Excluindo...' : `Excluir Todos (${filteredCount})`}
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Confirmar Exclusão em Lote</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Você está prestes a excluir <strong>{filteredCount} feedback(s)</strong> com os seguintes níveis de satisfação:
+                                  <br />
+                                  <br />
+                                  <strong>
+                                    {satisfactionFilter
+                                      .map(level => satisfactionIcons[parseInt(level)]?.label)
+                                      .filter(Boolean)
+                                      .join(', ')}
+                                  </strong>
+                                  <br />
+                                  <br />
+                                  <span className="text-destructive font-bold">
+                                    ⚠️ Esta ação não pode ser desfeita!
+                                  </span>
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={handleDeleteAllBySatisfaction}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  Excluir {filteredCount} Feedback(s)
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+                    </div>
                     <ToggleGroup 
                         type="multiple" 
                         variant="outline" 
