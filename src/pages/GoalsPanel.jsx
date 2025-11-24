@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { updateStore as updateStoreAPI } from '@/lib/supabaseService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DollarSign, Percent, Hash, Truck, Target, BarChart, Save, Upload, Download, FileText } from 'lucide-react';
@@ -64,14 +65,8 @@ const GoalsPanel = () => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Refresh automático a cada 30 segundos para ver metas atualizadas em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  // Refresh automático otimizado para mobile
+  useOptimizedRefresh(fetchData);
 
   const supervisors = useMemo(() => [...new Set(stores.map(s => s.supervisor))], [stores]);
   const franqueados = useMemo(() => [...new Set(stores.map(s => s.franqueado))], [stores]);
