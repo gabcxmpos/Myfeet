@@ -7,8 +7,9 @@ import { useToast } from '@/components/ui/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, Target, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown } from 'lucide-react';
+import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, Target, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import {
   DropdownMenu,
@@ -330,8 +331,119 @@ const ViewEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove }) => {
   );
 }
 
+const HeadcountModal = ({ store, collaborators, jobRoles, onOpenChange }) => {
+  // Filtrar colaboradores da loja (apenas ativos para headcount)
+  const storeCollaborators = useMemo(() => {
+    if (!collaborators || !store) return [];
+    return collaborators.filter(c => 
+      (c.storeId === store.id || c.store_id === store.id)
+    );
+  }, [collaborators, store]);
+
+  // Colaboradores ativos (para headcount)
+  const activeCollaborators = useMemo(() => {
+    return storeCollaborators.filter(c => (c.status || 'ativo') === 'ativo');
+  }, [storeCollaborators]);
+
+  // Agrupar colaboradores por cargo
+  const collaboratorsByRole = useMemo(() => {
+    const grouped = {};
+    
+    // Inicializar todos os cargos com 0
+    if (jobRoles && jobRoles.length > 0) {
+      jobRoles.forEach(role => {
+        grouped[role] = [];
+      });
+    }
+    
+    // Agrupar colaboradores ativos por cargo
+    activeCollaborators.forEach(collab => {
+      const role = collab.role || 'Sem cargo';
+      if (!grouped[role]) {
+        grouped[role] = [];
+      }
+      grouped[role].push(collab);
+    });
+    
+    return grouped;
+  }, [storeCollaborators, jobRoles]);
+
+  const totalCollaborators = activeCollaborators.length;
+
+  return (
+    <DialogContent className="max-w-3xl bg-card border-border">
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Users className="w-5 h-5" />
+          Headcount - {store?.name}
+        </DialogTitle>
+      </DialogHeader>
+      <div className="mt-4 space-y-4">
+        {/* Total de colaboradores */}
+        <div className="bg-secondary/50 p-4 rounded-lg border border-border">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-muted-foreground">Total de Colaboradores</span>
+            <span className="text-2xl font-bold text-primary">{totalCollaborators}</span>
+          </div>
+        </div>
+
+        {/* Lista de cargos e quantidades */}
+        <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+          {jobRoles && jobRoles.length > 0 ? (
+            jobRoles.map(role => {
+              const count = collaboratorsByRole[role]?.length || 0;
+              const roleCollaborators = collaboratorsByRole[role] || [];
+              
+              return (
+                <div key={role} className="bg-secondary/50 p-4 rounded-lg border border-border">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-foreground">{role}</h3>
+                    <span className="text-lg font-bold text-primary">{count}</span>
+                  </div>
+                  {roleCollaborators.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {roleCollaborators.map(collab => (
+                        <div key={collab.id} className="text-sm text-muted-foreground pl-2 border-l-2 border-primary/30">
+                          {collab.name}
+                          {collab.cpf && <span className="ml-2 text-xs">• CPF: {collab.cpf}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>Nenhum cargo cadastrado.</p>
+              <p className="text-xs mt-2">O administrador precisa cadastrar os cargos primeiro.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Colaboradores sem cargo (apenas ativos) */}
+        {collaboratorsByRole['Sem cargo'] && collaboratorsByRole['Sem cargo'].length > 0 && (
+          <div className="bg-yellow-500/10 border-yellow-500/30 p-4 rounded-lg border">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-foreground">Sem cargo atribuído</h3>
+              <span className="text-lg font-bold text-yellow-500">{collaboratorsByRole['Sem cargo'].length}</span>
+            </div>
+            <div className="mt-2 space-y-1">
+              {collaboratorsByRole['Sem cargo'].map(collab => (
+                <div key={collab.id} className="text-sm text-muted-foreground pl-2 border-l-2 border-yellow-500/30">
+                  {collab.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </DialogContent>
+  );
+}
+
 const StoresManagement = () => {
-  const { stores, addStore, updateStore, deleteStore, deleteEvaluation, approveEvaluation, fetchData } = useData();
+  const { stores, addStore, updateStore, deleteStore, deleteEvaluation, approveEvaluation, fetchData, collaborators, jobRoles } = useData();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [modalState, setModalState] = useState({ type: null, data: null });
@@ -339,14 +451,8 @@ const StoresManagement = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
-  // Refresh automático a cada 30 segundos para ver novas avaliações em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  // Refresh automático otimizado para mobile
+  useOptimizedRefresh(fetchData);
 
   const filteredStores = useMemo(() => {
     return stores.filter(store => 
@@ -449,6 +555,7 @@ const StoresManagement = () => {
                         <DropdownMenuItem onClick={() => setModalState({ type: 'editStore', data: store })}><Edit className="mr-2 h-4 w-4" /> Editar</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => navigate(`/goals?storeId=${store.id}`)}><Target className="mr-2 h-4 w-4" /> Definir Metas</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setModalState({ type: 'viewEvaluations', data: store })}><Eye className="mr-2 h-4 w-4" /> Ver Avaliações</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setModalState({ type: 'headcount', data: store })}><Users className="mr-2 h-4 w-4" /> Headcount</DropdownMenuItem>
                         {isAdmin && <DropdownMenuItem onClick={() => handleDeleteStore(store)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir</DropdownMenuItem>}
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -474,6 +581,7 @@ const StoresManagement = () => {
         {modalState.type === 'editStore' && <StoreFormModal store={modalState.data} onSave={handleSaveStore} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
         {modalState.type === 'viewEvaluations' && <ViewEvaluationsModal store={modalState.data} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} onDelete={handleDeleteEvaluation} onApprove={handleApproveEvaluation} />}
         {modalState.type === 'editResults' && <ResultsFormModal store={modalState.data} onSave={handleSaveResults} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
+        {modalState.type === 'headcount' && <HeadcountModal store={modalState.data} collaborators={collaborators} jobRoles={jobRoles} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
       </Dialog>
     </>
   );
