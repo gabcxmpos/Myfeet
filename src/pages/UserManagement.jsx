@@ -133,6 +133,11 @@ const UserManagement = () => {
             case 'admin': return 'bg-red-500/20 text-red-400';
             case 'supervisor': return 'bg-blue-500/20 text-blue-400';
             case 'loja': return 'bg-green-500/20 text-green-400';
+            case 'devoluções': return 'bg-purple-500/20 text-purple-400';
+            case 'comunicação': return 'bg-cyan-500/20 text-cyan-400';
+            case 'financeiro': return 'bg-yellow-500/20 text-yellow-400';
+            case 'rh': return 'bg-pink-500/20 text-pink-400';
+            case 'motorista': return 'bg-orange-500/20 text-orange-400';
             default: return 'bg-secondary text-muted-foreground';
         }
     }
@@ -185,6 +190,11 @@ const UserManagement = () => {
                                 <SelectItem value="admin">Admin</SelectItem>
                                 <SelectItem value="supervisor">Supervisor</SelectItem>
                                 <SelectItem value="loja">Loja</SelectItem>
+                                <SelectItem value="devoluções">Devoluções</SelectItem>
+                                <SelectItem value="comunicação">Comunicação</SelectItem>
+                                <SelectItem value="financeiro">Financeiro</SelectItem>
+                                <SelectItem value="rh">RH</SelectItem>
+                                <SelectItem value="motorista">Motorista</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
