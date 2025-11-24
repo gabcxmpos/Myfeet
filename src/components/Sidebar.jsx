@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useData } from '@/contexts/DataContext';
-import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, GraduationCap, RotateCcw, X, Menu } from 'lucide-react';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, GraduationCap, RotateCcw, X, Menu, FileCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const allMenuItems = [
@@ -11,6 +11,7 @@ const allMenuItems = [
     { path: '/ranking', icon: Trophy, label: 'Ranking PPAD', roles: ['admin', 'supervisor', 'loja'] },
     { path: '/chave', icon: KeyRound, label: 'CHAVE', roles: ['admin', 'supervisor', 'loja'] },
     { path: '/checklist', icon: CheckSquare, label: 'Checklist Diário', roles: ['admin', 'supervisor', 'loja'] },
+    { path: '/checklist-audit-analytics', icon: FileCheck, label: 'Análise de Auditorias', roles: ['admin'] },
     { path: '/analytics', icon: BarChart3, label: 'Analytics', roles: ['admin', 'supervisor'] },
     { path: '/goals', icon: Target, label: 'Definir Metas', roles: ['admin', 'supervisor'] },
     { path: '/evaluation', icon: ClipboardCheck, label: 'Nova Avaliação', roles: ['admin', 'supervisor', 'loja'] },
@@ -21,7 +22,7 @@ const allMenuItems = [
     { path: '/feedback-management', icon: BookUser, label: 'Gestão de Feedbacks', roles: ['admin', 'supervisor'] },
     { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin', 'supervisor'] },
     { path: '/training', icon: GraduationCap, label: 'Treinamentos', roles: ['loja'] },
-    { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja'] },
+    { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja', 'devoluções'] },
 ];
 
 const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
