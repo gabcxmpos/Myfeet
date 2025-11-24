@@ -7,6 +7,7 @@ import { Gem, Award, Users, Target, Download, Trophy, Flag } from 'lucide-react'
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
+import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { cn } from '@/lib/utils';
 
 const patentColors = {
@@ -33,14 +34,8 @@ const Analytics = () => {
   const { toast } = useToast();
   const [filters, setFilters] = useState({ store: [], bandeira: [], franqueado: [], supervisor: [], estado: [] });
 
-  // Refresh automático a cada 30 segundos para ver dados atualizados em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  // Refresh automático otimizado para mobile
+  useOptimizedRefresh(fetchData);
 
   const filterOptions = useMemo(() => ({
     stores: stores.map(s => ({ value: s.id, label: s.name })),
