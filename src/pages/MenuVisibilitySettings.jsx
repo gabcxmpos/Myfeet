@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, Eye, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, Eye, GraduationCap, RotateCcw } from 'lucide-react';
 
 const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'loja'] },
@@ -23,9 +23,10 @@ const allMenuItems = [
     { path: '/feedback', icon: MessageSquareQuote, label: 'Dar Feedback', roles: ['loja'] },
     { path: '/feedback-management', icon: BookUser, label: 'Gestão de Feedbacks', roles: ['admin', 'supervisor'] },
     { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin', 'supervisor'] },
+    { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja', 'devoluções'] },
 ];
 
-const roles = ['admin', 'supervisor', 'loja'];
+const roles = ['admin', 'supervisor', 'loja', 'devoluções', 'comunicação', 'financeiro', 'rh', 'motorista'];
 
 const MenuVisibilitySettings = () => {
     const { menuVisibility, updateMenuVisibility, fetchData } = useData();
@@ -91,11 +92,11 @@ const MenuVisibilitySettings = () => {
                     <form onSubmit={handleSubmit}>
                         <Card>
                             <CardHeader>
-                                <div className="grid grid-cols-4 items-center px-4 py-2 font-semibold text-muted-foreground">
-                                    <div className="col-span-1">Menu Item</div>
-                                    <div className="col-span-1 text-center">Admin</div>
-                                    <div className="col-span-1 text-center">Supervisor</div>
-                                    <div className="col-span-1 text-center">Loja</div>
+                                <div className="grid items-center px-4 py-2 font-semibold text-muted-foreground" style={{ gridTemplateColumns: `200px repeat(${roles.length}, 1fr)` }}>
+                                    <div>Menu Item</div>
+                                    {roles.map(role => (
+                                        <div key={role} className="text-center capitalize">{role}</div>
+                                    ))}
                                 </div>
                             </CardHeader>
                             <CardContent className="space-y-2">
@@ -104,14 +105,15 @@ const MenuVisibilitySettings = () => {
                                     return (
                                         <div 
                                           key={item.path} 
-                                          className="grid grid-cols-4 items-center p-4 rounded-lg bg-secondary/50"
+                                          className="grid items-center p-4 rounded-lg bg-secondary/50"
+                                          style={{ gridTemplateColumns: `200px repeat(${roles.length}, 1fr)` }}
                                         >
-                                            <div className="col-span-1 flex items-center gap-3">
+                                            <div className="flex items-center gap-3">
                                                 <Icon className="w-5 h-5 text-primary" />
                                                 <span className="font-medium text-foreground">{item.label}</span>
                                             </div>
                                             {roles.map(role => (
-                                                <div key={role} className="col-span-1 flex justify-center">
+                                                <div key={role} className="flex justify-center">
                                                     {item.roles.includes(role) ? (
                                                         <Switch
                                                             checked={visibility[item.path]?.[role] ?? true}
