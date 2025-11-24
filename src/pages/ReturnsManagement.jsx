@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Plus, Edit, Trash2, Eye, MoreVertical, Search, RotateCcw, Package, Calendar, Store, FileText, CheckCircle, BarChart3, TrendingUp, AlertCircle, CheckSquare, X } from 'lucide-react';
@@ -96,6 +97,7 @@ const ReturnsManagement = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const isStore = user?.role === 'loja';
+  const isDevolucoes = user?.role === 'devoluções';
   
   // Estados do componente
   const [modalState, setModalState] = useState({ type: null, data: null });
@@ -166,13 +168,8 @@ const ReturnsManagement = () => {
     }
   }, [user?.storeId]);
 
-  // Refresh automático a cada 30 segundos para ver novas devoluções em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  // Refresh automático otimizado para mobile
+  useOptimizedRefresh(fetchData);
 
   // Opções de filtros
   const filterOptions = useMemo(() => {
@@ -192,7 +189,8 @@ const ReturnsManagement = () => {
       if (!ret.store_id) return false;
       
       // IMPORTANTE: Se for loja, mostrar APENAS suas devoluções (criadas por ela)
-      if (isStore && user?.storeId) {
+      // Role devoluções vê TODAS as devoluções (sem restrição de loja)
+      if (isStore && user?.storeId && !isDevolucoes) {
         if (ret.store_id !== user.storeId) {
           return false; // Loja não pode ver devoluções de outras lojas
         }
@@ -201,8 +199,8 @@ const ReturnsManagement = () => {
       const store = (stores || []).find(s => s.id === ret.store_id);
       if (!store) return false;
       
-      // Aplicar filtros (apenas para admin/supervisor)
-      if (isAdmin || user?.role === 'supervisor') {
+      // Aplicar filtros (para admin/supervisor/devoluções)
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
         const matchStore = filters.store.length === 0 || filters.store.includes(store.id);
         const matchFranqueado = filters.franqueado.length === 0 || (store.franqueado && filters.franqueado.includes(store.franqueado));
         const matchBandeira = filters.bandeira.length === 0 || (store.bandeira && filters.bandeira.includes(store.bandeira));
@@ -227,7 +225,7 @@ const ReturnsManagement = () => {
     });
     
     return filtered;
-  }, [returns, searchTerm, stores, isStore, isAdmin, user?.storeId, user?.role, filters]);
+  }, [returns, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, filters]);
 
   // Filtrar devoluções coletadas
   const collectedReturns = useMemo(() => {
@@ -236,7 +234,8 @@ const ReturnsManagement = () => {
       if (!ret.store_id || !ret.collected_at) return false;
       
       // IMPORTANTE: Se for loja, mostrar APENAS suas devoluções coletadas (criadas por ela)
-      if (isStore && user?.storeId) {
+      // Role devoluções vê TODAS as devoluções (sem restrição de loja)
+      if (isStore && user?.storeId && !isDevolucoes) {
         if (ret.store_id !== user.storeId) {
           return false; // Loja não pode ver devoluções de outras lojas
         }
@@ -245,8 +244,8 @@ const ReturnsManagement = () => {
       const store = (stores || []).find(s => s.id === ret.store_id);
       if (!store) return false;
       
-      // Aplicar filtros (apenas para admin/supervisor)
-      if (isAdmin || user?.role === 'supervisor') {
+      // Aplicar filtros (para admin/supervisor/devoluções)
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
         const matchStore = filters.store.length === 0 || filters.store.includes(store.id);
         const matchFranqueado = filters.franqueado.length === 0 || (store.franqueado && filters.franqueado.includes(store.franqueado));
         const matchBandeira = filters.bandeira.length === 0 || (store.bandeira && filters.bandeira.includes(store.bandeira));
@@ -268,7 +267,7 @@ const ReturnsManagement = () => {
     });
     
     return filtered;
-  }, [returns, searchTerm, stores, isStore, isAdmin, user?.storeId, user?.role, filters]);
+  }, [returns, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, filters]);
 
   // Filtrar falta física (excluindo finalizadas da lista principal)
   const filteredMissing = useMemo(() => {
@@ -279,7 +278,8 @@ const ReturnsManagement = () => {
       }
       
       // IMPORTANTE: Se for loja, mostrar APENAS suas faltas físicas (criadas por ela)
-      if (isStore && user?.storeId) {
+      // Role devoluções vê TODAS as faltas físicas (sem restrição de loja)
+      if (isStore && user?.storeId && !isDevolucoes) {
         if (item.store_id !== user.storeId) {
           return false; // Loja não pode ver faltas físicas de outras lojas
         }
@@ -288,8 +288,8 @@ const ReturnsManagement = () => {
       const store = (stores || []).find(s => s.id === item.store_id);
       if (!store) return false;
       
-      // Aplicar filtros (apenas para admin/supervisor)
-      if (isAdmin || user?.role === 'supervisor') {
+      // Aplicar filtros (para admin/supervisor/devoluções)
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
         const matchStore = filters.store.length === 0 || filters.store.includes(store.id);
         const matchFranqueado = filters.franqueado.length === 0 || (store.franqueado && filters.franqueado.includes(store.franqueado));
         const matchBandeira = filters.bandeira.length === 0 || (store.bandeira && filters.bandeira.includes(store.bandeira));
@@ -315,7 +315,7 @@ const ReturnsManagement = () => {
       // Loja já foi filtrada no início, então retorna apenas se passar na busca
       return matchesSearch;
     });
-  }, [physicalMissing, searchTerm, stores, isStore, isAdmin, user?.storeId, user?.role, filters]);
+  }, [physicalMissing, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, filters]);
 
   // Filtrar falta física finalizada (listagem minimizada)
   const finishedMissing = useMemo(() => {
@@ -326,7 +326,8 @@ const ReturnsManagement = () => {
       }
       
       // IMPORTANTE: Se for loja, mostrar APENAS suas faltas físicas finalizadas (criadas por ela)
-      if (isStore && user?.storeId) {
+      // Role devoluções vê TODAS as faltas físicas (sem restrição de loja)
+      if (isStore && user?.storeId && !isDevolucoes) {
         if (item.store_id !== user.storeId) {
           return false; // Loja não pode ver faltas físicas de outras lojas
         }
@@ -335,8 +336,8 @@ const ReturnsManagement = () => {
       const store = (stores || []).find(s => s.id === item.store_id);
       if (!store) return false;
       
-      // Aplicar filtros (apenas para admin/supervisor)
-      if (isAdmin || user?.role === 'supervisor') {
+      // Aplicar filtros (para admin/supervisor/devoluções)
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
         const matchStore = filters.store.length === 0 || filters.store.includes(store.id);
         const matchFranqueado = filters.franqueado.length === 0 || (store.franqueado && filters.franqueado.includes(store.franqueado));
         const matchBandeira = filters.bandeira.length === 0 || (store.bandeira && filters.bandeira.includes(store.bandeira));
@@ -360,15 +361,15 @@ const ReturnsManagement = () => {
       // Loja já foi filtrada no início, então retorna apenas se passar na busca
       return matchesSearch;
     });
-  }, [physicalMissing, searchTerm, stores, isStore, isAdmin, user?.storeId, user?.role, filters]);
+  }, [physicalMissing, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, filters]);
 
   // Dashboard - Estatísticas (admin vê todas, loja vê apenas suas)
   const dashboardStats = useMemo(() => {
     // Filtrar devoluções pendentes com filtros específicos
     let filteredReturns = returns || [];
     
-    // Aplicar filtros específicos de devoluções pendentes (apenas admin/supervisor)
-    if (isAdmin || user?.role === 'supervisor') {
+    // Aplicar filtros específicos de devoluções pendentes (para admin/supervisor/devoluções)
+    if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
       // Filtro por data
       if (pendingFilters.startDate || pendingFilters.endDate) {
         filteredReturns = filteredReturns.filter(ret => {
@@ -399,8 +400,8 @@ const ReturnsManagement = () => {
     // Filtrar falta física com filtros específicos
     let filteredMissing = physicalMissing || [];
     
-    // Aplicar filtros específicos de falta física (apenas admin/supervisor)
-    if (isAdmin || user?.role === 'supervisor') {
+    // Aplicar filtros específicos de falta física (para admin/supervisor/devoluções)
+    if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
       // Filtro por data
       if (missingFilters.startDate || missingFilters.endDate) {
         filteredMissing = filteredMissing.filter(item => {
@@ -428,20 +429,20 @@ const ReturnsManagement = () => {
       filteredMissing = filteredMissing.filter(item => filteredStoreIdsMissing.has(item.store_id));
     }
     
-    // Para dashboard, admin vê tudo (já filtrado), loja vê apenas suas estatísticas
-    const returnsToCount = isStore && user?.storeId 
+    // Para dashboard, admin/supervisor/devoluções vê tudo (já filtrado), loja vê apenas suas estatísticas
+    const returnsToCount = (isStore && user?.storeId && !isDevolucoes)
       ? filteredReturns.filter(ret => ret.store_id === user.storeId)
       : filteredReturns;
       
-    const missingToCount = isStore && user?.storeId
+    const missingToCount = (isStore && user?.storeId && !isDevolucoes)
       ? filteredMissing.filter(item => item.store_id === user.storeId)
       : filteredMissing;
 
     const stats = {
-      totalPending: isStore && user?.storeId
+      totalPending: (isStore && user?.storeId && !isDevolucoes)
         ? returnsToCount.filter(ret => !ret.collected_at).length
         : pendingReturns.length,
-      totalCollected: isStore && user?.storeId
+      totalCollected: (isStore && user?.storeId && !isDevolucoes)
         ? returnsToCount.filter(ret => ret.collected_at).length
         : collectedReturns.length,
       totalMissing: missingToCount.filter(item => item.status !== 'nota_finalizada').length,
@@ -658,7 +659,7 @@ const ReturnsManagement = () => {
       }, 0);
 
     return stats;
-  }, [returns, pendingReturns, collectedReturns, filteredMissing, physicalMissing, stores, isStore, user?.storeId, user?.role, isAdmin, pendingFilters, missingFilters]);
+  }, [returns, pendingReturns, collectedReturns, filteredMissing, physicalMissing, stores, isStore, isDevolucoes, user?.storeId, user?.role, isAdmin, pendingFilters, missingFilters]);
 
   // Handlers para devoluções pendentes
   const handleCreatePendingReturn = async (e) => {
@@ -940,8 +941,8 @@ const ReturnsManagement = () => {
                 </h3>
               </div>
 
-              {/* Filtros para Devoluções Pendentes (apenas admin/supervisor) */}
-              {(isAdmin || user?.role === 'supervisor') && (
+              {/* Filtros para Devoluções Pendentes (admin/supervisor/devoluções) */}
+              {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
                 <Card className="p-4 bg-secondary/50 border border-yellow-500/30">
                   <h4 className="font-semibold text-foreground mb-3 text-sm">Filtros de Devoluções Pendentes</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -1139,8 +1140,8 @@ const ReturnsManagement = () => {
                 </h3>
               </div>
 
-              {/* Filtros para Falta Física (apenas admin/supervisor) */}
-              {(isAdmin || user?.role === 'supervisor') && (
+              {/* Filtros para Falta Física (admin/supervisor/devoluções) */}
+              {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
                 <Card className="p-4 bg-secondary/50 border border-red-500/30">
                   <h4 className="font-semibold text-foreground mb-3 text-sm">Filtros de Falta Física</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -1394,8 +1395,8 @@ const ReturnsManagement = () => {
 
           {/* ABA PENDENTES */}
           <TabsContent value="pending" className="space-y-4 mt-4">
-            {/* Filtros (apenas para admin/supervisor) */}
-            {(isAdmin || user?.role === 'supervisor') && (
+            {/* Filtros (admin/supervisor/devoluções) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
               <Card className="p-4 mb-6">
                 <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1597,7 +1598,7 @@ const ReturnsManagement = () => {
                               {store?.name || 'Loja não encontrada'}
                             </p>
                           </div>
-                          {isAdmin && (
+                          {(isAdmin || isDevolucoes) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1687,8 +1688,8 @@ const ReturnsManagement = () => {
 
           {/* ABA COLETADOS */}
           <TabsContent value="collected" className="space-y-4 mt-4">
-            {/* Filtros (apenas para admin/supervisor) */}
-            {(isAdmin || user?.role === 'supervisor') && (
+            {/* Filtros (admin/supervisor/devoluções) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
               <Card className="p-4 mb-6">
                 <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1776,7 +1777,7 @@ const ReturnsManagement = () => {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {isAdmin && (
+                          {(isAdmin || isDevolucoes) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1850,8 +1851,8 @@ const ReturnsManagement = () => {
 
           {/* ABA FALTA FISICA */}
           <TabsContent value="missing" className="space-y-4 mt-4">
-            {/* Filtros (apenas para admin/supervisor) */}
-            {(isAdmin || user?.role === 'supervisor') && (
+            {/* Filtros (admin/supervisor/devoluções) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
               <Card className="p-4 mb-6">
                 <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2068,7 +2069,7 @@ const ReturnsManagement = () => {
                               </p>
                             )}
                           </div>
-                          {isAdmin && (
+                          {(isAdmin || isDevolucoes) && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -2156,8 +2157,8 @@ const ReturnsManagement = () => {
 
           {/* ABA FINALIZADOS (Falta Física) */}
           <TabsContent value="finished" className="space-y-4 mt-4">
-            {/* Filtros (apenas para admin/supervisor) */}
-            {(isAdmin || user?.role === 'supervisor') && (
+            {/* Filtros (admin/supervisor/devoluções) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
               <Card className="p-4 mb-6">
                 <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2246,7 +2247,7 @@ const ReturnsManagement = () => {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            {isAdmin && (
+                            {(isAdmin || isDevolucoes) && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="icon" className="h-8 w-8">
