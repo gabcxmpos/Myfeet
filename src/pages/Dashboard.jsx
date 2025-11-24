@@ -126,10 +126,6 @@ const Dashboard = () => {
   
   // Refresh automático otimizado para mobile
   useOptimizedRefresh(fetchData);
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
   const [filters, setFilters] = useState({ store: [], bandeira: [], franqueado: [], supervisor: [], estado: [] });
 
   const filterOptions = useMemo(() => {
