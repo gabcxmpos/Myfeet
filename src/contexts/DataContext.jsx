@@ -69,6 +69,24 @@ const defaultGerencialTasks = [
     { id: 'gerencial-26', text: 'FB LIDERANÇA' },
 ];
 
+const buildAuditKey = (storeId, date, checklistType = 'operacional') => {
+  if (!storeId || !date) return '';
+  return `${storeId}-${date}-${checklistType}`;
+};
+
+const mapAuditsArray = (audits = []) => {
+  const map = {};
+  audits.forEach((audit) => {
+    if (audit?.store_id && audit?.date) {
+      const key = buildAuditKey(audit.store_id, audit.date, audit.checklist_type || 'operacional');
+      if (key) {
+        map[key] = audit;
+      }
+    }
+  });
+  return map;
+};
+
 export const DataProvider = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
@@ -90,6 +108,8 @@ export const DataProvider = ({ children }) => {
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
   const [chaveContent, setChaveContent] = useState('');
   const [menuVisibility, setMenuVisibility] = useState({});
+  const [jobRoles, setJobRoles] = useState([]);
+  const [checklistAudits, setChecklistAudits] = useState({});
   const [checklist, setChecklist] = useState({});
   const [dailyTasks, setDailyTasks] = useState(defaultDailyTasks); // Tarefas do checklist operacional (agora vem do banco)
   const [gerencialTasks, setGerencialTasks] = useState(defaultGerencialTasks); // Tarefas do checklist gerencial
@@ -121,6 +141,7 @@ export const DataProvider = ({ children }) => {
         fetchedMenu,
         fetchedChecklistTasks,
         fetchedGerencialChecklistTasks,
+        fetchedJobRoles,
       ] = await Promise.all([
         api.fetchStores(),
         api.fetchAppUsers(),
@@ -137,6 +158,7 @@ export const DataProvider = ({ children }) => {
         api.fetchAppSettings('menu_visibility'),
         api.fetchChecklistTasks(),
         api.fetchGerencialChecklistTasks(),
+        api.fetchJobRoles(),
       ]);
 
       setStores(fetchedStores);
@@ -166,6 +188,15 @@ export const DataProvider = ({ children }) => {
         setChaveContent(''); // Valor padrão se não houver conteúdo
       }
       if (fetchedMenu) setMenuVisibility(fetchedMenu);
+      setJobRoles(fetchedJobRoles || []);
+      try {
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        const fetchedAudits = await api.fetchChecklistAuditsByDate(todayStr);
+        setChecklistAudits(mapAuditsArray(fetchedAudits || []));
+      } catch (auditError) {
+        console.warn('Erro ao buscar auditorias do checklist:', auditError);
+        setChecklistAudits({});
+      }
       
       // Configurar tarefas do checklist operacional
       if (fetchedChecklistTasks && fetchedChecklistTasks.length > 0) {
@@ -214,14 +245,27 @@ export const DataProvider = ({ children }) => {
       setTrainingRegistrations([]);
       setReturns([]);
       setPhysicalMissing([]);
+      setChecklistAudits({});
     }
   }, [isAuthenticated, fetchData]);
 
-  // Refresh periódico de dados críticos para multi-usuário (a cada 30 segundos)
+  // Refresh periódico de dados críticos para multi-usuário - Otimizado para mobile
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const interval = setInterval(() => {
+    // Verificar se está online antes de fazer refresh
+    const checkAndRefresh = () => {
+      // Verificar conexão de rede
+      if (navigator.onLine === false) {
+        console.warn('⚠️ Sem conexão de rede. Pulando refresh automático.');
+        return;
+      }
+
+      // Verificar se a página está visível (evitar refresh em background em mobile)
+      if (document.visibilityState === 'hidden') {
+        return; // Não fazer refresh se a página estiver em background
+      }
+
       // Refresh dados críticos que mudam frequentemente
       Promise.all([
         api.fetchEvaluations(),
@@ -242,41 +286,113 @@ export const DataProvider = ({ children }) => {
       }).catch(error => {
         console.warn('Erro ao atualizar dados em background:', error);
       });
-    }, 30000); // 30 segundos
+    };
 
-    return () => clearInterval(interval);
+    // Intervalo adaptativo: mais frequente quando visível, menos quando em background
+    const REFRESH_INTERVAL_VISIBLE = 30000; // 30 segundos quando visível
+    const REFRESH_INTERVAL_HIDDEN = 120000; // 2 minutos quando em background
+    
+    let intervalId;
+    let currentInterval = REFRESH_INTERVAL_VISIBLE;
+
+    const updateInterval = () => {
+      if (intervalId) clearInterval(intervalId);
+      
+      currentInterval = document.visibilityState === 'visible' 
+        ? REFRESH_INTERVAL_VISIBLE 
+        : REFRESH_INTERVAL_HIDDEN;
+      
+      intervalId = setInterval(checkAndRefresh, currentInterval);
+    };
+
+    // Iniciar intervalo
+    updateInterval();
+    
+    // Atualizar intervalo quando visibilidade mudar
+    const handleVisibilityChange = () => {
+      updateInterval();
+      // Se voltou a ser visível, fazer refresh imediato
+      if (document.visibilityState === 'visible') {
+        checkAndRefresh();
+      }
+    };
+
+    // Escutar eventos de rede
+    const handleOnline = () => {
+      console.log('✅ Conexão restaurada. Fazendo refresh...');
+      checkAndRefresh();
+    };
+
+    const handleOffline = () => {
+      console.warn('⚠️ Conexão perdida.');
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [isAuthenticated, user?.role, user?.storeId]);
 
-  // Refresh quando a janela volta ao foco (usuário volta para a aba)
+  // Refresh quando a janela volta ao foco (usuário volta para a aba) - Melhorado para mobile
   useEffect(() => {
     if (!isAuthenticated) return;
 
+    let lastRefreshTime = Date.now();
+    const MIN_REFRESH_INTERVAL = 5000; // Mínimo de 5 segundos entre refreshes
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Refresh dados quando a página volta a ser visível
+        const now = Date.now();
+        // Evitar refresh muito frequente em mobile
+        if (now - lastRefreshTime < MIN_REFRESH_INTERVAL) {
+          return;
+        }
+        lastRefreshTime = now;
+
+        // Refresh dados quando a página volta a ser visível (incluindo returns e physicalMissing)
         Promise.all([
-        api.fetchEvaluations(),
-        api.fetchFeedbacks(),
-        api.fetchCollaborators(),
-        api.fetchStores(),
-        api.fetchTrainings(user?.role === 'loja' ? user?.storeId : null),
-        api.fetchTrainingRegistrations(),
-        ]).then(([newEvaluations, newFeedbacks, newCollaborators, newStores, newTrainings, newRegistrations]) => {
+          api.fetchEvaluations(),
+          api.fetchFeedbacks(),
+          api.fetchCollaborators(),
+          api.fetchStores(),
+          api.fetchTrainings(user?.role === 'loja' ? user?.storeId : null),
+          api.fetchTrainingRegistrations(),
+          api.fetchReturns(),
+          api.fetchPhysicalMissing(),
+        ]).then(([newEvaluations, newFeedbacks, newCollaborators, newStores, newTrainings, newRegistrations, newReturns, newPhysicalMissing]) => {
           setEvaluations(newEvaluations);
           setFeedbacks(newFeedbacks);
           setCollaborators(newCollaborators);
           setStores(newStores);
           setTrainings(newTrainings);
           setTrainingRegistrations(newRegistrations);
+          setReturns(newReturns || []);
+          setPhysicalMissing(newPhysicalMissing || []);
         }).catch(error => {
           console.warn('Erro ao atualizar dados ao voltar ao foco:', error);
         });
       }
     };
 
+    // Também escutar eventos de foco da janela (útil para mobile)
+    const handleFocus = () => {
+      handleVisibilityChange();
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isAuthenticated]);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isAuthenticated, user?.role, user?.storeId]);
   
   // Wrapper for API calls to refresh local state
   const handleApiCall = async (apiCall, successMsg) => {
@@ -523,6 +639,7 @@ export const DataProvider = ({ children }) => {
   
   // Collaborators
   const addCollaborator = (collabData) => handleApiCall(() => api.createCollaborator(collabData), 'Colaborador adicionado.');
+  const updateCollaborator = (id, updates) => handleApiCall(() => api.updateCollaborator(id, updates), 'Colaborador atualizado.');
   const deleteCollaborator = (id) => handleApiCall(() => api.deleteCollaborator(id), 'Colaborador removido.');
 
   // Trainings
@@ -635,6 +752,65 @@ export const DataProvider = ({ children }) => {
       // Reverter estado local em caso de erro
       fetchData();
       toast({ variant: 'destructive', title: 'Erro na Operação', description: error.message });
+      throw error;
+    }
+  };
+  const refreshChecklistAuditsForDate = async (date = format(new Date(), 'yyyy-MM-dd')) => {
+    try {
+      const audits = await api.fetchChecklistAuditsByDate(date);
+      setChecklistAudits(mapAuditsArray(audits || []));
+      return audits;
+    } catch (error) {
+      console.warn('Erro ao atualizar auditorias:', error);
+      throw error;
+    }
+  };
+  const toggleChecklistAuditStatus = async (storeId, date, checklistType = 'operacional', audited, selectedAuditedBy = null, selectedAuditedByName = null) => {
+    const auditKey = buildAuditKey(storeId, date, checklistType);
+    try {
+      if (audited) {
+        // Se admin selecionou um usuário específico, usar esse usuário; caso contrário, usar o usuário atual
+        const auditedBy = selectedAuditedBy || user?.id;
+        const auditedByName = selectedAuditedByName || user?.username || user?.email;
+        
+        const result = await api.upsertChecklistAudit({
+          storeId,
+          date,
+          checklistType,
+          auditedBy,
+          auditedByName,
+        });
+        setChecklistAudits(prev => ({ ...prev, [auditKey]: result }));
+        toast({ title: 'Auditoria registrada!', description: 'Checklist auditado com sucesso.' });
+        return result;
+      }
+      await api.deleteChecklistAudit(storeId, date, checklistType);
+      setChecklistAudits(prev => {
+        const newMap = { ...prev };
+        delete newMap[auditKey];
+        return newMap;
+      });
+      toast({ title: 'Auditoria removida', description: 'O status de auditoria foi atualizado.' });
+      return null;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar auditoria', description: error.message });
+      throw error;
+    }
+  };
+  const fetchChecklistAuditsForStoreRange = async (storeId, startDate, endDate, checklistType = 'operacional') => {
+    return await api.fetchChecklistAuditsRange(storeId, startDate, endDate, checklistType);
+  };
+  const updateJobRoles = async (roles) => {
+    try {
+      if (!Array.isArray(roles)) {
+        throw new Error('A lista de cargos precisa ser um array.');
+      }
+      await api.saveJobRoles(roles);
+      setJobRoles(roles);
+      toast({ title: 'Sucesso!', description: 'Lista de cargos atualizada.' });
+      fetchData();
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao salvar cargos', description: error.message });
       throw error;
     }
   };
@@ -839,6 +1015,7 @@ export const DataProvider = ({ children }) => {
     updatePatentSettings,
     collaborators,
     addCollaborator,
+    updateCollaborator,
     deleteCollaborator,
     feedbacks,
     trainings,
@@ -861,8 +1038,14 @@ export const DataProvider = ({ children }) => {
     updateChecklistTasks,
     updateGerencialChecklistTasks,
     fetchChecklistHistory,
+    checklistAudits,
+    refreshChecklistAuditsForDate,
+    toggleChecklistAuditStatus,
+    fetchChecklistAuditsForStoreRange,
     menuVisibility,
     updateMenuVisibility,
+    jobRoles,
+    updateJobRoles,
     returns,
     addReturn,
     updateReturn,
