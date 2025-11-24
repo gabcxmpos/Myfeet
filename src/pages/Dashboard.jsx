@@ -2,12 +2,15 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { useData } from '@/contexts/DataContext';
-import { Users, TrendingUp, Sparkles, Smartphone, Award, ArrowUp, ArrowDown, AlertCircle, Shield, Diamond, Frown, Meh, Smile, Laugh, Download } from 'lucide-react';
+import { Users, TrendingUp, Sparkles, Smartphone, Award, ArrowUp, ArrowDown, AlertCircle, Shield, Diamond, Frown, Meh, Smile, Laugh, Download, GraduationCap, UserCheck, Building2, Percent, Clock, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import { Button } from '@/components/ui/button';
+import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { useToast } from '@/components/ui/use-toast';
+import { format, differenceInDays, isToday, isTomorrow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const pillarIcons = {
   Pessoas: { icon: Users, color: 'text-blue-400', bg: 'bg-blue-900/50' },
@@ -101,14 +104,28 @@ const SupervisorAnalysisRow = ({ supervisor, stores, score }) => {
 };
 
 const Dashboard = () => {
-  const { stores, feedbacks, evaluations, fetchData } = useData();
+  const { stores, feedbacks, evaluations, trainings, fetchData } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Função para calcular dias até o treinamento
+  const getDaysUntilTraining = (trainingDate) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const training = new Date(trainingDate);
+    training.setHours(0, 0, 0, 0);
+    
+    const days = differenceInDays(training, today);
+    
+    if (days < 0) return null; // Treinamento já passou
+    if (isToday(training)) return 'Hoje';
+    if (isTomorrow(training)) return 'Amanhã';
+    if (days === 1) return '1 dia';
+    return `${days} dias`;
+  };
   
-  // Refresh automático a cada 30 segundos para ver dados atualizados em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
+  // Refresh automático otimizado para mobile
+  useOptimizedRefresh(fetchData);
     }, 30000); // 30 segundos
 
     return () => clearInterval(interval);
@@ -294,6 +311,98 @@ const Dashboard = () => {
                         <GapCard pillar="Digital" gaps={dashboardData.gaps.Digital || []} />
                     </div>
                 </div>
+
+                {/* Próximos Treinamentos para Loja */}
+                {trainings && trainings.length > 0 && (() => {
+                  const upcomingTrainings = trainings
+                    .filter(t => {
+                      // Verificar se a loja está nas lojas do treinamento
+                      let storeMatch = true;
+                      
+                      // Se o treinamento não tem lojas específicas, está disponível para todos
+                      if (!t.store_ids || t.store_ids === null || t.store_ids === '') {
+                        storeMatch = true;
+                      } else {
+                        try {
+                          const storeIds = typeof t.store_ids === 'string' 
+                            ? JSON.parse(t.store_ids) 
+                            : t.store_ids;
+                          if (Array.isArray(storeIds) && storeIds.length > 0) {
+                            storeMatch = storeIds.includes(user.storeId);
+                          } else {
+                            storeMatch = false;
+                          }
+                        } catch {
+                          storeMatch = false;
+                        }
+                      }
+                      
+                      // Filtrar apenas futuros
+                      const trainingDate = new Date(t.training_date);
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const isFuture = trainingDate >= today;
+                      
+                      return storeMatch && isFuture;
+                    })
+                    .sort((a, b) => new Date(a.training_date) - new Date(b.training_date))
+                    .slice(0, 3); // Apenas os 3 próximos
+                  
+                  if (upcomingTrainings.length === 0) return null;
+                  
+                  return (
+                    <div className="space-y-4">
+                      <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                        <GraduationCap className="w-6 h-6" />
+                        Próximos Treinamentos
+                      </h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {upcomingTrainings.map(training => {
+                          const daysUntil = getDaysUntilTraining(training.training_date);
+                          return (
+                            <motion.div
+                              key={training.id}
+                              className="bg-card p-4 rounded-xl border border-border"
+                              whileHover={{ y: -5, boxShadow: '0 10px 20px rgba(0,0,0,0.2)' }}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <h3 className="font-bold text-lg text-foreground">{training.title}</h3>
+                                {daysUntil && (
+                                  <div className={cn(
+                                    "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold whitespace-nowrap",
+                                    daysUntil === 'Hoje' 
+                                      ? "bg-red-500/20 text-red-500"
+                                      : daysUntil === 'Amanhã'
+                                      ? "bg-orange-500/20 text-orange-500"
+                                      : "bg-blue-500/20 text-blue-500"
+                                  )}>
+                                    <Clock className="w-3 h-3" />
+                                    <span>{daysUntil}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="space-y-1 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-4 h-4" />
+                                  <span>
+                                    {format(new Date(training.training_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                                    {training.time && ` às ${training.time}`}
+                                  </span>
+                                </div>
+                                {training.format && (
+                                  <div className="flex items-center gap-2">
+                                    <GraduationCap className="w-4 h-4" />
+                                    <span>{training.format === 'presencial' ? 'Presencial' : training.format === 'online' ? 'Online' : 'Híbrido'}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
             </div>
         </>
     )
@@ -328,7 +437,7 @@ const Dashboard = () => {
               <KpiCard key={pillar.name} title={pillar.name} score={pillar.score} trend={pillar.trend} icon={pillarIcons[pillar.name].icon} color={pillarIcons[pillar.name].color} />
             ))}
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
            <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {Object.keys(pillarIcons).map(pillar => (
