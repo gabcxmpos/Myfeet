@@ -40,3 +40,12 @@ if (Test-Path $zipPath) {
     Write-Host "📂 Pasta aberta! O arquivo ZIP está selecionado." -ForegroundColor Green
 }
 
+
+
+
+
+
+
+
+
+

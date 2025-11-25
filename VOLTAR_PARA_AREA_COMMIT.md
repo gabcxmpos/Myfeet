@@ -73,3 +73,12 @@ Você está vendo o **código de um arquivo** (vite.config.js), mas precisa esta
 
 **Com essa informação, consigo te ajudar no próximo passo!** 😊
 
+
+
+
+
+
+
+
+
+

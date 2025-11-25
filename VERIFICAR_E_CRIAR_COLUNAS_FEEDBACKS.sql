@@ -161,3 +161,12 @@ SELECT
     ) THEN '✅' ELSE '❌' END AS is_promotion_candidate;
 
 
+
+
+
+
+
+
+
+
+

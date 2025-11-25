@@ -196,3 +196,10 @@ Se após verificar tudo acima o problema persistir:
 - **Dashboard**: https://supabase.com/dashboard/project/hzwmacltgiyanukgvfvn
 - **Status**: https://status.supabase.com
 
+
+
+
+
+
+
+

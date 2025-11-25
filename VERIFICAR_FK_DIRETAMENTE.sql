@@ -128,3 +128,12 @@ WHERE relnamespace = 'auth'::regnamespace
   AND relkind = 'r';
 
 
+
+
+
+
+
+
+
+
+

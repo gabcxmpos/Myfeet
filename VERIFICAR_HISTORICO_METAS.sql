@@ -148,3 +148,12 @@ SELECT
     (SELECT COUNT(*) FROM public.goals_history) AS total_registros;
 
 
+
+
+
+
+
+
+
+
+

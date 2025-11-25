@@ -216,3 +216,12 @@ SELECT
   END AS funcao_rpc_status;
 
 
+
+
+
+
+
+
+
+
+

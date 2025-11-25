@@ -248,3 +248,12 @@ Status: Em verificação
 3. Adicionar mais feedback visual para ações do usuário
 
 
+
+
+
+
+
+
+
+
+

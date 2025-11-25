@@ -173,6 +173,30 @@ if (window.navigation && window.self !== window.top) {
 const addTransformIndexHtml = {
 	name: 'add-transform-index-html',
 	transformIndexHtml(html) {
+		// Em produção, não adicionar scripts de debug (são apenas para desenvolvimento visual)
+		// Isso evita problemas no build e mantém o HTML limpo
+		if (!isDev) {
+			// Em produção, retornar HTML sem modificações (apenas scripts essenciais se necessário)
+			if (process.env.TEMPLATE_BANNER_SCRIPT_URL && process.env.TEMPLATE_REDIRECT_URL) {
+				return {
+					html,
+					tags: [
+						{
+							tag: 'script',
+							attrs: {
+								src: process.env.TEMPLATE_BANNER_SCRIPT_URL,
+								'template-redirect-url': process.env.TEMPLATE_REDIRECT_URL,
+							},
+							injectTo: 'head',
+						}
+					],
+				};
+			}
+			// Retornar HTML sem modificações em produção
+			return html;
+		}
+
+		// Apenas em desenvolvimento, adicionar scripts de debug
 		const tags = [
 			{
 				tag: 'script',
@@ -205,19 +229,6 @@ const addTransformIndexHtml = {
 				injectTo: 'head',
 			},
 		];
-
-		if (!isDev && process.env.TEMPLATE_BANNER_SCRIPT_URL && process.env.TEMPLATE_REDIRECT_URL) {
-			tags.push(
-				{
-					tag: 'script',
-					attrs: {
-						src: process.env.TEMPLATE_BANNER_SCRIPT_URL,
-						'template-redirect-url': process.env.TEMPLATE_REDIRECT_URL,
-					},
-					injectTo: 'head',
-				}
-			);
-		}
 
 		return {
 			html,
@@ -256,7 +267,8 @@ export default defineConfig({
 	resolve: {
 		extensions: ['.jsx', '.js', '.tsx', '.ts', '.json', ],
 		alias: {
-   '@': path.resolve(process.cwd(), './src'),		},
+			'@': path.resolve(process.cwd(), './src'),
+		},
 	},
 	build: {
 		rollupOptions: {

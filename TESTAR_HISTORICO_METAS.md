@@ -90,3 +90,12 @@ Se quiser criar uma interface visual para o histórico:
 O código já está pronto para buscar o histórico (`fetchGoalsHistory`), só falta criar a interface!
 
 
+
+
+
+
+
+
+
+
+
