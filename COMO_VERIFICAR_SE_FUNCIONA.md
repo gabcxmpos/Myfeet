@@ -94,3 +94,12 @@ A função `updateStore` já está configurada para:
 **A única coisa necessária é executar o script SQL para criar a tabela!**
 
 
+
+
+
+
+
+
+
+
+

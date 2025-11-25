@@ -138,3 +138,12 @@ WHERE table_schema = 'auth'
   AND column_name = 'id';
 
 
+
+
+
+
+
+
+
+
+

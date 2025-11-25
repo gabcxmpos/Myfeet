@@ -188,3 +188,12 @@ WHERE table_name = 'users'
   AND (table_schema = 'public' OR table_schema = 'auth');
 
 
+
+
+
+
+
+
+
+
+

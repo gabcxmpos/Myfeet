@@ -1,0 +1,79 @@
+========================================
+ARQUIVOS PARA COPIAR NO GITHUB
+========================================
+
+⚠️ IMPORTANTE: Você precisa atualizar 2 arquivos no GitHub!
+
+========================================
+ARQUIVO 1: src/lib/supabaseService.js
+========================================
+
+1. Abra o arquivo: SUPABASE_SERVICE_TUDO_CORRIGIDO.js
+2. Selecione TODO (Ctrl + A)
+3. Copie (Ctrl + C)
+4. No GitHub, vá para: src/lib/supabaseService.js
+5. Clique no lápis (✏️)
+6. Apague tudo (Ctrl + A, Delete)
+7. Cole (Ctrl + V)
+8. Commit: "Fix: Corrigir checklist e evaluation - remover user_id e fazer UPDATE primeiro"
+
+========================================
+ARQUIVO 2: src/contexts/DataContext.jsx
+========================================
+
+1. Abra o arquivo: DATACONTEXT_CORRIGIDO.jsx
+2. Selecione TODO (Ctrl + A)
+3. Copie (Ctrl + C)
+4. No GitHub, vá para: src/contexts/DataContext.jsx
+5. Clique no lápis (✏️)
+6. Apague tudo (Ctrl + A, Delete)
+7. Cole (Ctrl + V)
+8. Commit: "Fix: Corrigir deleteEvaluation - remover do estado imediatamente"
+
+========================================
+ARQUIVO 3: src/pages/StoresManagement.jsx (OPCIONAL)
+========================================
+
+1. Abra o arquivo: src/pages/StoresManagement.jsx (local)
+2. Procure pela função handleDeleteEvaluation
+3. Verifique se está assim:
+   
+   const handleDeleteEvaluation = async (evalId) => {
+     if (window.confirm(`Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita.`)) {
+      await deleteEvaluation(evalId);
+      // Toast já é exibido pela função deleteEvaluation
+    }
+  }
+
+4. Se não estiver assim, atualize no GitHub também
+
+========================================
+APÓS ATUALIZAR:
+========================================
+
+1. Aguarde 2-3 minutos
+2. Vercel vai fazer deploy automaticamente
+3. LIMPE O CACHE DO NAVEGADOR:
+   - Ctrl + Shift + Delete
+   - Ou Ctrl + F5 (hard refresh)
+4. Teste novamente
+
+========================================
+VERIFICAÇÃO:
+========================================
+
+Após atualizar, verifique se:
+- ✅ O commit mudou (não é mais o antigo)
+- ✅ Os arquivos foram realmente atualizados no GitHub
+- ✅ O build no Vercel passou sem erros
+
+========================================
+
+
+
+
+
+
+
+
+

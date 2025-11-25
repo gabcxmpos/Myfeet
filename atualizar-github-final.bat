@@ -103,3 +103,7 @@ echo [INFO] Aguarde alguns minutos para o Vercel fazer o build automaticamente.
 echo.
 pause
 
+
+
+
+

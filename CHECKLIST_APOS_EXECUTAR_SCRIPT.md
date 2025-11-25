@@ -107,3 +107,12 @@ Todos devem mostrar **✅**.
 5. Se não funcionar, execute o script `VERIFICAR_E_CORRIGIR_TUDO.sql` para diagnosticar
 
 
+
+
+
+
+
+
+
+
+

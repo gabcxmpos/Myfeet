@@ -166,3 +166,12 @@ Se quiser atualização ainda mais rápida (< 30s):
 **Recomendação:** O sistema atual (30s) é suficiente para a maioria dos casos de uso.
 
 
+
+
+
+
+
+
+
+
+

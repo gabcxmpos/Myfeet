@@ -71,3 +71,12 @@ Ao fazer deploy em produção, configure as variáveis de ambiente:
 - ✅ Você pode testar mudanças sem risco
 
 
+
+
+
+
+
+
+
+
+

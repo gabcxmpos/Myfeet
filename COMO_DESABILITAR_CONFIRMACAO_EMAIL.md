@@ -52,3 +52,12 @@ Após desabilitar, verifique:
 - Isso causa o erro de foreign key porque tentamos criar o perfil antes do usuário existir no `auth.users`
 
 
+
+
+
+
+
+
+
+
+

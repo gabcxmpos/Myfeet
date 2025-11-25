@@ -106,3 +106,12 @@ WHERE schemaname = 'public'
   AND tablename = 'goals_history';
 
 
+
+
+
+
+
+
+
+
+

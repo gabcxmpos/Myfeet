@@ -47,3 +47,12 @@ if (Test-Path $zipPath) {
     Write-Host "💡 Dica: Você pode arrastar o arquivo ZIP direto para o GitHub!" -ForegroundColor Cyan
 }
 
+
+
+
+
+
+
+
+
+
