@@ -116,19 +116,54 @@ export const DataProvider = ({ children }) => {
 
   const fetchData = useCallback(async () => {
     if (!isAuthenticated) {
+      console.log('⚠️ [DataContext] Usuário não autenticado, pulando fetchData');
       setLoading(false);
       return;
     }
+    
+    console.log('🚀 [DataContext] Iniciando fetchData...', { role: user?.role, storeId: user?.storeId });
+    console.log('🔍 [DataContext] Verificando se api.fetchAppUsers existe:', typeof api.fetchAppUsers);
+    console.log('🔍 [DataContext] Verificando se api.fetchForms existe:', typeof api.fetchForms);
     
     setLoading(true);
     try {
       // Para lojas, passar storeId para filtrar treinamentos
       const storeIdForTrainings = user?.role === 'loja' ? user?.storeId : null;
       
+      console.log('📦 [DataContext] Chamando Promise.all para buscar todos os dados...');
+      
+      // Buscar usuários e formulários com tratamento de erro individual
+      let fetchedUsers = [];
+      let fetchedForms = [];
+      
+      if (typeof api.fetchAppUsers === 'function') {
+        try {
+          console.log('🔍 [DataContext] Tentando buscar usuários...');
+          fetchedUsers = await api.fetchAppUsers();
+          console.log('✅ [DataContext] Usuários buscados com sucesso:', fetchedUsers?.length || 0);
+        } catch (userError) {
+          console.error('❌ [DataContext] Erro ao buscar usuários:', userError);
+          fetchedUsers = [];
+        }
+      } else {
+        console.error('❌ [DataContext] api.fetchAppUsers não é uma função!', api.fetchAppUsers);
+      }
+      
+      if (typeof api.fetchForms === 'function') {
+        try {
+          console.log('🔍 [DataContext] Tentando buscar formulários...');
+          fetchedForms = await api.fetchForms();
+          console.log('✅ [DataContext] Formulários buscados com sucesso:', fetchedForms?.length || 0);
+        } catch (formError) {
+          console.error('❌ [DataContext] Erro ao buscar formulários:', formError);
+          fetchedForms = [];
+        }
+      } else {
+        console.error('❌ [DataContext] api.fetchForms não é uma função!', api.fetchForms);
+      }
+      
       const [
         fetchedStores,
-        fetchedUsers,
-        fetchedForms,
         fetchedEvaluations,
         fetchedCollaborators,
         fetchedFeedbacks,
@@ -144,8 +179,6 @@ export const DataProvider = ({ children }) => {
         fetchedJobRoles,
       ] = await Promise.all([
         api.fetchStores(),
-        api.fetchAppUsers(),
-        api.fetchForms(),
         api.fetchEvaluations(),
         api.fetchCollaborators(),
         api.fetchFeedbacks(),
@@ -161,9 +194,28 @@ export const DataProvider = ({ children }) => {
         api.fetchJobRoles(),
       ]);
 
+      console.log('✅ [DataContext] Promise.all concluído!', {
+        stores: fetchedStores?.length || 0,
+        users: fetchedUsers?.length || 0,
+        forms: fetchedForms?.length || 0,
+        evaluations: fetchedEvaluations?.length || 0
+      });
+
+      console.log('🔄 [DataContext] Definindo dados nos states...');
+      console.log('  - fetchedUsers:', fetchedUsers?.length || 0, fetchedUsers);
+      console.log('  - fetchedForms:', fetchedForms?.length || 0, fetchedForms);
+      console.log('  - fetchedStores:', fetchedStores?.length || 0);
+      
       setStores(fetchedStores);
-      setUsers(fetchedUsers);
-      setForms(fetchedForms);
+      setUsers(fetchedUsers || []);
+      setForms(fetchedForms || []);
+      
+      // Debug: Verificar se os dados estão sendo carregados
+      console.log('📊 [DataContext] Dados definidos nos states:', {
+        users: (fetchedUsers || [])?.length || 0,
+        forms: (fetchedForms || [])?.length || 0,
+        stores: fetchedStores?.length || 0
+      });
       setEvaluations(fetchedEvaluations);
       setCollaborators(fetchedCollaborators);
       setFeedbacks(fetchedFeedbacks);
@@ -223,6 +275,7 @@ export const DataProvider = ({ children }) => {
       }
 
     } catch (error) {
+      console.error('❌ [DataContext] Erro ao carregar dados:', error);
       toast({ variant: 'destructive', title: 'Erro ao carregar dados', description: error.message });
     } finally {
       setLoading(false);
@@ -989,6 +1042,16 @@ export const DataProvider = ({ children }) => {
       throw error;
     }
   };
+
+  // Log quando o value é criado/atualizado
+  console.log('🎯 [DataContext] Criando value object:', {
+    usersCount: users?.length || 0,
+    formsCount: forms?.length || 0,
+    storesCount: stores?.length || 0,
+    loading,
+    usersIsArray: Array.isArray(users),
+    formsIsArray: Array.isArray(forms)
+  });
 
   const value = {
     loading,

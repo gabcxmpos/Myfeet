@@ -156,13 +156,19 @@ export const deleteStore = async (id) => {
 
 // ============ USERS ============
 export const fetchAppUsers = async () => {
+  console.log('🔍 [fetchAppUsers] Iniciando busca de usuários...');
   // Buscar usuários da tabela app_users (sem relacionamento automático)
   const { data, error } = await supabase
     .from('app_users')
     .select('*')
     .order('username');
   
-  if (error) throw error;
+  if (error) {
+    console.error('❌ [fetchAppUsers] Erro ao buscar usuários:', error);
+    throw error;
+  }
+  
+  console.log(`✅ [fetchAppUsers] Usuários encontrados: ${data?.length || 0}`, data);
   
   // Se houver usuários com store_id, buscar dados das lojas
   if (data && data.length > 0) {
@@ -789,12 +795,18 @@ export const resetUserPassword = async (email) => {
 
 // ============ FORMS ============
 export const fetchForms = async () => {
+  console.log('🔍 [fetchForms] Iniciando busca de formulários...');
   const { data, error } = await supabase
     .from('forms')
     .select('*')
     .order('created_at', { ascending: false });
   
-  if (error) throw error;
+  if (error) {
+    console.error('❌ [fetchForms] Erro ao buscar formulários:', error);
+    throw error;
+  }
+  
+  console.log(`✅ [fetchForms] Formulários encontrados: ${data?.length || 0}`, data);
   return data || [];
 };
 
@@ -1106,7 +1118,8 @@ export const createCollaborator = async (collaboratorData) => {
     role: collaboratorData.role,
     store_id: collaboratorData.store_id || collaboratorData.storeId,
     cpf: collaboratorData.cpf || null,
-    email: collaboratorData.email || null
+    email: collaboratorData.email || null,
+    status: collaboratorData.status || 'ativo'
   };
   
   const { data, error } = await supabase
@@ -1118,6 +1131,36 @@ export const createCollaborator = async (collaboratorData) => {
   if (error) throw error;
   
   // Converter store_id para storeId no retorno para manter consistência com o frontend
+  if (data) {
+    return {
+      ...data,
+      storeId: data.store_id
+    };
+  }
+  
+  return data;
+};
+
+export const updateCollaborator = async (id, updates) => {
+  // Filtrar apenas campos que existem na tabela (para evitar erros se a coluna não existir)
+  const allowedFields = ['name', 'role', 'store_id', 'cpf', 'email', 'status'];
+  const filteredUpdates = {};
+  Object.keys(updates).forEach(key => {
+    if (allowedFields.includes(key)) {
+      filteredUpdates[key] = updates[key];
+    }
+  });
+  
+  const { data, error } = await supabase
+    .from('collaborators')
+    .update(filteredUpdates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  
+  // Converter store_id para storeId no retorno
   if (data) {
     return {
       ...data,
@@ -2135,6 +2178,24 @@ export const saveGerencialChecklistTasks = async (tasks) => {
   return await upsertAppSettings('daily_checklist_gerencial_tasks', tasks);
 };
 
+// ============ JOB ROLES (CARGOS) ============
+export const fetchJobRoles = async () => {
+  const roles = await fetchAppSettings('job_roles');
+  if (!roles) return [];
+  if (Array.isArray(roles)) return roles.filter(role => typeof role === 'string' && role.trim().length > 0);
+  if (roles?.roles && Array.isArray(roles.roles)) {
+    return roles.roles.filter(role => typeof role === 'string' && role.trim().length > 0);
+  }
+  return [];
+};
+
+export const saveJobRoles = async (roles) => {
+  if (!Array.isArray(roles)) {
+    throw new Error('Lista de cargos inválida.');
+  }
+  return await upsertAppSettings('job_roles', roles);
+};
+
 // Buscar checklist de uma data específica para histórico (operacional)
 export const fetchChecklistByDate = async (storeId, date) => {
   return await fetchDailyChecklist(storeId, date, 'operacional');
@@ -2143,6 +2204,111 @@ export const fetchChecklistByDate = async (storeId, date) => {
 // Buscar checklist gerencial de uma data específica para histórico
 export const fetchGerencialChecklistByDate = async (storeId, date) => {
   return await fetchDailyChecklist(storeId, date, 'gerencial');
+};
+
+// ======== CHECKLIST AUDIT ========
+const normalizeChecklistType = (checklistType) => checklistType || 'operacional';
+
+export const fetchChecklistAudit = async (storeId, date, checklistType = 'operacional') => {
+  if (!storeId || !date) return null;
+  const { data, error } = await supabase
+    .from('checklist_audits')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('date', date)
+    .eq('checklist_type', normalizeChecklistType(checklistType))
+    .maybeSingle();
+  if (error && error.code !== 'PGRST116') throw error;
+  return data || null;
+};
+
+export const fetchChecklistAuditsByDate = async (date, checklistType = null) => {
+  if (!date) return [];
+  let query = supabase
+    .from('checklist_audits')
+    .select('*')
+    .eq('date', date);
+  if (checklistType) {
+    query = query.eq('checklist_type', normalizeChecklistType(checklistType));
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
+};
+
+export const fetchChecklistAuditsRange = async (storeId, startDate, endDate, checklistType = 'operacional') => {
+  if (!storeId || !startDate || !endDate) return [];
+  const { data, error } = await supabase
+    .from('checklist_audits')
+    .select('*')
+    .eq('store_id', storeId)
+    .eq('checklist_type', normalizeChecklistType(checklistType))
+    .gte('date', startDate)
+    .lte('date', endDate);
+  if (error) throw error;
+  return data || [];
+};
+
+export const upsertChecklistAudit = async ({ storeId, date, checklistType = 'operacional', auditedBy, auditedByName }) => {
+  if (!storeId || !date) {
+    throw new Error('storeId e date são obrigatórios para registrar auditoria.');
+  }
+  const payload = {
+    store_id: storeId,
+    date,
+    checklist_type: normalizeChecklistType(checklistType),
+    audited_by: auditedBy || null,
+    audited_by_name: auditedByName || null,
+  };
+  const { data, error } = await supabase
+    .from('checklist_audits')
+    .upsert(payload, { onConflict: 'store_id,date,checklist_type' })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+export const deleteChecklistAudit = async (storeId, date, checklistType = 'operacional') => {
+  if (!storeId || !date) return;
+  const { error } = await supabase
+    .from('checklist_audits')
+    .delete()
+    .eq('store_id', storeId)
+    .eq('date', date)
+    .eq('checklist_type', normalizeChecklistType(checklistType));
+  if (error) throw error;
+};
+
+// Buscar todas as auditorias com informações das lojas
+export const fetchAllChecklistAudits = async (startDate = null, endDate = null, checklistType = null) => {
+  let query = supabase
+    .from('checklist_audits')
+    .select(`
+      *,
+      stores (
+        id,
+        name,
+        code,
+        bandeira,
+        supervisor
+      )
+    `)
+    .order('date', { ascending: false });
+  
+  if (startDate) {
+    query = query.gte('date', startDate);
+  }
+  if (endDate) {
+    query = query.lte('date', endDate);
+  }
+  if (checklistType) {
+    query = query.eq('checklist_type', normalizeChecklistType(checklistType));
+  }
+  
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
 };
 
 // ============ APP SETTINGS ============

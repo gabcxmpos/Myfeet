@@ -22,6 +22,14 @@ import {
 const UserManagement = () => {
     const { users, addUser, stores, toggleUserStatus, deleteUser: contextDeleteUser, resetUserPassword } = useData();
     const { toast } = useToast();
+    
+    // Debug: Verificar dados recebidos
+    console.log('👥 [UserManagement] Dados recebidos:', {
+        usersCount: users?.length || 0,
+        users: users,
+        isArray: Array.isArray(users),
+        storesCount: stores?.length || 0
+    });
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -217,7 +225,13 @@ const UserManagement = () => {
                 <div className="lg:col-span-2 bg-card p-6 rounded-xl shadow-lg border border-border">
                     <h2 className="text-lg font-semibold mb-4 text-foreground">Usuários Cadastrados</h2>
                     <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-                        {users.map(user => (
+                        {users.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground">
+                                <UserX className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                                <p>Nenhum usuário cadastrado ainda.</p>
+                            </div>
+                        ) : (
+                            users.map(user => (
                             <div key={user.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2">
@@ -308,7 +322,8 @@ const UserManagement = () => {
                                     </div>
                                 )}
                             </div>
-                        ))}
+                        ))
+                        )}
                     </div>
                 </div>
             </div>

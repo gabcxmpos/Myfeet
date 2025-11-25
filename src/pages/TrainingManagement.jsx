@@ -73,7 +73,7 @@ const TabsContent = ({ value, children, activeTab, className }) => {
 };
 
 const TrainingManagement = () => {
-  const { trainings, trainingRegistrations, stores, addTraining, updateTraining, deleteTraining, updateTrainingRegistration, deleteTrainingRegistration, fetchData } = useData();
+  const { trainings, trainingRegistrations, stores, collaborators, addTraining, updateTraining, deleteTraining, updateTrainingRegistration, deleteTrainingRegistration, fetchData } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   const isAdmin = user?.role === 'admin';
@@ -393,7 +393,7 @@ const TrainingManagement = () => {
     });
   }, [trainingRegistrations, stores, filters]);
 
-  // Top 5 lojas por participação
+  // Top 5 lojas por participação (aderência baseada em headcount)
   const top5Stores = useMemo(() => {
     const storeStats = {};
     filteredRegistrations.forEach(reg => {
@@ -402,14 +402,22 @@ const TrainingManagement = () => {
       if (!store) return;
 
       if (!storeStats[storeId]) {
+        // Calcular headcount da loja (colaboradores ativos)
+        const storeCollaborators = (collaborators || []).filter(c => 
+          (c.storeId === storeId || c.store_id === storeId) && 
+          (c.status || 'ativo') === 'ativo'
+        );
+        const headcount = storeCollaborators.length;
+
         storeStats[storeId] = {
           storeId,
           storeName: store.name,
           storeCode: store.code,
           franqueado: store.franqueado,
           bandeira: store.bandeira,
-          total: 0,
-          present: 0
+          total: 0, // Inscrições
+          present: 0, // Presenças
+          headcount: headcount // Headcount da loja
         };
       }
       storeStats[storeId].total++;
@@ -421,11 +429,12 @@ const TrainingManagement = () => {
     return Object.values(storeStats)
       .map(stat => ({
         ...stat,
-        adherence: stat.total > 0 ? Math.round((stat.present / stat.total) * 100) : 0
+        // Aderência = (presenças / headcount) * 100
+        adherence: stat.headcount > 0 ? Math.round((stat.present / stat.headcount) * 100) : 0
       }))
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => b.adherence - a.adherence) // Ordenar por aderência
       .slice(0, 5);
-  }, [filteredRegistrations, stores]);
+  }, [filteredRegistrations, stores, collaborators]);
 
   // Treinamentos ordenados por data
   const sortedTrainings = useMemo(() => {
@@ -609,7 +618,19 @@ const TrainingManagement = () => {
               const totalTrainings = trainings.length;
               const totalRegistrations = trainingRegistrations.length;
               const totalPresent = trainingRegistrations.filter(r => r.presence).length;
-              const adherenceRate = totalRegistrations > 0 ? Math.round((totalPresent / totalRegistrations) * 100) : 0;
+              
+              // Calcular headcount total de todas as lojas
+              const allStoreIds = [...new Set(trainingRegistrations.map(r => r.store_id || r.storeId))];
+              const totalHeadcount = allStoreIds.reduce((sum, storeId) => {
+                const storeCollaborators = (collaborators || []).filter(c => 
+                  (c.storeId === storeId || c.store_id === storeId) && 
+                  (c.status || 'ativo') === 'ativo'
+                );
+                return sum + storeCollaborators.length;
+              }, 0);
+              
+              // Aderência geral = (total de presenças / headcount total) * 100
+              const adherenceRate = totalHeadcount > 0 ? Math.round((totalPresent / totalHeadcount) * 100) : 0;
               
               // Agrupar inscrições por franqueado
               const registrationsByFranchisee = {};
@@ -726,7 +747,19 @@ const TrainingManagement = () => {
                   const registrations = registrationsByTraining[training.id] || [];
                   const presentCount = registrations.filter(r => r.presence).length;
                   const totalCount = registrations.length;
-                  const adherence = totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0;
+                  
+                  // Calcular headcount total das lojas inscritas neste treinamento
+                  const storeIds = [...new Set(registrations.map(r => r.store_id || r.storeId))];
+                  const totalHeadcount = storeIds.reduce((sum, storeId) => {
+                    const storeCollaborators = (collaborators || []).filter(c => 
+                      (c.storeId === storeId || c.store_id === storeId) && 
+                      (c.status || 'ativo') === 'ativo'
+                    );
+                    return sum + storeCollaborators.length;
+                  }, 0);
+                  
+                  // Aderência = (presenças / headcount total) * 100
+                  const adherence = totalHeadcount > 0 ? Math.round((presentCount / totalHeadcount) * 100) : 0;
                   
                   return (
                     <motion.div
@@ -736,6 +769,10 @@ const TrainingManagement = () => {
                     >
                       <h3 className="font-bold text-lg text-foreground mb-3 line-clamp-1">{training.title}</h3>
                       <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Headcount:</span>
+                          <span className="font-semibold text-foreground">{totalHeadcount}</span>
+                        </div>
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-muted-foreground">Inscrições:</span>
                           <span className="font-semibold text-foreground">{totalCount}</span>
@@ -790,6 +827,10 @@ const TrainingManagement = () => {
                         </div>
                       </div>
                       <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Headcount:</span>
+                          <span className="font-semibold">{store.headcount}</span>
+                        </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Inscrições:</span>
                           <span className="font-semibold">{store.total}</span>
@@ -1100,6 +1141,10 @@ const TrainingManagement = () => {
                         </div>
                       </div>
                       <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Headcount:</span>
+                          <span className="font-semibold">{store.headcount}</span>
+                        </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Inscrições:</span>
                           <span className="font-semibold">{store.total}</span>
