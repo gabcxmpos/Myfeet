@@ -56,3 +56,12 @@ Se quiser histórico Git completo (necessário para Vercel):
 
 **Qual você prefere?** Posso te guiar passo a passo na opção escolhida! 😊
 
+
+
+
+
+
+
+
+
+

@@ -117,3 +117,12 @@
 Execute o script `CRIAR_HISTORICO_METAS.sql` no Supabase para habilitar o histórico de metas.
 
 
+
+
+
+
+
+
+
+
+

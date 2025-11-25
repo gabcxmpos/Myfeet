@@ -91,3 +91,12 @@ WHERE tc.table_name = 'app_users'
   AND tc.table_schema = 'public';
 
 
+
+
+
+
+
+
+
+
+

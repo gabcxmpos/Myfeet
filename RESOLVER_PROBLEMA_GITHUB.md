@@ -126,3 +126,12 @@ Preciso saber o que está aparecendo no GitHub Desktop para te ajudar melhor.
 
 **Com essas informações, consigo te ajudar especificamente!** 😊
 
+
+
+
+
+
+
+
+
+

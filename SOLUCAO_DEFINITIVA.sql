@@ -269,3 +269,12 @@ SELECT
   END AS tabela_public_users_status;
 
 
+
+
+
+
+
+
+
+
+

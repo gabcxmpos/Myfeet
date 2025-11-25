@@ -143,3 +143,12 @@ Após o upload no GitHub, vamos conectar ao Vercel para deploy automático!
 
 **Precisa de ajuda? Me avise!** 😊
 
+
+
+
+
+
+
+
+
+

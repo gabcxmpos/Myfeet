@@ -49,3 +49,12 @@ Agora vamos conectar seu projeto em **5 passos simples:**
 
 Se aparecer algum erro ou dúvida, me avise qual passo está travado e te ajudo! 😊
 
+
+
+
+
+
+
+
+
+

@@ -75,3 +75,12 @@ WHERE tc.conrelid = 'public.app_users'::regclass
   AND tc.contype = 'f';
 
 
+
+
+
+
+
+
+
+
+

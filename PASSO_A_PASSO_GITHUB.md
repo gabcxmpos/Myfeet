@@ -147,3 +147,12 @@ git remote add origin https://github.com/SEU-USUARIO/myfeet-painel-ppad.git
 
 **Precisa de ajuda? Me avise qual opção você escolheu!** 😊
 
+
+
+
+
+
+
+
+
+

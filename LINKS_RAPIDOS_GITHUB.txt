@@ -1,0 +1,45 @@
+========================================
+LINKS RÁPIDOS PARA CORRIGIR NO GITHUB
+========================================
+
+ARQUIVO 1: App.jsx
+https://github.com/gabcxmpos/Myfeet/edit/main/src/App.jsx
+
+ARQUIVO 2: Training.jsx
+https://github.com/gabcxmpos/Myfeet/edit/main/src/pages/Training.jsx
+
+ARQUIVO 3: TrainingManagement.jsx
+https://github.com/gabcxmpos/Myfeet/edit/main/src/pages/TrainingManagement.jsx
+
+ARQUIVO 4: Sidebar.jsx
+https://github.com/gabcxmpos/Myfeet/edit/main/src/components/Sidebar.jsx
+
+ARQUIVO 5: dialog.jsx
+https://github.com/gabcxmpos/Myfeet/edit/main/src/components/ui/dialog.jsx
+
+========================================
+INSTRUÇÕES RÁPIDAS
+========================================
+
+Para cada arquivo:
+1. Clique no link acima
+2. Ctrl + A (selecionar tudo) → Delete
+3. Abra o arquivo local correspondente
+4. Ctrl + A (selecionar tudo) → Ctrl + C (copiar)
+5. Volte para o GitHub e cole (Ctrl + V)
+6. Verifique se está correto
+7. Commit: "fix: Corrigir [nome do arquivo]"
+8. Clique em "Commit changes"
+
+========================================
+ARQUIVOS LOCAIS
+========================================
+
+App.jsx: src/App.jsx
+Training.jsx: src/pages/Training.jsx
+TrainingManagement.jsx: src/pages/TrainingManagement.jsx
+Sidebar.jsx: src/components/Sidebar.jsx
+dialog.jsx: src/components/ui/dialog.jsx
+
+========================================
+
