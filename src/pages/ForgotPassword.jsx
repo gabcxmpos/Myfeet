@@ -77,7 +77,7 @@ const ForgotPassword = () => {
               <div className="space-y-4">
                 <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                   <p className="text-sm text-green-800 text-center">
-                    Senha resetada com sucesso! Sua senha foi resetada para a senha padrão "afeet10". Você pode fazer login com essa senha agora.
+                    Senha resetada com sucesso! A senha foi resetada para a senha padrão "afeet10". Você pode fazer login com essa senha agora.
                   </p>
                 </div>
                 <Link to="/login">

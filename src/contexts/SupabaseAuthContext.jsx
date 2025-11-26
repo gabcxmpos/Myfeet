@@ -476,12 +476,16 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error };
       }
 
+      console.log('🔐 [resetPassword] Iniciando reset de senha para:', sanitizedEmail);
+
       // Usar função RPC para resetar a senha para "afeet10"
       const { data, error } = await supabase.rpc('reset_user_password_to_default', {
         p_email: sanitizedEmail
       });
 
       if (error) {
+        console.error('❌ [resetPassword] Erro ao resetar senha:', error);
+        
         // Se a função RPC não existir, fornecer instruções
         if (error.code === 'PGRST202' || error.message?.includes('not found')) {
           const errorMsg = {
@@ -499,20 +503,22 @@ export const AuthProvider = ({ children }) => {
         toast({
           variant: "destructive",
           title: "Erro ao resetar senha",
-          description: error.message || "Não foi possível resetar a senha.",
+          description: error.message || "Não foi possível resetar a senha. Verifique se o email está correto.",
         });
         return { success: false, error };
       }
 
       // Verificar se a função retornou sucesso
       if (data && data.success) {
+        console.log('✅ [resetPassword] Senha resetada com sucesso');
         toast({
           title: "Senha Resetada!",
-          description: "A senha foi resetada para a senha padrão 'afeet10'. Você pode fazer login com essa senha.",
+          description: "A senha foi resetada para a senha padrão 'afeet10'. O usuário pode fazer login com essa senha agora.",
         });
         return { success: true };
       } else if (data && !data.success) {
         const error = { message: data.error || 'Erro ao resetar senha' };
+        console.error('❌ [resetPassword] Função RPC retornou erro:', error);
         toast({
           variant: "destructive",
           title: "Erro ao resetar senha",
@@ -522,16 +528,18 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Se não houver dados, considerar como sucesso (compatibilidade)
+      console.log('✅ [resetPassword] Reset concluído (sem dados de retorno)');
       toast({
         title: "Senha Resetada!",
         description: "A senha foi resetada para a senha padrão 'afeet10'.",
       });
       return { success: true };
     } catch (error) {
+      console.error('❌ [resetPassword] Erro inesperado:', error);
       toast({
         variant: "destructive",
         title: "Erro",
-        description: error.message || "Ocorreu um erro inesperado.",
+        description: error.message || "Ocorreu um erro inesperado ao tentar resetar a senha.",
       });
       return { success: false, error };
     }

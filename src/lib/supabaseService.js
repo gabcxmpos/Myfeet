@@ -748,32 +748,46 @@ export const deleteAppUser = async (id) => {
 // Recebe o email do usuário e envia email de recuperação
 export const resetUserPassword = async (email) => {
   const sanitizedEmail = email.trim().toLowerCase();
-  const DEFAULT_PASSWORD = 'afeet10';
   
   // Validar email
   if (!sanitizedEmail) {
     throw new Error('Email é obrigatório');
   }
   
-  // IMPORTANTE: Para resetar senha sem email, é necessário usar a API Admin do Supabase
-  // que requer service_role key. Como não temos acesso direto, vamos usar o método
-  // de reset via email do Supabase (que é o padrão e mais seguro)
+  console.log('🔐 [resetUserPassword] Iniciando reset de senha para:', sanitizedEmail);
   
   try {
-    // Usar o método padrão do Supabase para reset de senha via email
-    // O usuário receberá um email com link para resetar a senha
-    const { data, error } = await supabase.auth.resetPasswordForEmail(sanitizedEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
+    // Usar função RPC para resetar a senha para "afeet10"
+    const { data, error } = await supabase.rpc('reset_user_password_to_default', {
+      p_email: sanitizedEmail
     });
     
     if (error) {
+      console.error('❌ [resetUserPassword] Erro ao resetar senha:', error);
+      
+      // Se a função RPC não existir, fornecer instruções
+      if (error.code === 'PGRST202' || error.message?.includes('not found')) {
+        throw new Error('A função RPC não está disponível. Execute o script CRIAR_FUNCAO_RESET_SENHA.sql no Supabase SQL Editor para criar a função necessária.');
+      }
+      
       throw error;
     }
     
-    console.log('✅ Email de reset de senha enviado com sucesso');
+    // Verificar se a função retornou sucesso
+    if (data && data.success) {
+      console.log('✅ [resetUserPassword] Senha resetada com sucesso');
+      return true;
+    } else if (data && !data.success) {
+      const errorMsg = data.error || 'Erro ao resetar senha';
+      console.error('❌ [resetUserPassword] Função RPC retornou erro:', errorMsg);
+      throw new Error(errorMsg);
+    }
+    
+    // Se não houver dados, considerar como sucesso (compatibilidade)
+    console.log('✅ [resetUserPassword] Reset concluído (sem dados de retorno)');
     return true;
   } catch (error) {
-    console.error('Erro ao enviar email de reset de senha:', error);
+    console.error('❌ [resetUserPassword] Erro inesperado:', error);
     throw error;
   }
 };
