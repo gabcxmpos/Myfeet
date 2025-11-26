@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, Target, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users, AlertCircle, FileText } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import {
@@ -221,6 +221,9 @@ const StoreFormModal = ({ store, onSave, onOpenChange }) => {
     <DialogContent className="max-w-2xl bg-card border-border">
       <DialogHeader>
         <DialogTitle>{store ? 'Editar Loja' : 'Cadastrar Nova Loja'}</DialogTitle>
+        <DialogDescription>
+          {store ? 'Edite as informações da loja abaixo.' : 'Preencha os dados para cadastrar uma nova loja.'}
+        </DialogDescription>
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4 mt-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -266,6 +269,9 @@ const ResultsFormModal = ({ store, onSave, onOpenChange }) => {
         <DialogContent className="max-w-xl bg-card border-border">
             <DialogHeader>
                 <DialogTitle>Lançar Resultados - {store.name}</DialogTitle>
+                <DialogDescription>
+                  Preencha os resultados da loja.
+                </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="mt-4 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -306,6 +312,9 @@ const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users }) => {
         <DialogTitle className="flex items-center justify-between">
           <span>Detalhes da Avaliação - {evaluation.pillar}</span>
         </DialogTitle>
+        <DialogDescription>
+          Visualize todos os detalhes e respostas desta avaliação.
+        </DialogDescription>
       </DialogHeader>
       <div className="mt-4 space-y-4">
         <div className="bg-secondary p-4 rounded-lg">
@@ -397,6 +406,9 @@ const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onV
     <DialogContent className="max-w-2xl bg-card border-border">
       <DialogHeader>
         <DialogTitle>Avaliações Pendentes - {store.name}</DialogTitle>
+        <DialogDescription>
+          Lista de avaliações aguardando aprovação para esta loja.
+        </DialogDescription>
       </DialogHeader>
       <div className="mt-4 max-h-[60vh] overflow-y-auto space-y-3 pr-2">
         {pendingEvaluations.length > 0 ? pendingEvaluations.map(ev => {
@@ -447,6 +459,9 @@ const ViewEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onView
     <DialogContent className="max-w-2xl bg-card border-border">
       <DialogHeader>
         <DialogTitle>Avaliações de {store.name}</DialogTitle>
+        <DialogDescription>
+          Visualize todas as avaliações desta loja.
+        </DialogDescription>
       </DialogHeader>
       <div className="mt-4 max-h-[60vh] overflow-y-auto space-y-3 pr-2">
         {storeEvaluations.length > 0 ? storeEvaluations.map(ev => {
@@ -578,6 +593,9 @@ const HeadcountModal = ({ store, collaborators, jobRoles, onOpenChange }) => {
           <Users className="w-5 h-5" />
           Headcount - {store?.name}
         </DialogTitle>
+        <DialogDescription>
+          Distribuição de colaboradores por cargo nesta loja.
+        </DialogDescription>
       </DialogHeader>
       <div className="mt-4 space-y-4">
         {/* Total de colaboradores */}

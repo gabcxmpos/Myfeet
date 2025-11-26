@@ -179,11 +179,17 @@ export const AuthProvider = ({ children }) => {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // Ignorar erros de refresh token inválido silenciosamente
+        if (event === 'TOKEN_REFRESHED' && !session) {
+          // Sessão expirada - já será tratada pelo interceptor
+          return;
+        }
+        
         console.log('🔔 Evento de autenticação:', event, session?.user?.id);
         
         // Se o evento for de sessão expirada ou erro, limpar dados
-        if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
-          console.warn('⚠️ Sessão expirada ou inválida. Limpando dados...');
+        if (event === 'SIGNED_OUT') {
+          console.warn('⚠️ Sessão encerrada. Limpando dados...');
           setSession(null);
           setUser(null);
           try {
