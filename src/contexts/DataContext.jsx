@@ -642,14 +642,83 @@ export const DataProvider = ({ children }) => {
   const addEvaluation = (evalData) => handleApiCall(() => api.createEvaluation(evalData), 'Avaliação enviada.');
   const updateEvaluationStatus = (id, status) => handleApiCall(() => api.updateEvaluation(id, { status }), 'Status da avaliação atualizado.');
   const approveEvaluation = async (id) => {
+    if (!id) {
+      toast({ variant: 'destructive', title: 'Erro', description: 'ID da avaliação não fornecido.' });
+      return;
+    }
+    
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      await handleApiCall(() => api.updateEvaluation(id, { 
+      // Buscar a avaliação antes de aprovar para validação
+      const evaluationToApprove = evaluations.find(e => e.id === id);
+      
+      if (!evaluationToApprove) {
+        toast({ variant: 'destructive', title: 'Erro', description: 'Avaliação não encontrada.' });
+        return;
+      }
+      
+      // Validar score da avaliação
+      const score = evaluationToApprove.score;
+      if (score === null || score === undefined || isNaN(score)) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Erro de validação', 
+          description: 'A avaliação possui um score inválido e não pode ser aprovada. Score: ' + score 
+        });
+        return;
+      }
+      
+      if (score < 0 || score > 100) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Erro de validação', 
+          description: `A avaliação possui um score fora do range válido (0-100). Score atual: ${score}` 
+        });
+        return;
+      }
+      
+      console.log('🔐 [approveEvaluation] Obtendo usuário atual...');
+      const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('❌ [approveEvaluation] Erro ao obter usuário:', userError);
+        throw new Error('Erro ao obter informações do usuário');
+      }
+      
+      if (!authUser?.id) {
+        console.error('❌ [approveEvaluation] Usuário não encontrado');
+        throw new Error('Usuário não autenticado');
+      }
+      
+      console.log('✅ [approveEvaluation] Usuário obtido:', { userId: authUser.id, email: authUser.email });
+      console.log('✅ [approveEvaluation] Validação da avaliação:', { 
+        id, 
+        pillar: evaluationToApprove.pillar, 
+        score: evaluationToApprove.score,
+        storeId: evaluationToApprove.storeId 
+      });
+      
+      const updateData = {
         status: 'approved',
-        approved_by: user?.id || null 
-      }), 'Avaliação aprovada! A avaliação agora conta para a pontuação.');
+        approved_by: authUser.id
+      };
+      
+      console.log('🔄 [approveEvaluation] Aprovando avaliação:', { id, updateData });
+      
+      await handleApiCall(() => api.updateEvaluation(id, updateData), 'Avaliação aprovada! A avaliação agora conta para a pontuação.');
+      
+      // Atualizar lista de avaliações após aprovação
+      await fetchData();
+      
     } catch (error) {
-      toast({ variant: 'destructive', title: 'Erro ao aprovar avaliação', description: error.message });
+      console.error('❌ [approveEvaluation] Erro completo:', error);
+      const errorMessage = error?.message || 'Erro desconhecido ao aprovar avaliação';
+      toast({ 
+        variant: 'destructive', 
+        title: 'Erro ao aprovar avaliação', 
+        description: errorMessage.includes('permission') || errorMessage.includes('policy') 
+          ? 'Você não tem permissão para aprovar esta avaliação. Verifique suas permissões.'
+          : errorMessage
+      });
       throw error;
     }
   };

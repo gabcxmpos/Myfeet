@@ -66,10 +66,15 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: is
     return () => window.removeEventListener('resize', handleResize);
   }, [isDesktopProp]);
 
-  // Fechar sidebar ao navegar em mobile
+  // Fechar sidebar ao navegar em mobile (apenas quando pathname realmente mudar)
   React.useEffect(() => {
     if (!isDesktop && isOpen && onClose) {
-      onClose();
+      // Usar requestAnimationFrame para garantir que a navegação aconteça antes de fechar
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          onClose();
+        });
+      });
     }
   }, [location.pathname, isDesktop, isOpen, onClose]);
 
@@ -91,6 +96,7 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: is
               ? 'fixed z-40' 
               : 'fixed z-50'
           } inset-y-0 left-0 bg-card border-r border-border flex flex-col shadow-lg lg:shadow-none overflow-hidden`}
+          style={{ pointerEvents: 'auto' }}
         >
           {/* Header com botão de fechar em mobile e toggle de minimizar em desktop */}
           <div className={`border-b border-border flex items-center justify-between ${isCollapsed && isDesktop ? 'p-4 justify-center' : 'p-6'}`}>
@@ -155,12 +161,6 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: is
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   }`
                 }
-                onClick={() => {
-                  // Fechar ao clicar em mobile
-                  if (!isDesktop && onClose) {
-                    onClose();
-                  }
-                }}
                 title={isCollapsed && isDesktop ? item.label : undefined}
               >
                 {({ isActive }) => (

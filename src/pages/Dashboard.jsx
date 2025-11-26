@@ -179,22 +179,86 @@ const Dashboard = () => {
     // Calcular pontuação geral e por pilares baseado em avaliações aprovadas
     const pillars = ['Pessoas', 'Performance', 'Ambientação', 'Digital'];
     
-    // Calcular pontuação por pilar (média de todas as avaliações aprovadas)
+    // Calcular pontuação por pilar
     const pillarScores = {};
     pillars.forEach(pillar => {
-      const pillarEvals = approvedEvaluations.filter(e => e.pillar === pillar);
-      if (pillarEvals.length > 0) {
-        pillarScores[pillar] = Math.round(
-          pillarEvals.reduce((acc, curr) => acc + curr.score, 0) / pillarEvals.length
-        );
+      if (pillar === 'Performance') {
+        // Para o pilar Performance, calcular baseado em resultados vs metas
+        const performanceKPIs = ['faturamento', 'pa', 'ticketMedio', 'prateleiraInfinita', 'conversao'];
+        let totalWeightedScore = 0;
+        let totalWeight = 0;
+        let storesWithData = 0;
+        
+        filteredStores.forEach(store => {
+          const goals = store.goals || {};
+          const results = store.results || {};
+          const weights = store.weights || {};
+          
+          let storeScore = 0;
+          let storeWeight = 0;
+          let hasData = false;
+          
+          performanceKPIs.forEach(kpi => {
+            const goal = goals[kpi] || 0;
+            const result = results[kpi] || 0;
+            const weight = weights[kpi] || 0;
+            
+            if (goal > 0) {
+              // Calcular % de atingimento (limitado a 100% se ultrapassar)
+              const achievement = Math.min((result / goal) * 100, 100);
+              // Multiplicar achievement pelo peso (em decimal) e somar
+              storeScore += achievement * (weight / 100);
+              storeWeight += weight / 100;
+              hasData = true;
+            }
+          });
+          
+          if (hasData && storeWeight > 0) {
+            // Normalizar pelo peso total (caso os pesos não somem 100%)
+            // storeScore já está em 0-100 (porque achievement é 0-100 e weight/100 é 0-1)
+            // storeWeight é a soma dos pesos em decimal (0-1)
+            // Então storeScore/storeWeight já dá o score normalizado em 0-100
+            const normalizedScore = storeScore / storeWeight;
+            totalWeightedScore += normalizedScore;
+            totalWeight += 1;
+            storesWithData++;
+          }
+        });
+        
+        // Calcular média ponderada entre todas as lojas
+        pillarScores[pillar] = storesWithData > 0 && totalWeight > 0 
+          ? Math.round(totalWeightedScore / storesWithData)
+          : 0;
       } else {
-        pillarScores[pillar] = 0;
+        // Para outros pilares, usar média de avaliações aprovadas
+        const pillarEvals = approvedEvaluations.filter(e => e.pillar === pillar);
+        if (pillarEvals.length > 0) {
+          // Validar scores antes de calcular média
+          const validScores = pillarEvals
+            .map(e => e.score)
+            .filter(score => score !== null && score !== undefined && !isNaN(score) && score >= 0 && score <= 100);
+          
+          if (validScores.length > 0) {
+            const avgScore = validScores.reduce((acc, curr) => acc + curr, 0) / validScores.length;
+            pillarScores[pillar] = Math.round(avgScore);
+            
+            // Log para debug se houver scores inválidos
+            if (validScores.length < pillarEvals.length) {
+              console.warn(`⚠️ [Dashboard] Pilar ${pillar}: ${pillarEvals.length - validScores.length} avaliação(ões) com score inválido foram ignoradas`);
+            }
+          } else {
+            pillarScores[pillar] = 0;
+            console.warn(`⚠️ [Dashboard] Pilar ${pillar}: Nenhuma avaliação válida encontrada`);
+          }
+        } else {
+          pillarScores[pillar] = 0;
+        }
       }
     });
     
-    // Calcular pontuação geral (média de todas as avaliações aprovadas)
-    const overallScore = approvedEvaluations.length > 0
-      ? Math.round(approvedEvaluations.reduce((sum, e) => sum + e.score, 0) / approvedEvaluations.length)
+    // Calcular pontuação geral (média dos 4 pilares)
+    const overallScore = pillars.length > 0
+      ? Math.round(pillars.reduce((sum, pillar) => sum + (pillarScores[pillar] || 0), 0) / pillars.length)
       : 0;
 
     if (isLoja) {
@@ -202,19 +266,66 @@ const Dashboard = () => {
         const storeEvaluations = approvedEvaluations.filter(e => e.storeId === user.storeId);
         
         const storePillarScores = {};
+        const currentStore = stores.find(s => s.id === user.storeId);
+        
         pillars.forEach(pillar => {
-          const pillarEvals = storeEvaluations.filter(e => e.pillar === pillar);
-          if (pillarEvals.length > 0) {
-            storePillarScores[pillar] = Math.round(
-              pillarEvals.reduce((acc, curr) => acc + curr.score, 0) / pillarEvals.length
-            );
+          if (pillar === 'Performance') {
+            // Para o pilar Performance, calcular baseado em resultados vs metas da loja
+            const performanceKPIs = ['faturamento', 'pa', 'ticketMedio', 'prateleiraInfinita', 'conversao'];
+            let totalWeightedScore = 0;
+            let totalWeight = 0;
+            
+            if (currentStore) {
+              const goals = currentStore.goals || {};
+              const results = currentStore.results || {};
+              const weights = currentStore.weights || {};
+              
+              performanceKPIs.forEach(kpi => {
+                const goal = goals[kpi] || 0;
+                const result = results[kpi] || 0;
+                const weight = weights[kpi] || 0;
+                
+                if (goal > 0) {
+                  // Calcular % de atingimento (limitado a 100% se ultrapassar)
+                  const achievement = Math.min((result / goal) * 100, 100);
+                  totalWeightedScore += achievement * (weight / 100);
+                  totalWeight += weight / 100;
+                }
+              });
+            }
+            
+            // Calcular score final (normalizado se os pesos não somarem 100%)
+            // totalWeightedScore já está em 0-100 (porque achievement é 0-100 e weight/100 é 0-1)
+            // totalWeight é a soma dos pesos em decimal (0-1)
+            // Então totalWeightedScore/totalWeight já dá o score normalizado em 0-100
+            storePillarScores[pillar] = totalWeight > 0 
+              ? Math.round(totalWeightedScore / totalWeight)
+              : 0;
           } else {
-            storePillarScores[pillar] = 0;
+            // Para outros pilares, usar média de avaliações aprovadas
+            const pillarEvals = storeEvaluations.filter(e => e.pillar === pillar);
+            if (pillarEvals.length > 0) {
+              // Validar scores antes de calcular média
+              const validScores = pillarEvals
+                .map(e => e.score)
+                .filter(score => score !== null && score !== undefined && !isNaN(score) && score >= 0 && score <= 100);
+              
+              if (validScores.length > 0) {
+                storePillarScores[pillar] = Math.round(
+                  validScores.reduce((acc, curr) => acc + curr, 0) / validScores.length
+                );
+              } else {
+                storePillarScores[pillar] = 0;
+              }
+            } else {
+              storePillarScores[pillar] = 0;
+            }
           }
         });
         
-        const storeOverallScore = storeEvaluations.length > 0
-          ? Math.round(storeEvaluations.reduce((sum, e) => sum + e.score, 0) / storeEvaluations.length)
+        // Calcular pontuação geral da loja (média dos 4 pilares)
+        const storeOverallScore = pillars.length > 0
+          ? Math.round(pillars.reduce((sum, pillar) => sum + (storePillarScores[pillar] || 0), 0) / pillars.length)
           : 0;
         
         return {

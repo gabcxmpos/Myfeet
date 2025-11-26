@@ -61,23 +61,63 @@ const MonthlyRanking = () => {
       // Calcular pontuação por pilar
       const pillarScores = {};
       pillars.forEach(pillar => {
-        const pillarEvals = storeEvaluations.filter(e => e.pillar === pillar);
-        if (pillarEvals.length > 0) {
-          pillarScores[pillar] = Math.round(
-            pillarEvals.reduce((acc, curr) => acc + curr.score, 0) / pillarEvals.length
-          );
+        if (pillar === 'Performance') {
+          // Para o pilar Performance, calcular baseado em resultados vs metas
+          const performanceKPIs = ['faturamento', 'pa', 'ticketMedio', 'prateleiraInfinita', 'conversao'];
+          let totalWeightedScore = 0;
+          let totalWeight = 0;
+          
+          const goals = store.goals || {};
+          const results = store.results || {};
+          const weights = store.weights || {};
+          
+          performanceKPIs.forEach(kpi => {
+            const goal = goals[kpi] || 0;
+            const result = results[kpi] || 0;
+            const weight = weights[kpi] || 0;
+            
+            if (goal > 0) {
+              // Calcular % de atingimento (limitado a 100% se ultrapassar)
+              const achievement = Math.min((result / goal) * 100, 100);
+              // Multiplicar achievement pelo peso (em decimal) e somar
+              totalWeightedScore += achievement * (weight / 100);
+              totalWeight += weight / 100;
+            }
+          });
+          
+          // Calcular score final (normalizado se os pesos não somarem 100%)
+          pillarScores[pillar] = totalWeight > 0 
+            ? Math.round(totalWeightedScore / totalWeight)
+            : 0;
         } else {
-          pillarScores[pillar] = 0;
+          // Para outros pilares, usar média de avaliações aprovadas
+          const pillarEvals = storeEvaluations.filter(e => e.pillar === pillar);
+          if (pillarEvals.length > 0) {
+            // Validar scores antes de calcular média
+            const validScores = pillarEvals
+              .map(e => e.score)
+              .filter(score => score !== null && score !== undefined && !isNaN(score) && score >= 0 && score <= 100);
+            
+            if (validScores.length > 0) {
+              pillarScores[pillar] = Math.round(
+                validScores.reduce((acc, curr) => acc + curr, 0) / validScores.length
+              );
+            } else {
+              pillarScores[pillar] = 0;
+            }
+          } else {
+            pillarScores[pillar] = 0;
+          }
         }
       });
       
-      // Calcular pontuação final (média de todas as avaliações aprovadas desta loja)
-      let finalScore = 0;
-      if (storeEvaluations.length > 0) {
-        finalScore = Math.round(
-          storeEvaluations.reduce((acc, curr) => acc + curr.score, 0) / storeEvaluations.length
-        );
-      }
+      // Calcular pontuação final (média dos 4 pilares)
+      const finalScore = pillars.length > 0
+        ? Math.round(pillars.reduce((sum, pillar) => sum + (pillarScores[pillar] || 0), 0) / pillars.length)
+        : 0;
+      
+      // Considerar que a loja tem dados se tiver pelo menos um pilar com score > 0
+      const hasData = pillars.some(pillar => (pillarScores[pillar] || 0) > 0);
       
       return {
         id: store.id,
@@ -89,19 +129,19 @@ const MonthlyRanking = () => {
         p_ambientacao: pillarScores['Ambientação'] || 0,
         p_digital: pillarScores['Digital'] || 0,
         finalScore: finalScore,
-        hasEvaluations: storeEvaluations.length > 0, // Para filtrar lojas sem avaliações
+        hasEvaluations: hasData, // Para filtrar lojas sem dados
       };
     }).sort((a, b) => {
-      // Ordenar: primeiro por pontuação final, depois por lojas sem avaliações por último
+      // Ordenar: primeiro por pontuação final, depois por lojas sem dados por último
       if (a.hasEvaluations && !b.hasEvaluations) return -1;
       if (!a.hasEvaluations && b.hasEvaluations) return 1;
       return b.finalScore - a.finalScore;
     });
   }, [stores, approvedEvaluations]);
 
-  // Filtrar apenas lojas com avaliações aprovadas e aplicar filtros
+  // Filtrar apenas lojas com dados e aplicar filtros
   const filteredRanking = realRanking.filter(item => {
-    // Mostrar apenas lojas que têm avaliações aprovadas
+    // Mostrar apenas lojas que têm dados (avaliações ou resultados de performance)
     if (!item.hasEvaluations) return false;
     
     const nameMatch = item.store.toLowerCase().includes(nameFilter.toLowerCase()) ||
@@ -174,13 +214,7 @@ const MonthlyRanking = () => {
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5 }}
               >
-                {approvedEvaluations.length === 0 ? (
-                  <tr>
-                    <td colSpan="8" className="px-6 py-8 text-center text-muted-foreground">
-                      Nenhuma avaliação aprovada ainda. As lojas só aparecerão aqui após avaliações serem feitas e aprovadas por um supervisor ou admin.
-                    </td>
-                  </tr>
-                ) : filteredRanking.length === 0 ? (
+                {filteredRanking.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="px-6 py-8 text-center text-muted-foreground">
                       Nenhuma loja encontrada com os filtros aplicados.

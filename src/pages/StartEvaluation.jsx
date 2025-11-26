@@ -53,30 +53,67 @@ const EvaluationScreen = ({ form, storeId, onComplete }) => {
     const handlePrevious = () => currentQuestion > 0 && setCurrentQuestion(currentQuestion - 1);
 
     const handleSubmit = () => {
+        // Validar se todas as questões obrigatórias foram respondidas
+        const unansweredQuestions = form.questions.filter(q => {
+            if (q.type === 'text') return false; // Text não é obrigatório para score
+            const answer = answers[q.id];
+            if (q.type === 'satisfaction') return answer === undefined || answer === null;
+            if (q.type === 'multiple-choice') return !answer || answer === '';
+            if (q.type === 'checkbox') return !Array.isArray(answer) || answer.length === 0;
+            return false;
+        });
+
+        if (unansweredQuestions.length > 0) {
+            toast({
+                variant: 'destructive',
+                title: 'Avaliação incompleta',
+                description: `Por favor, responda todas as questões antes de finalizar. ${unansweredQuestions.length} questão(ões) não respondida(s).`,
+            });
+            return;
+        }
+
         let totalScore = 0;
         let maxScore = 0;
 
         form.questions.forEach(q => {
             const answer = answers[q.id];
             if (q.type === 'satisfaction') {
-                totalScore += answer || 0;
+                const scoreValue = answer || 0;
+                totalScore += scoreValue;
                 maxScore += 10;
             } else if (q.type === 'multiple-choice') {
                 const selectedOption = q.options.find(opt => opt.text === answer);
-                totalScore += selectedOption ? selectedOption.value : 0;
-                maxScore += Math.max(...q.options.map(o => o.value));
+                const scoreValue = selectedOption ? selectedOption.value : 0;
+                totalScore += scoreValue;
+                // Para multiple-choice, o maxScore é o maior valor possível entre as opções
+                maxScore += Math.max(...q.options.map(o => o.value || 0), 0);
             } else if (q.type === 'checkbox') {
-                 if(Array.isArray(answer)) {
-                     answer.forEach(ans => {
-                         const selectedOption = q.options.find(opt => opt.text === ans);
-                         totalScore += selectedOption ? selectedOption.value : 0;
-                     });
-                 }
-                maxScore += q.options.reduce((sum, opt) => sum + (opt.value > 0 ? opt.value : 0), 0);
+                if(Array.isArray(answer) && answer.length > 0) {
+                    answer.forEach(ans => {
+                        const selectedOption = q.options.find(opt => opt.text === ans);
+                        if (selectedOption) {
+                            totalScore += selectedOption.value || 0;
+                        }
+                    });
+                }
+                // Para checkbox, maxScore é a soma de todos os valores positivos (assumindo que não se pode selecionar tudo)
+                // Se todas as opções podem ser selecionadas, soma todos os valores positivos
+                maxScore += q.options.reduce((sum, opt) => sum + Math.max(opt.value || 0, 0), 0);
             }
+            // Questões do tipo 'text' não contribuem para o score
         });
 
-        const finalScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 100;
+        // Calcular score final e validar range
+        let finalScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 100;
+        
+        // Validar range (0-100)
+        if (finalScore < 0) {
+            console.warn('⚠️ Score calculado abaixo de 0, ajustando para 0');
+            finalScore = 0;
+        } else if (finalScore > 100) {
+            console.warn('⚠️ Score calculado acima de 100, ajustando para 100');
+            finalScore = 100;
+        }
 
         addEvaluation({
             storeId,

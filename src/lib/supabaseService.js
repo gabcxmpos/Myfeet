@@ -1025,12 +1025,32 @@ export const createEvaluation = async (evaluationData) => {
 };
 
 export const updateEvaluation = async (id, updates) => {
+  if (!id) {
+    throw new Error('ID da avaliação é obrigatório');
+  }
+  
   // Converter camelCase para snake_case se necessário
   const updatesToSend = { ...updates };
-  if (updatesToSend.approvedBy) {
+  
+  // Converter approvedBy para approved_by se necessário
+  if (updatesToSend.approvedBy !== undefined) {
     updatesToSend.approved_by = updatesToSend.approvedBy;
     delete updatesToSend.approvedBy;
   }
+  
+  // Remover campos undefined/null que podem causar erro
+  Object.keys(updatesToSend).forEach(key => {
+    if (updatesToSend[key] === undefined) {
+      delete updatesToSend[key];
+    }
+  });
+  
+  // Validar que há algo para atualizar
+  if (Object.keys(updatesToSend).length === 0) {
+    throw new Error('Nenhum campo para atualizar');
+  }
+  
+  console.log('🔄 [updateEvaluation] Atualizando avaliação:', { id, updatesToSend });
   
   const { data, error } = await supabase
     .from('evaluations')
@@ -1039,7 +1059,12 @@ export const updateEvaluation = async (id, updates) => {
     .select()
     .single();
   
-  if (error) throw error;
+  if (error) {
+    console.error('❌ [updateEvaluation] Erro ao atualizar:', error);
+    throw error;
+  }
+  
+  console.log('✅ [updateEvaluation] Avaliação atualizada:', data);
   
   // Converter snake_case para camelCase no retorno
   return {
