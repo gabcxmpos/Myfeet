@@ -3,14 +3,14 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useData } from '@/contexts/DataContext';
-import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, GraduationCap, RotateCcw, X, Menu, FileCheck } from 'lucide-react';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, GraduationCap, RotateCcw, X, Menu, FileCheck, Calendar, Route, Settings, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'loja'] },
     { path: '/ranking', icon: Trophy, label: 'Ranking PPAD', roles: ['admin', 'supervisor', 'loja'] },
     { path: '/chave', icon: KeyRound, label: 'CHAVE', roles: ['admin', 'supervisor', 'loja'] },
-    { path: '/checklist', icon: CheckSquare, label: 'Checklist Diário', roles: ['admin', 'supervisor', 'loja'] },
+    { path: '/checklist', icon: CheckSquare, label: 'Checklist Diário', roles: ['supervisor', 'loja'] },
     { path: '/checklist-audit-analytics', icon: FileCheck, label: 'Análise de Auditorias', roles: ['admin'] },
     { path: '/analytics', icon: BarChart3, label: 'Analytics', roles: ['admin', 'supervisor'] },
     { path: '/goals', icon: Target, label: 'Definir Metas', roles: ['admin', 'supervisor'] },
@@ -23,9 +23,13 @@ const allMenuItems = [
     { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin', 'supervisor'] },
     { path: '/training', icon: GraduationCap, label: 'Treinamentos', roles: ['loja'] },
     { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja', 'devoluções'] },
+    // Planner de Devoluções ainda aparece separado para perfil devoluções (não admin)
+    { path: '/returns-planner', icon: Calendar, label: 'Planner de Devoluções', roles: ['devoluções'] },
+    // Checklists Consolidados (inclui Checklist Diário para admin)
+    { path: '/checklists', icon: CheckSquare, label: 'Checklists', roles: ['admin', 'devoluções', 'motorista', 'comunicação'] },
 ];
 
-const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
+const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: isDesktopProp }) => {
   const { user } = useAuth();
   const { menuVisibility } = useData();
   const location = useLocation();
@@ -43,48 +47,51 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
     return true;
   });
 
-  // Estado para detectar se é desktop
-  const [isDesktop, setIsDesktop] = React.useState(() => {
+  // Usar isDesktop do prop se fornecido, senão detectar localmente
+  const [isDesktopLocal, setIsDesktopLocal] = React.useState(() => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth >= 1024;
   });
 
-  // Atualizar quando redimensionar
+  const isDesktop = isDesktopProp !== undefined ? isDesktopProp : isDesktopLocal;
+
+  // Atualizar quando redimensionar (apenas se não receber prop)
   React.useEffect(() => {
+    if (isDesktopProp !== undefined) return; // Não atualizar se receber prop
+    
     const handleResize = () => {
-      setIsDesktop(window.innerWidth >= 1024);
+      setIsDesktopLocal(window.innerWidth >= 1024);
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [isDesktopProp]);
 
   // Fechar sidebar ao navegar em mobile
   React.useEffect(() => {
-    if (!isDesktop && isOpen) {
+    if (!isDesktop && isOpen && onClose) {
       onClose();
     }
   }, [location.pathname, isDesktop, isOpen, onClose]);
 
-  // Mostrar sidebar se estiver aberta (tanto em desktop quanto mobile)
-  // Em desktop, pode estar aberta mas minimizada
-  if (!isOpen) return null;
-
+  // Usar AnimatePresence para animar entrada/saída
   return (
-    <motion.aside
-      initial={!isDesktop ? { x: -300, opacity: 0 } : { opacity: 0 }}
-      animate={{ 
-        x: 0, 
-        opacity: 1,
-        width: isDesktop && isCollapsed ? 80 : 256
-      }}
-      exit={!isDesktop ? { x: -300, opacity: 0 } : { opacity: 0 }}
-      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-      className={`${
-        isDesktop 
-          ? 'fixed z-40' 
-          : 'fixed z-50'
-      } inset-y-0 left-0 bg-card border-r border-border flex flex-col shadow-lg lg:shadow-none overflow-hidden`}
-    >
+    <AnimatePresence>
+      {isOpen && (
+        <motion.aside
+          initial={!isDesktop ? { x: -300, opacity: 0 } : { opacity: 0 }}
+          animate={{ 
+            x: 0, 
+            opacity: 1,
+            width: isDesktop && isCollapsed ? 80 : 256
+          }}
+          exit={!isDesktop ? { x: -300, opacity: 0 } : { opacity: 0 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+          className={`${
+            isDesktop 
+              ? 'fixed z-40' 
+              : 'fixed z-50'
+          } inset-y-0 left-0 bg-card border-r border-border flex flex-col shadow-lg lg:shadow-none overflow-hidden`}
+        >
           {/* Header com botão de fechar em mobile e toggle de minimizar em desktop */}
           <div className={`border-b border-border flex items-center justify-between ${isCollapsed && isDesktop ? 'p-4 justify-center' : 'p-6'}`}>
             {!isCollapsed || !isDesktop ? (
@@ -148,7 +155,12 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   }`
                 }
-                onClick={onClose} // Fechar ao clicar em mobile
+                onClick={() => {
+                  // Fechar ao clicar em mobile
+                  if (!isDesktop && onClose) {
+                    onClose();
+                  }
+                }}
                 title={isCollapsed && isDesktop ? item.label : undefined}
               >
                 {({ isActive }) => (
@@ -170,6 +182,8 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse }) => {
             ))}
           </nav>
         </motion.aside>
+      )}
+    </AnimatePresence>
   );
 };
 

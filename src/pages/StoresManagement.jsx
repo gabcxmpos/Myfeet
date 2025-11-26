@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, Target, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users } from 'lucide-react';
+import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, Target, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users, AlertCircle, FileText } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import {
   DropdownMenu,
@@ -294,10 +294,154 @@ const ResultsFormModal = ({ store, onSave, onOpenChange }) => {
 };
 
 
-const ViewEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove }) => {
-  const { evaluations } = useData();
+const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users }) => {
+  if (!evaluation) return null;
+
+  const approvedByUser = evaluation.approvedByUser || (evaluation.approved_by || evaluation.approvedBy ? users?.find(u => u.id === (evaluation.approved_by || evaluation.approvedBy)) : null);
+  const createdByUser = evaluation.app_user || (evaluation.userId ? users?.find(u => u.id === evaluation.userId) : null);
+
+  return (
+    <DialogContent className="max-w-3xl bg-card border-border max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="flex items-center justify-between">
+          <span>Detalhes da Avaliação - {evaluation.pillar}</span>
+        </DialogTitle>
+      </DialogHeader>
+      <div className="mt-4 space-y-4">
+        <div className="bg-secondary p-4 rounded-lg">
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Pontuação</p>
+              <p className="text-2xl font-bold text-primary">{evaluation.score} pts</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Status</p>
+              <p className={cn("font-bold", evaluation.status === 'pending' ? 'text-yellow-500' : 'text-green-500')}>
+                {evaluation.status === 'pending' ? 'Pendente' : 'Aprovada'}
+              </p>
+              {evaluation.status === 'approved' && approvedByUser && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Aprovada por: <span className="font-semibold text-primary">{approvedByUser.username || approvedByUser.name || 'Usuário'}</span>
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Data</p>
+              <p className="font-medium">{new Date(evaluation.date || evaluation.created_at).toLocaleDateString('pt-BR')}</p>
+            </div>
+            {createdByUser && (
+              <div>
+                <p className="text-sm text-muted-foreground">Enviada por</p>
+                <p className="font-medium">{createdByUser.username || createdByUser.name || 'Usuário'}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="font-semibold text-lg">Respostas</h3>
+          {form && form.questions && form.questions.length > 0 ? (
+            form.questions.map((question, index) => {
+              const answer = evaluation.answers?.[question.id];
+              return (
+                <div key={question.id} className="bg-secondary p-4 rounded-lg">
+                  <p className="font-semibold mb-2">{index + 1}. {question.text}</p>
+                  {question.subtitle && <p className="text-sm text-muted-foreground mb-3">{question.subtitle}</p>}
+                  <div className="mt-2">
+                    {question.type === 'satisfaction' && (
+                      <div>
+                        <p className="font-medium">Nota: {answer || 0}/10</p>
+                        <div className="w-full bg-secondary rounded-full h-2 mt-2">
+                          <div className="bg-primary h-2 rounded-full" style={{ width: `${((answer || 0) / 10) * 100}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    {question.type === 'multiple-choice' && (
+                      <p className="font-medium">{answer || 'Não respondido'}</p>
+                    )}
+                    {question.type === 'checkbox' && (
+                      <div className="space-y-1">
+                        {Array.isArray(answer) && answer.length > 0 ? (
+                          answer.map((item, idx) => (
+                            <p key={idx} className="font-medium">• {item}</p>
+                          ))
+                        ) : (
+                          <p className="text-muted-foreground">Nenhuma opção selecionada</p>
+                        )}
+                      </div>
+                    )}
+                    {question.type === 'text' && (
+                      <p className="font-medium whitespace-pre-wrap">{answer || 'Sem resposta'}</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <p className="text-muted-foreground">Formulário não encontrado ou sem questões. Carregando informações básicas...</p>
+          )}
+        </div>
+      </div>
+    </DialogContent>
+  );
+};
+
+const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onViewDetail }) => {
+  const { evaluations, users } = useData();
   const { user } = useAuth();
-  const storeEvaluations = evaluations.filter(ev => ev.storeId === store.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+  const pendingEvaluations = evaluations
+    .filter(ev => ev.storeId === store.id && ev.status === 'pending')
+    .sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+
+  return (
+    <DialogContent className="max-w-2xl bg-card border-border">
+      <DialogHeader>
+        <DialogTitle>Avaliações Pendentes - {store.name}</DialogTitle>
+      </DialogHeader>
+      <div className="mt-4 max-h-[60vh] overflow-y-auto space-y-3 pr-2">
+        {pendingEvaluations.length > 0 ? pendingEvaluations.map(ev => {
+          const createdByUser = ev.app_user || (ev.userId ? users?.find(u => u.id === ev.userId) : null);
+          return (
+            <div key={ev.id} className="bg-secondary p-3 rounded-lg flex items-center justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold">{ev.pillar} - <span className="text-primary">{ev.score} pts</span></p>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {new Date(ev.date || ev.created_at).toLocaleDateString('pt-BR')} - 
+                  <span className="ml-1 font-bold text-yellow-500">Pendente</span>
+                  {createdByUser && (
+                    <span className="ml-2">• Enviada por: <span className="font-semibold">{createdByUser.username || createdByUser.name || 'Usuário'}</span></span>
+                  )}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="icon" onClick={() => onViewDetail(ev)} title="Ver detalhes">
+                  <Eye className="w-5 h-5 text-blue-500 hover:text-blue-400" />
+                </Button>
+                {(user.role === 'admin' || user.role === 'supervisor') && (
+                  <Button variant="ghost" size="icon" onClick={() => onApprove(ev.id)} title="Aprovar">
+                    <CheckCircle className="w-5 h-5 text-green-500 hover:text-green-400" />
+                  </Button>
+                )}
+                {user.role === 'admin' && (
+                  <Button variant="ghost" size="icon" onClick={() => onDelete(ev.id)} title="Excluir">
+                    <Trash2 className="w-5 h-5 text-destructive hover:text-red-400" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        }) : <p className="text-muted-foreground text-center py-4">Nenhuma avaliação pendente para esta loja.</p>}
+      </div>
+    </DialogContent>
+  );
+};
+
+const ViewEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onViewDetail }) => {
+  const { evaluations, users } = useData();
+  const { user } = useAuth();
+  const storeEvaluations = evaluations.filter(ev => ev.storeId === store.id).sort((a,b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
 
   return (
     <DialogContent className="max-w-2xl bg-card border-border">
@@ -305,27 +449,49 @@ const ViewEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove }) => {
         <DialogTitle>Avaliações de {store.name}</DialogTitle>
       </DialogHeader>
       <div className="mt-4 max-h-[60vh] overflow-y-auto space-y-3 pr-2">
-        {storeEvaluations.length > 0 ? storeEvaluations.map(ev => (
-          <div key={ev.id} className="bg-secondary p-3 rounded-lg flex items-center justify-between">
-            <div>
-              <p className="font-semibold">{ev.pillar} - <span className="text-primary">{ev.score} pts</span></p>
-              <p className="text-xs text-muted-foreground">
-                {new Date(ev.date).toLocaleDateString()} - 
-                <span className={cn("ml-1 font-bold", ev.status === 'pending' ? 'text-yellow-500' : 'text-green-500')}>
-                  {ev.status === 'pending' ? 'Pendente' : 'Aprovada'}
-                </span>
-              </p>
+        {storeEvaluations.length > 0 ? storeEvaluations.map(ev => {
+          const approvedByUser = ev.approvedByUser || (ev.approved_by || ev.approvedBy ? users?.find(u => u.id === (ev.approved_by || ev.approvedBy)) : null);
+          const createdByUser = ev.app_user || (ev.userId ? users?.find(u => u.id === ev.userId) : null);
+          
+          return (
+            <div key={ev.id} className="bg-secondary p-3 rounded-lg flex items-center justify-between">
+              <div className="flex-1">
+                <div 
+                  className={cn("cursor-pointer", ev.status === 'approved' && approvedByUser && "hover:underline")}
+                  onClick={ev.status === 'approved' && approvedByUser ? () => onViewDetail(ev) : undefined}
+                  title={ev.status === 'approved' && approvedByUser ? "Clique para ver detalhes" : ""}
+                >
+                  <p className="font-semibold">{ev.pillar} - <span className="text-primary">{ev.score} pts</span></p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(ev.date || ev.created_at).toLocaleDateString('pt-BR')} - 
+                    <span className={cn("ml-1 font-bold", ev.status === 'pending' ? 'text-yellow-500' : 'text-green-500')}>
+                      {ev.status === 'pending' ? 'Pendente' : 'Aprovada'}
+                    </span>
+                    {ev.status === 'approved' && approvedByUser && (
+                      <span className="ml-2 text-primary font-semibold cursor-pointer hover:underline">
+                        • Aprovada por: {approvedByUser.username || approvedByUser.name || 'Usuário'}
+                      </span>
+                    )}
+                    {createdByUser && ev.status === 'pending' && (
+                      <span className="ml-2">• Enviada por: <span className="font-semibold">{createdByUser.username || createdByUser.name || 'Usuário'}</span></span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="icon" onClick={() => onViewDetail(ev)} title="Ver detalhes">
+                  <Eye className="w-5 h-5 text-blue-500 hover:text-blue-400" />
+                </Button>
+                {(user.role === 'admin' || user.role === 'supervisor') && ev.status === 'pending' && (
+                  <Button variant="ghost" size="icon" onClick={() => onApprove(ev.id)}><CheckCircle className="w-5 h-5 text-green-500 hover:text-green-400" /></Button>
+                )}
+                {user.role === 'admin' && (
+                  <Button variant="ghost" size="icon" onClick={() => onDelete(ev.id)}><Trash2 className="w-5 h-5 text-destructive hover:text-red-400" /></Button>
+                )}
+              </div>
             </div>
-            <div className="flex gap-2">
-              {(user.role === 'admin' || user.role === 'supervisor') && ev.status === 'pending' && (
-                <Button variant="ghost" size="icon" onClick={() => onApprove(ev.id)}><CheckCircle className="w-5 h-5 text-green-500 hover:text-green-400" /></Button>
-              )}
-              {user.role === 'admin' && (
-                <Button variant="ghost" size="icon" onClick={() => onDelete(ev.id)}><Trash2 className="w-5 h-5 text-destructive hover:text-red-400" /></Button>
-              )}
-            </div>
-          </div>
-        )) : <p className="text-muted-foreground text-center py-4">Nenhuma avaliação encontrada para esta loja.</p>}
+          );
+        }) : <p className="text-muted-foreground text-center py-4">Nenhuma avaliação encontrada para esta loja.</p>}
       </div>
     </DialogContent>
   );
@@ -349,7 +515,14 @@ const HeadcountModal = ({ store, collaborators, jobRoles, onOpenChange }) => {
   const collaboratorsByRole = useMemo(() => {
     const grouped = {};
     
-    // Inicializar todos os cargos com 0
+    // Debug: verificar dados recebidos
+    console.log('🔍 [HeadcountModal] Dados recebidos:', {
+      activeCollaborators: activeCollaborators.length,
+      jobRoles: jobRoles?.length || 0,
+      sampleCollaborator: activeCollaborators[0]
+    });
+    
+    // Inicializar todos os cargos configurados com arrays vazios
     if (jobRoles && jobRoles.length > 0) {
       jobRoles.forEach(role => {
         grouped[role] = [];
@@ -358,15 +531,43 @@ const HeadcountModal = ({ store, collaborators, jobRoles, onOpenChange }) => {
     
     // Agrupar colaboradores ativos por cargo
     activeCollaborators.forEach(collab => {
-      const role = collab.role || 'Sem cargo';
-      if (!grouped[role]) {
-        grouped[role] = [];
+      // Obter o cargo do colaborador, normalizado
+      const collabRole = collab.role ? String(collab.role).trim() : null;
+      
+      if (!collabRole || collabRole === '') {
+        // Colaborador sem cargo definido
+        if (!grouped['Sem cargo']) {
+          grouped['Sem cargo'] = [];
+        }
+        grouped['Sem cargo'].push(collab);
+      } else {
+        // Verificar se o cargo existe na lista de jobRoles (comparação exata)
+        if (jobRoles && jobRoles.includes(collabRole)) {
+          // Cargo está na lista configurada
+          if (!grouped[collabRole]) {
+            grouped[collabRole] = [];
+          }
+          grouped[collabRole].push(collab);
+        } else {
+          // Cargo não está na lista de jobRoles configurados
+          // Adicionar mesmo assim para não perder dados
+          if (!grouped[collabRole]) {
+            grouped[collabRole] = [];
+          }
+          grouped[collabRole].push(collab);
+        }
       }
-      grouped[role].push(collab);
+    });
+    
+    // Debug: verificar resultado do agrupamento
+    console.log('📊 [HeadcountModal] Agrupamento final:', {
+      totalRoles: Object.keys(grouped).length,
+      rolesWithCollaborators: Object.keys(grouped).filter(role => grouped[role].length > 0),
+      grouped
     });
     
     return grouped;
-  }, [storeCollaborators, jobRoles]);
+  }, [activeCollaborators, jobRoles]);
 
   const totalCollaborators = activeCollaborators.length;
 
@@ -390,29 +591,64 @@ const HeadcountModal = ({ store, collaborators, jobRoles, onOpenChange }) => {
         {/* Lista de cargos e quantidades */}
         <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
           {jobRoles && jobRoles.length > 0 ? (
-            jobRoles.map(role => {
-              const count = collaboratorsByRole[role]?.length || 0;
-              const roleCollaborators = collaboratorsByRole[role] || [];
-              
-              return (
-                <div key={role} className="bg-secondary/50 p-4 rounded-lg border border-border">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-foreground">{role}</h3>
-                    <span className="text-lg font-bold text-primary">{count}</span>
-                  </div>
-                  {roleCollaborators.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {roleCollaborators.map(collab => (
-                        <div key={collab.id} className="text-sm text-muted-foreground pl-2 border-l-2 border-primary/30">
-                          {collab.name}
-                          {collab.cpf && <span className="ml-2 text-xs">• CPF: {collab.cpf}</span>}
-                        </div>
-                      ))}
+            <>
+              {/* Primeiro, mostrar os cargos configurados */}
+              {jobRoles.map(role => {
+                const count = collaboratorsByRole[role]?.length || 0;
+                const roleCollaborators = collaboratorsByRole[role] || [];
+                
+                return (
+                  <div key={role} className="bg-secondary/50 p-4 rounded-lg border border-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-foreground">{role}</h3>
+                      <span className="text-lg font-bold text-primary">{count}</span>
                     </div>
-                  )}
-                </div>
-              );
-            })
+                    {roleCollaborators.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {roleCollaborators.map(collab => (
+                          <div key={collab.id} className="text-sm text-muted-foreground pl-2 border-l-2 border-primary/30">
+                            {collab.name}
+                            {collab.cpf && <span className="ml-2 text-xs">• CPF: {collab.cpf}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              
+              {/* Depois, mostrar cargos não configurados mas que existem nos colaboradores */}
+              {Object.keys(collaboratorsByRole).map(role => {
+                // Pular se o cargo já foi mostrado acima (está em jobRoles) ou é "Sem cargo"
+                if ((jobRoles && jobRoles.includes(role)) || role === 'Sem cargo') {
+                  return null;
+                }
+                
+                const count = collaboratorsByRole[role]?.length || 0;
+                const roleCollaborators = collaboratorsByRole[role] || [];
+                
+                if (count === 0) return null;
+                
+                return (
+                  <div key={role} className="bg-yellow-500/10 border-yellow-500/30 p-4 rounded-lg border">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-foreground">{role}</h3>
+                      <span className="text-lg font-bold text-yellow-500">{count}</span>
+                    </div>
+                    {roleCollaborators.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {roleCollaborators.map(collab => (
+                          <div key={collab.id} className="text-sm text-muted-foreground pl-2 border-l-2 border-yellow-500/30">
+                            {collab.name}
+                            {collab.cpf && <span className="ml-2 text-xs">• CPF: {collab.cpf}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
               <p>Nenhum cargo cadastrado.</p>
@@ -443,10 +679,11 @@ const HeadcountModal = ({ store, collaborators, jobRoles, onOpenChange }) => {
 }
 
 const StoresManagement = () => {
-  const { stores, addStore, updateStore, deleteStore, deleteEvaluation, approveEvaluation, fetchData, collaborators, jobRoles } = useData();
+  const { stores, addStore, updateStore, deleteStore, deleteEvaluation, approveEvaluation, fetchData, collaborators, jobRoles, evaluations, users, forms } = useData();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [modalState, setModalState] = useState({ type: null, data: null });
+  const [selectedEvaluation, setSelectedEvaluation] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -460,6 +697,17 @@ const StoresManagement = () => {
       store.code.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [stores, searchTerm]);
+
+  // Calcular avaliações pendentes por loja
+  const pendingEvaluationsByStore = useMemo(() => {
+    const pending = {};
+    evaluations?.forEach(ev => {
+      if (ev.status === 'pending') {
+        pending[ev.storeId] = (pending[ev.storeId] || 0) + 1;
+      }
+    });
+    return pending;
+  }, [evaluations]);
 
   const handleSaveStore = (storeData) => {
     if (storeData.id) {
@@ -496,9 +744,18 @@ const StoresManagement = () => {
     try {
       await approveEvaluation(evalId);
       // Toast já é exibido pela função approveEvaluation
+      // Fechar modal de pendentes se estiver aberto
+      if (modalState.type === 'pendingEvaluations') {
+        setModalState({ type: null, data: null });
+      }
     } catch (error) {
       // Error já é tratado pela função approveEvaluation
     }
+  }
+
+  const handleViewEvaluationDetail = (evaluation) => {
+    setSelectedEvaluation(evaluation);
+    setModalState({ type: 'evaluationDetail', data: null });
   }
 
   const getBrandClass = (bandeira) => {
@@ -561,6 +818,19 @@ const StoresManagement = () => {
                     </DropdownMenu>
                   </div>
                 </div>
+                {pendingEvaluationsByStore[store.id] > 0 && (user.role === 'admin' || user.role === 'supervisor') && (
+                  <div className="mb-3">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full bg-yellow-500/10 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/20"
+                      onClick={() => setModalState({ type: 'pendingEvaluations', data: store })}
+                    >
+                      <AlertCircle className="w-4 h-4 mr-2" />
+                      {pendingEvaluationsByStore[store.id]} Avaliação{pendingEvaluationsByStore[store.id] > 1 ? 'ões' : ''} Pendente{pendingEvaluationsByStore[store.id] > 1 ? 's' : ''}
+                    </Button>
+                  </div>
+                )}
                 <div className="space-y-2 text-sm">
                   {[
                     { label: 'Supervisor', value: store.supervisor },
@@ -577,9 +847,28 @@ const StoresManagement = () => {
         </div>
       </div>
 
-      <Dialog open={!!modalState.type} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })}>
+      <Dialog open={!!modalState.type} onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          setModalState({ type: null, data: null });
+          setSelectedEvaluation(null);
+        }
+      }}>
         {modalState.type === 'editStore' && <StoreFormModal store={modalState.data} onSave={handleSaveStore} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
-        {modalState.type === 'viewEvaluations' && <ViewEvaluationsModal store={modalState.data} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} onDelete={handleDeleteEvaluation} onApprove={handleApproveEvaluation} />}
+        {modalState.type === 'viewEvaluations' && <ViewEvaluationsModal store={modalState.data} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} onDelete={handleDeleteEvaluation} onApprove={handleApproveEvaluation} onViewDetail={handleViewEvaluationDetail} />}
+        {modalState.type === 'pendingEvaluations' && <PendingEvaluationsModal store={modalState.data} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} onDelete={handleDeleteEvaluation} onApprove={handleApproveEvaluation} onViewDetail={handleViewEvaluationDetail} />}
+        {modalState.type === 'evaluationDetail' && selectedEvaluation && (
+          <EvaluationDetailModal 
+            evaluation={selectedEvaluation} 
+            form={forms?.find(f => f.id === selectedEvaluation.formId)} 
+            onOpenChange={(isOpen) => {
+              if (!isOpen) {
+                setModalState({ type: null, data: null });
+                setSelectedEvaluation(null);
+              }
+            }}
+            users={users}
+          />
+        )}
         {modalState.type === 'editResults' && <ResultsFormModal store={modalState.data} onSave={handleSaveResults} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
         {modalState.type === 'headcount' && <HeadcountModal store={modalState.data} collaborators={collaborators} jobRoles={jobRoles} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
       </Dialog>

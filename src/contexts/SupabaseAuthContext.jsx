@@ -297,6 +297,19 @@ export const AuthProvider = ({ children }) => {
         return { success: false, error };
       }
 
+      // Atualizar last_login após login bem-sucedido
+      if (data?.user) {
+        try {
+          await supabase
+            .from('app_users')
+            .update({ last_login: new Date().toISOString() })
+            .eq('id', data.user.id);
+        } catch (updateError) {
+          // Não bloquear o login se falhar ao atualizar last_login
+          console.warn('⚠️ Erro ao atualizar last_login:', updateError);
+        }
+      }
+      
       // Check if user is blocked
       const profile = await fetchCurrentUserProfile();
       

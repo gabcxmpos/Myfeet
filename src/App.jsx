@@ -26,7 +26,10 @@ import MenuVisibilitySettings from '@/pages/MenuVisibilitySettings';
 import TrainingManagement from '@/pages/TrainingManagement';
 import Training from '@/pages/Training';
 import ReturnsManagement from '@/pages/ReturnsManagement';
+import ReturnsPlanner from '@/pages/ReturnsPlanner';
+import ReturnsConsolidated from '@/pages/ReturnsConsolidated';
 import ChecklistAuditAnalytics from '@/pages/ChecklistAuditAnalytics';
+import ChecklistsManagement from '@/pages/ChecklistsManagement';
 
 function App() {
   return (
@@ -58,10 +61,15 @@ function App() {
                 <Route path="feedback-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor']}><FeedbackManagement /></ProtectedRoute>} />
                 <Route path="training-management" element={<ProtectedRoute allowedRoles={['admin']}><TrainingManagement /></ProtectedRoute>} />
                 <Route path="training" element={<ProtectedRoute allowedRoles={['loja']}><Training /></ProtectedRoute>} />
-                <Route path="returns" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'loja', 'devoluções']}><ReturnsManagement /></ProtectedRoute>} />
+                {/* Devoluções Consolidada (admin, supervisor, loja, devoluções) */}
+                <Route path="returns" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'loja', 'devoluções']}><ReturnsConsolidated /></ProtectedRoute>} />
+                {/* Rota alternativa para planner (compatibilidade) */}
+                <Route path="returns-planner" element={<ProtectedRoute allowedRoles={['devoluções', 'admin']}><ReturnsConsolidated /></ProtectedRoute>} />
                 <Route path="chave" element={<Chave />} />
                 <Route path="checklist" element={<DailyChecklist />} />
                 <Route path="checklist-audit-analytics" element={<ProtectedRoute allowedRoles={['admin']}><ChecklistAuditAnalytics /></ProtectedRoute>} />
+                {/* Checklists Consolidados */}
+                <Route path="checklists" element={<ProtectedRoute allowedRoles={['admin', 'devoluções', 'motorista', 'comunicação']}><ChecklistsManagement /></ProtectedRoute>} />
               </Route>
             </Routes>
           </Router>

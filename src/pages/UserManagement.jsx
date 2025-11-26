@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UserPlus, UserX, Lock, Unlock, Trash2, KeyRound } from 'lucide-react';
+import { UserPlus, UserX, Lock, Unlock, Trash2, KeyRound, Clock } from 'lucide-react';
+import { format, formatDistanceToNow } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -237,9 +239,15 @@ const UserManagement = () => {
                                     <div className="flex items-center gap-2">
                                         <span className="font-medium text-foreground">{user.username}</span>
                                     </div>
-                                    <div className="flex items-center gap-2 mt-1">
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                                       <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getRoleBadgeColor(user.role)}`}>{user.role}</span>
                                       <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${getStatusBadgeColor(user.status)}`}>{getStatusLabel(user.status)}</span>
+                                      {user.last_login && (
+                                        <span className="flex items-center gap-1 px-2 py-0.5 text-xs text-muted-foreground" title={format(new Date(user.last_login), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}>
+                                          <Clock className="w-3 h-3" />
+                                          {formatDistanceToNow(new Date(user.last_login), { addSuffix: true, locale: ptBR })}
+                                        </span>
+                                      )}
                                     </div>
                                 </div>
                                 {user.role !== 'admin' && (

@@ -103,6 +103,7 @@ export const DataProvider = ({ children }) => {
   const [trainingRegistrations, setTrainingRegistrations] = useState([]);
   const [returns, setReturns] = useState([]);
   const [physicalMissing, setPhysicalMissing] = useState([]);
+  const [returnsPlanner, setReturnsPlanner] = useState([]);
   
   // App Settings
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
@@ -135,6 +136,7 @@ export const DataProvider = ({ children }) => {
       // Buscar usuários e formulários com tratamento de erro individual
       let fetchedUsers = [];
       let fetchedForms = [];
+      let fetchedReturnsPlanner = [];
       
       if (typeof api.fetchAppUsers === 'function') {
         try {
@@ -160,6 +162,23 @@ export const DataProvider = ({ children }) => {
         }
       } else {
         console.error('❌ [DataContext] api.fetchForms não é uma função!', api.fetchForms);
+      }
+      
+      // Buscar returns planner com tratamento de erro individual (tabela pode não existir ainda)
+      if (typeof api.fetchReturnsPlanner === 'function') {
+        try {
+          console.log('🔍 [DataContext] Tentando buscar planner de devoluções...');
+          fetchedReturnsPlanner = await api.fetchReturnsPlanner();
+          console.log('✅ [DataContext] Planner de devoluções buscado com sucesso:', fetchedReturnsPlanner?.length || 0);
+        } catch (plannerError) {
+          if (plannerError.code === 'PGRST205' || plannerError.message?.includes('Could not find the table')) {
+            console.warn('⚠️ [DataContext] Tabela returns_planner não encontrada. Execute o script CRIAR_TABELA_PLANNER_DEVOLUCOES.sql no Supabase.');
+            fetchedReturnsPlanner = [];
+          } else {
+            console.error('❌ [DataContext] Erro ao buscar planner de devoluções:', plannerError);
+            fetchedReturnsPlanner = [];
+          }
+        }
       }
       
       const [
@@ -223,6 +242,7 @@ export const DataProvider = ({ children }) => {
       setTrainingRegistrations(fetchedTrainingRegistrations);
       setReturns(fetchedReturns || []);
       setPhysicalMissing(fetchedPhysicalMissing || []);
+      setReturnsPlanner(fetchedReturnsPlanner || []);
       
       if (fetchedPatents) setPatentSettings(fetchedPatents);
       // Garantir que chaveContent sempre seja uma string
@@ -409,6 +429,7 @@ export const DataProvider = ({ children }) => {
         lastRefreshTime = now;
 
         // Refresh dados quando a página volta a ser visível (incluindo returns e physicalMissing)
+        // Buscar returns planner separadamente para não quebrar o Promise.all se a tabela não existir
         Promise.all([
           api.fetchEvaluations(),
           api.fetchFeedbacks(),
@@ -427,6 +448,18 @@ export const DataProvider = ({ children }) => {
           setTrainingRegistrations(newRegistrations);
           setReturns(newReturns || []);
           setPhysicalMissing(newPhysicalMissing || []);
+          
+          // Buscar returns planner separadamente com tratamento de erro
+          api.fetchReturnsPlanner().then(newReturnsPlanner => {
+            setReturnsPlanner(newReturnsPlanner || []);
+          }).catch(error => {
+            if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+              // Tabela não existe ainda - ignorar silenciosamente
+              setReturnsPlanner([]);
+            } else {
+              console.warn('Erro ao atualizar returns planner:', error);
+            }
+          });
         }).catch(error => {
           console.warn('Erro ao atualizar dados ao voltar ao foco:', error);
         });
@@ -608,7 +641,18 @@ export const DataProvider = ({ children }) => {
   // Evaluations
   const addEvaluation = (evalData) => handleApiCall(() => api.createEvaluation(evalData), 'Avaliação enviada.');
   const updateEvaluationStatus = (id, status) => handleApiCall(() => api.updateEvaluation(id, { status }), 'Status da avaliação atualizado.');
-  const approveEvaluation = (id) => handleApiCall(() => api.updateEvaluation(id, { status: 'approved' }), 'Avaliação aprovada! A avaliação agora conta para a pontuação.');
+  const approveEvaluation = async (id) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      await handleApiCall(() => api.updateEvaluation(id, { 
+        status: 'approved',
+        approved_by: user?.id || null 
+      }), 'Avaliação aprovada! A avaliação agora conta para a pontuação.');
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao aprovar avaliação', description: error.message });
+      throw error;
+    }
+  };
   const deleteEvaluation = async (id) => {
     if (!id) {
       toast({ variant: 'destructive', title: 'Erro', description: 'ID da avaliação é obrigatório' });
@@ -976,6 +1020,53 @@ export const DataProvider = ({ children }) => {
       const updatedReturn = await api.updateReturn(id, updates);
       setReturns(prev => prev.map(ret => ret.id === id ? updatedReturn : ret));
       toast({ title: 'Sucesso!', description: 'Devolução atualizada com sucesso.' });
+      
+      // Se foi marcado como coletado, atualizar o Planner automaticamente
+      if (updates.collected_at) {
+        try {
+          // Buscar registros do Planner relacionados a esta devolução
+          // Relacionamento: mesma loja + número da nota ou número do caso
+          const returnItem = returns.find(r => r.id === id);
+          if (returnItem && returnItem.store_id) {
+            const relatedPlannerItems = returnsPlanner.filter(planner => {
+              // Verificar se é da mesma loja
+              if (planner.store_id !== returnItem.store_id) return false;
+              
+              // Verificar se tem número da nota correspondente
+              // Tenta diferentes campos possíveis: nf_number, invoice_number, nota_fiscal
+              const returnNfNumber = returnItem.nf_number || returnItem.invoice_number || returnItem.nota_fiscal;
+              if (returnNfNumber && planner.invoice_number && 
+                  returnNfNumber.toString() === planner.invoice_number.toString()) {
+                return true;
+              }
+              
+              // Verificar se tem número do caso correspondente
+              if (returnItem.case_number && planner.case_number && 
+                  returnItem.case_number.toString() === planner.case_number.toString()) {
+                return true;
+              }
+              
+              return false;
+            });
+            
+            // Atualizar todos os registros relacionados para "Coletado"
+            if (relatedPlannerItems.length > 0) {
+              for (const plannerItem of relatedPlannerItems) {
+                if (plannerItem.status !== 'Coletado') {
+                  await api.updateReturnsPlanner(plannerItem.id, { status: 'Coletado' });
+                  setReturnsPlanner(prev => prev.map(item => 
+                    item.id === plannerItem.id ? { ...item, status: 'Coletado' } : item
+                  ));
+                }
+              }
+            }
+          }
+        } catch (plannerError) {
+          // Não interromper o fluxo se houver erro na sincronização do Planner
+          console.warn('Erro ao sincronizar Planner:', plannerError);
+        }
+      }
+      
       return updatedReturn;
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro ao atualizar devolução', description: error.message });
@@ -1039,6 +1130,50 @@ export const DataProvider = ({ children }) => {
       toast({ title: 'Sucesso!', description: 'Falta física excluída com sucesso.' });
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro ao excluir falta física', description: error.message });
+      throw error;
+    }
+  };
+
+  // Returns Planner
+  const addReturnsPlanner = async (plannerData) => {
+    try {
+      const newPlanner = await api.createReturnsPlanner(plannerData);
+      setReturnsPlanner(prev => [newPlanner, ...prev]);
+      toast({ title: 'Sucesso!', description: 'Registro do planner criado com sucesso.' });
+      return newPlanner;
+    } catch (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Tabela não encontrada', 
+          description: 'A tabela returns_planner ainda não foi criada no banco. Execute o script SQL CRIAR_TABELA_PLANNER_DEVOLUCOES.sql no Supabase.' 
+        });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao criar registro', description: error.message });
+      }
+      throw error;
+    }
+  };
+
+  const updateReturnsPlanner = async (id, updates) => {
+    try {
+      const updatedPlanner = await api.updateReturnsPlanner(id, updates);
+      setReturnsPlanner(prev => prev.map(item => item.id === id ? updatedPlanner : item));
+      toast({ title: 'Sucesso!', description: 'Registro do planner atualizado com sucesso.' });
+      return updatedPlanner;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar registro', description: error.message });
+      throw error;
+    }
+  };
+
+  const deleteReturnsPlanner = async (id) => {
+    try {
+      await api.deleteReturnsPlanner(id);
+      setReturnsPlanner(prev => prev.filter(item => item.id !== id));
+      toast({ title: 'Sucesso!', description: 'Registro do planner excluído com sucesso.' });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir registro', description: error.message });
       throw error;
     }
   };
@@ -1117,6 +1252,10 @@ export const DataProvider = ({ children }) => {
     addPhysicalMissing,
     updatePhysicalMissing,
     deletePhysicalMissing,
+    returnsPlanner,
+    addReturnsPlanner,
+    updateReturnsPlanner,
+    deleteReturnsPlanner,
     fetchData, // Expor fetchData para permitir refresh manual em componentes
   };
 

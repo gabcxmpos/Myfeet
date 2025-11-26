@@ -84,9 +84,11 @@ const ReturnsManagement = () => {
   const { 
     stores, 
     returns, 
+    returnsPlanner,
     physicalMissing, 
     addReturn, 
     updateReturn, 
+    updateReturnsPlanner,
     deleteReturn,
     addPhysicalMissing,
     updatePhysicalMissing,
@@ -98,6 +100,23 @@ const ReturnsManagement = () => {
   const isAdmin = user?.role === 'admin';
   const isStore = user?.role === 'loja';
   const isDevolucoes = user?.role === 'devoluções';
+  
+  // Debug: Verificar se returnsPlanner está sendo carregado
+  useEffect(() => {
+    console.log('🔍 [ReturnsManagement] returnsPlanner recebido:', returnsPlanner?.length || 0, 'itens');
+    if (returnsPlanner && returnsPlanner.length > 0) {
+      console.log('📋 [ReturnsManagement] Primeiro item do planner:', returnsPlanner[0]);
+      const aguardandoColeta = returnsPlanner.filter(item => item.status === 'Aguardando coleta');
+      console.log('📦 [ReturnsManagement] Items aguardando coleta:', aguardandoColeta.length);
+      if (isStore && user?.storeId) {
+        const paraMinhaLoja = aguardandoColeta.filter(item => item.store_id === user.storeId);
+        console.log('🏪 [ReturnsManagement] Items para minha loja:', paraMinhaLoja.length, 'Store ID:', user.storeId);
+        if (paraMinhaLoja.length > 0) {
+          console.log('✅ [ReturnsManagement] Items encontrados para a loja:', paraMinhaLoja);
+        }
+      }
+    }
+  }, [returnsPlanner, isStore, user?.storeId]);
   
   // Estados do componente
   const [modalState, setModalState] = useState({ type: null, data: null });
@@ -149,6 +168,7 @@ const ReturnsManagement = () => {
 
   // Estado do formulário de falta física
   const [missingFormData, setMissingFormData] = useState({
+    missing_type: [], // Array para multiseleção: ['FALTA FISICA'], ['SOBRA'], ['DIVERGENCIA NF X FISICO'], ou combinações
     brand: '',
     nf_number: '',
     sku: '',
@@ -157,7 +177,21 @@ const ReturnsManagement = () => {
     cost_value: '',
     quantity: '',
     moved_to_defect: false,
-    store_id: user?.storeId || ''
+    store_id: user?.storeId || '',
+    // Campos para divergência (o que faltou)
+    divergence_missing_brand: '',
+    divergence_missing_sku: '',
+    divergence_missing_color: '',
+    divergence_missing_size: '',
+    divergence_missing_quantity: '',
+    divergence_missing_cost_value: '',
+    // Campos para divergência (o que sobrou no lugar)
+    divergence_surplus_brand: '',
+    divergence_surplus_sku: '',
+    divergence_surplus_color: '',
+    divergence_surplus_size: '',
+    divergence_surplus_quantity: '',
+    divergence_surplus_cost_value: ''
   });
 
   // Atualizar store_id quando user mudar
@@ -182,13 +216,60 @@ const ReturnsManagement = () => {
     };
   }, [stores]);
 
-  // Filtrar devoluções pendentes
+  // Converter returns_planner para formato de returns para exibição
+  const plannerAsReturns = useMemo(() => {
+    if (!returnsPlanner || returnsPlanner.length === 0) {
+      console.log('⚠️ [ReturnsManagement] returnsPlanner está vazio ou undefined');
+      return [];
+    }
+    
+    console.log(`📦 [ReturnsManagement] Total de items no planner: ${returnsPlanner.length}`);
+    
+    const filtered = (returnsPlanner || [])
+      .filter(item => {
+        const match = item.status === 'Aguardando coleta';
+        if (!match) {
+          console.log(`⏭️ [ReturnsManagement] Item ${item.id} filtrado - status: "${item.status}" (esperado: "Aguardando coleta")`);
+        }
+        return match;
+      });
+    
+    console.log(`✅ [ReturnsManagement] Items com status "Aguardando coleta": ${filtered.length}`);
+    
+    if (isStore && user?.storeId) {
+      const paraMinhaLoja = filtered.filter(item => item.store_id === user.storeId);
+      console.log(`🏪 [ReturnsManagement] Items para loja ${user.storeId}: ${paraMinhaLoja.length}`);
+    }
+    
+    return filtered.map(item => ({
+      id: `planner_${item.id}`, // Prefixo para identificar que vem do planner
+      planner_id: item.id, // ID original do planner
+      store_id: item.store_id,
+      brand: item.brand || '',
+      nf_number: item.invoice_number || '',
+      nf_emission_date: item.invoice_issue_date || '',
+      nf_value: item.return_value || 0,
+      volume_quantity: item.items_quantity || 0,
+      date: item.opening_date || '',
+      case_number: item.case_number || '',
+      return_type: item.return_type || '',
+      supervisor: item.supervisor || '',
+      from_planner: true, // Flag para identificar que vem do planner
+      collected_at: null, // Sempre pendente se está aqui
+      created_at: item.created_at
+    }));
+  }, [returnsPlanner, isStore, user?.storeId]);
+
+  // Filtrar devoluções pendentes (incluindo do planner)
   const pendingReturns = useMemo(() => {
-    let filtered = (returns || []).filter(ret => {
+    // Combinar returns normais com returns do planner
+    const allReturns = [...(returns || []), ...plannerAsReturns];
+    
+    let filtered = allReturns.filter(ret => {
       // Garantir que tem store_id válido
       if (!ret.store_id) return false;
       
-      // IMPORTANTE: Se for loja, mostrar APENAS suas devoluções (criadas por ela)
+      // IMPORTANTE: Se for loja, mostrar APENAS suas devoluções (criadas por ela OU do planner para sua loja)
       // Role devoluções vê TODAS as devoluções (sem restrição de loja)
       if (isStore && user?.storeId && !isDevolucoes) {
         if (ret.store_id !== user.storeId) {
@@ -214,6 +295,7 @@ const ReturnsManagement = () => {
       const matchesSearch = 
         ret.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         ret.nf_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        ret.case_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         store.name?.toLowerCase().includes(searchTerm.toLowerCase());
       
       // Verificar se não foi coletada
@@ -225,7 +307,7 @@ const ReturnsManagement = () => {
     });
     
     return filtered;
-  }, [returns, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, filters]);
+  }, [returns, plannerAsReturns, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, filters]);
 
   // Filtrar devoluções coletadas
   const collectedReturns = useMemo(() => {
@@ -738,11 +820,34 @@ const ReturnsManagement = () => {
   const handleMarkAsCollected = async (returnId) => {
     if (window.confirm('Confirmar que esta devolução foi coletada?')) {
       try {
-        await updateReturn(returnId, {
-          collected_at: new Date().toISOString()
-        });
+        // Verificar se é um item do planner
+        if (returnId.startsWith('planner_')) {
+          // É do planner - atualizar status no planner
+          const plannerId = returnId.replace('planner_', '');
+          await updateReturnsPlanner(plannerId, {
+            status: 'Coletado'
+          });
+          toast({
+            title: 'Sucesso!',
+            description: 'Devolução do planner marcada como coletada.',
+          });
+        } else {
+          // É um return normal - atualizar collected_at
+          await updateReturn(returnId, {
+            collected_at: new Date().toISOString()
+          });
+          toast({
+            title: 'Sucesso!',
+            description: 'Devolução marcada como coletada.',
+          });
+        }
       } catch (error) {
         console.error('Erro ao marcar como coletado:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: error.message || 'Erro ao marcar devolução como coletada.',
+        });
       }
     }
   };
@@ -773,15 +878,17 @@ const ReturnsManagement = () => {
   const handleCreateMissing = async (e) => {
     e.preventDefault();
     
-    if (!missingFormData.brand || !missingFormData.nf_number || !missingFormData.sku || !missingFormData.color || !missingFormData.size || !missingFormData.cost_value || !missingFormData.quantity) {
+    // Validação: deve selecionar pelo menos um tipo
+    if (!missingFormData.missing_type || missingFormData.missing_type.length === 0) {
       toast({
         variant: 'destructive',
         title: 'Erro',
-        description: 'Preencha todos os campos obrigatórios (Marca, Número da NF, SKU, Cor, Tamanho, Custo e Quantidade).',
+        description: 'Selecione pelo menos um tipo (Falta Física, Divergência NF x Físico, ou Sobra).',
       });
       return;
     }
 
+    // Validação: se não marcou "Movimentado para defeito", não permite criar
     if (!missingFormData.moved_to_defect) {
       toast({
         variant: 'destructive',
@@ -800,31 +907,101 @@ const ReturnsManagement = () => {
       return;
     }
 
+    // Validação específica para divergência
+    if (missingFormData.missing_type.includes('DIVERGENCIA NF X FISICO')) {
+      if (!missingFormData.divergence_missing_brand || !missingFormData.divergence_missing_sku ||
+          !missingFormData.divergence_surplus_brand || !missingFormData.divergence_surplus_sku) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: 'Para divergência, preencha todos os campos do item que faltou e do item que sobrou.',
+        });
+        return;
+      }
+    }
+
+    // Validação para FALTA FISICA e SOBRA
+    if (missingFormData.missing_type.includes('FALTA FISICA') || missingFormData.missing_type.includes('SOBRA')) {
+      if (!missingFormData.brand || !missingFormData.sku || !missingFormData.color || 
+          !missingFormData.size || !missingFormData.cost_value || !missingFormData.quantity) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: 'Preencha todos os campos obrigatórios (Marca, SKU, Cor, Tamanho, Custo e Quantidade).',
+        });
+        return;
+      }
+    }
+
     try {
-      const costValue = parseFloat(missingFormData.cost_value) || 0;
-      const quantity = parseInt(missingFormData.quantity) || 0;
-      const totalValue = costValue * quantity;
-
-      // Criar sku_info combinado para compatibilidade com dados antigos
-      const sku_info = `${missingFormData.sku} - ${missingFormData.color} - ${missingFormData.size}`;
-
-      await addPhysicalMissing({
-        brand: missingFormData.brand.trim(),
+      // Preparar dados base
+      const missingData = {
         nf_number: missingFormData.nf_number.trim(),
-        sku: missingFormData.sku.trim(),
-        color: missingFormData.color.trim(),
-        size: missingFormData.size.trim(),
-        sku_info: sku_info, // Manter para compatibilidade
-        cost_value: costValue,
-        quantity: quantity,
-        total_value: totalValue,
         moved_to_defect: missingFormData.moved_to_defect,
         store_id: user.storeId,
-        status: missingFormData.moved_to_defect ? 'movimentado' : 'processo_aberto'
-      });
+        status: missingFormData.moved_to_defect ? 'movimentado' : 'processo_aberto',
+        missing_type: missingFormData.missing_type, // Array de tipos
+      };
+
+      // Para FALTA FISICA
+      if (missingFormData.missing_type.includes('FALTA FISICA')) {
+        const costValue = parseFloat(missingFormData.cost_value) || 0;
+        const quantity = parseInt(missingFormData.quantity) || 0;
+        const sku_info = `${missingFormData.sku} - ${missingFormData.color} - ${missingFormData.size}`;
+        
+        missingData.brand = missingFormData.brand.trim();
+        missingData.sku = missingFormData.sku.trim();
+        missingData.color = missingFormData.color.trim();
+        missingData.size = missingFormData.size.trim();
+        missingData.sku_info = sku_info;
+        missingData.cost_value = costValue;
+        missingData.quantity = quantity;
+        missingData.total_value = costValue * quantity;
+      }
+
+      // Para SOBRA
+      if (missingFormData.missing_type.includes('SOBRA')) {
+        const costValue = parseFloat(missingFormData.cost_value) || 0;
+        const quantity = parseInt(missingFormData.quantity) || 0;
+        const sku_info = `${missingFormData.sku} - ${missingFormData.color} - ${missingFormData.size}`;
+        
+        missingData.brand = missingFormData.brand.trim();
+        missingData.sku = missingFormData.sku.trim();
+        missingData.color = missingFormData.color.trim();
+        missingData.size = missingFormData.size.trim();
+        missingData.sku_info = sku_info;
+        missingData.cost_value = costValue;
+        missingData.quantity = quantity;
+        missingData.total_value = costValue * quantity;
+      }
+
+      // Para DIVERGENCIA NF X FISICO
+      if (missingFormData.missing_type.includes('DIVERGENCIA NF X FISICO')) {
+        missingData.divergence_missing_brand = missingFormData.divergence_missing_brand.trim();
+        missingData.divergence_missing_sku = missingFormData.divergence_missing_sku.trim();
+        missingData.divergence_missing_color = missingFormData.divergence_missing_color.trim();
+        missingData.divergence_missing_size = missingFormData.divergence_missing_size.trim();
+        missingData.divergence_missing_quantity = parseInt(missingFormData.divergence_missing_quantity) || 0;
+        missingData.divergence_missing_cost_value = parseFloat(missingFormData.divergence_missing_cost_value) || 0;
+
+        missingData.divergence_surplus_brand = missingFormData.divergence_surplus_brand.trim();
+        missingData.divergence_surplus_sku = missingFormData.divergence_surplus_sku.trim();
+        missingData.divergence_surplus_color = missingFormData.divergence_surplus_color.trim();
+        missingData.divergence_surplus_size = missingFormData.divergence_surplus_size.trim();
+        missingData.divergence_surplus_quantity = parseInt(missingFormData.divergence_surplus_quantity) || 0;
+        missingData.divergence_surplus_cost_value = parseFloat(missingFormData.divergence_surplus_cost_value) || 0;
+
+        // Para divergência, calcular valores totais baseados no que faltou
+        missingData.cost_value = missingData.divergence_missing_cost_value;
+        missingData.quantity = missingData.divergence_missing_quantity;
+        missingData.total_value = missingData.divergence_missing_cost_value * missingData.divergence_missing_quantity;
+      }
+
+      await addPhysicalMissing(missingData);
 
       // Resetar formulário
       setMissingFormData({
+        missing_type: [],
         brand: '',
         nf_number: '',
         sku: '',
@@ -833,10 +1010,32 @@ const ReturnsManagement = () => {
         cost_value: '',
         quantity: '',
         moved_to_defect: false,
-        store_id: user.storeId
+        store_id: user.storeId,
+        divergence_missing_brand: '',
+        divergence_missing_sku: '',
+        divergence_missing_color: '',
+        divergence_missing_size: '',
+        divergence_missing_quantity: '',
+        divergence_missing_cost_value: '',
+        divergence_surplus_brand: '',
+        divergence_surplus_sku: '',
+        divergence_surplus_color: '',
+        divergence_surplus_size: '',
+        divergence_surplus_quantity: '',
+        divergence_surplus_cost_value: ''
+      });
+
+      toast({
+        title: 'Sucesso!',
+        description: 'Falta física registrada com sucesso.',
       });
     } catch (error) {
       console.error('Erro ao registrar falta física:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error.message || 'Erro ao registrar falta física.',
+      });
     }
   };
 
@@ -1908,17 +2107,25 @@ const ReturnsManagement = () => {
                   Registrar Falta Física
                 </h3>
                 <form onSubmit={handleCreateMissing} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="missing_brand">Marca *</Label>
-                    <Input
-                      id="missing_brand"
-                      value={missingFormData.brand}
-                      onChange={(e) => setMissingFormData({ ...missingFormData, brand: e.target.value })}
-                      required
-                      className="bg-secondary"
-                      placeholder="Ex: NIKE"
+                  {/* Campo de Tipo (Multiseleção) */}
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Tipo(s) *</Label>
+                    <MultiSelectFilter
+                      options={[
+                        { value: 'FALTA FISICA', label: 'Falta Física' },
+                        { value: 'DIVERGENCIA NF X FISICO', label: 'Divergência NF x Físico' },
+                        { value: 'SOBRA', label: 'Sobra' }
+                      ]}
+                      selected={missingFormData.missing_type || []}
+                      onChange={(selected) => setMissingFormData({ ...missingFormData, missing_type: selected })}
+                      placeholder="Selecione o(s) tipo(s)..."
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Selecione um ou mais tipos: Falta Física, Divergência NF x Físico, ou Sobra
+                    </p>
                   </div>
+
+                  {/* Campos comuns para todos os tipos */}
                   <div className="space-y-2">
                     <Label htmlFor="missing_nf_number">Número da NF *</Label>
                     <Input
@@ -1930,67 +2137,317 @@ const ReturnsManagement = () => {
                       placeholder="Ex: 123456"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="missing_sku">SKU *</Label>
-                    <Input
-                      id="missing_sku"
-                      value={missingFormData.sku}
-                      onChange={(e) => setMissingFormData({ ...missingFormData, sku: e.target.value })}
-                      required
-                      className="bg-secondary"
-                      placeholder="Ex: SKU123"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="missing_color">Cor *</Label>
-                    <Input
-                      id="missing_color"
-                      value={missingFormData.color}
-                      onChange={(e) => setMissingFormData({ ...missingFormData, color: e.target.value })}
-                      required
-                      className="bg-secondary"
-                      placeholder="Ex: PRETO"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="missing_size">Tamanho *</Label>
-                    <Input
-                      id="missing_size"
-                      value={missingFormData.size}
-                      onChange={(e) => setMissingFormData({ ...missingFormData, size: e.target.value })}
-                      required
-                      className="bg-secondary"
-                      placeholder="Ex: 42"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="missing_cost_value">Valor de Custo *</Label>
-                    <Input
-                      id="missing_cost_value"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={missingFormData.cost_value}
-                      onChange={(e) => setMissingFormData({ ...missingFormData, cost_value: e.target.value })}
-                      required
-                      className="bg-secondary"
-                      placeholder="Ex: 200.00"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="missing_quantity">Quantidade *</Label>
-                    <Input
-                      id="missing_quantity"
-                      type="number"
-                      min="1"
-                      value={missingFormData.quantity}
-                      onChange={(e) => setMissingFormData({ ...missingFormData, quantity: e.target.value })}
-                      required
-                      className="bg-secondary"
-                      placeholder="Ex: 3"
-                    />
-                  </div>
-                  {missingFormData.cost_value && missingFormData.quantity && (
+                  
+                  {/* Campos condicionais baseados no tipo */}
+                  {missingFormData.missing_type?.includes('FALTA FISICA') && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="missing_brand">Marca do Item que Faltou *</Label>
+                        <Input
+                          id="missing_brand"
+                          value={missingFormData.brand}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, brand: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: NIKE"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="missing_sku">SKU do Item que Faltou *</Label>
+                        <Input
+                          id="missing_sku"
+                          value={missingFormData.sku}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, sku: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: SKU123"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="missing_color">Cor do Item que Faltou *</Label>
+                        <Input
+                          id="missing_color"
+                          value={missingFormData.color}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, color: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: PRETO"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="missing_size">Tamanho do Item que Faltou *</Label>
+                        <Input
+                          id="missing_size"
+                          value={missingFormData.size}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, size: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 42"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="missing_quantity">Quantidade que Faltou *</Label>
+                        <Input
+                          id="missing_quantity"
+                          type="number"
+                          min="1"
+                          value={missingFormData.quantity}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, quantity: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 3"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="missing_cost_value">Valor de Custo do Item que Faltou *</Label>
+                        <Input
+                          id="missing_cost_value"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={missingFormData.cost_value}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, cost_value: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 200.00"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {missingFormData.missing_type?.includes('SOBRA') && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="surplus_brand">Marca do Item que Sobrou *</Label>
+                        <Input
+                          id="surplus_brand"
+                          value={missingFormData.brand}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, brand: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: NIKE"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="surplus_sku">SKU do Item que Sobrou *</Label>
+                        <Input
+                          id="surplus_sku"
+                          value={missingFormData.sku}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, sku: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: SKU123"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="surplus_color">Cor do Item que Sobrou *</Label>
+                        <Input
+                          id="surplus_color"
+                          value={missingFormData.color}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, color: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: PRETO"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="surplus_size">Tamanho do Item que Sobrou *</Label>
+                        <Input
+                          id="surplus_size"
+                          value={missingFormData.size}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, size: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 42"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="surplus_quantity">Quantidade que Sobrou *</Label>
+                        <Input
+                          id="surplus_quantity"
+                          type="number"
+                          min="1"
+                          value={missingFormData.quantity}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, quantity: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 3"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="surplus_cost_value">Valor de Custo do Item que Sobrou *</Label>
+                        <Input
+                          id="surplus_cost_value"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={missingFormData.cost_value}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, cost_value: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 200.00"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {missingFormData.missing_type?.includes('DIVERGENCIA NF X FISICO') && (
+                    <>
+                      <div className="md:col-span-2 border-t pt-4 mt-2">
+                        <h4 className="font-semibold text-foreground mb-4">O que Faltou *</h4>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_missing_brand">Marca do Item que Faltou *</Label>
+                        <Input
+                          id="div_missing_brand"
+                          value={missingFormData.divergence_missing_brand}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_brand: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: NIKE"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_missing_sku">SKU do Item que Faltou *</Label>
+                        <Input
+                          id="div_missing_sku"
+                          value={missingFormData.divergence_missing_sku}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_sku: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: SKU123"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_missing_color">Cor do Item que Faltou *</Label>
+                        <Input
+                          id="div_missing_color"
+                          value={missingFormData.divergence_missing_color}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_color: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: PRETO"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_missing_size">Tamanho do Item que Faltou *</Label>
+                        <Input
+                          id="div_missing_size"
+                          value={missingFormData.divergence_missing_size}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_size: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 42"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_missing_quantity">Quantidade que Faltou *</Label>
+                        <Input
+                          id="div_missing_quantity"
+                          type="number"
+                          min="1"
+                          value={missingFormData.divergence_missing_quantity}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_quantity: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 3"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_missing_cost_value">Valor de Custo do Item que Faltou *</Label>
+                        <Input
+                          id="div_missing_cost_value"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={missingFormData.divergence_missing_cost_value}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_cost_value: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 200.00"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2 border-t pt-4 mt-2">
+                        <h4 className="font-semibold text-foreground mb-4">O que Sobrou no Lugar *</h4>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_surplus_brand">Marca do Item que Sobrou *</Label>
+                        <Input
+                          id="div_surplus_brand"
+                          value={missingFormData.divergence_surplus_brand}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_brand: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: ADIDAS"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_surplus_sku">SKU do Item que Sobrou *</Label>
+                        <Input
+                          id="div_surplus_sku"
+                          value={missingFormData.divergence_surplus_sku}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_sku: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: SKU456"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_surplus_color">Cor do Item que Sobrou *</Label>
+                        <Input
+                          id="div_surplus_color"
+                          value={missingFormData.divergence_surplus_color}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_color: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: BRANCO"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_surplus_size">Tamanho do Item que Sobrou *</Label>
+                        <Input
+                          id="div_surplus_size"
+                          value={missingFormData.divergence_surplus_size}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_size: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 40"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_surplus_quantity">Quantidade que Sobrou *</Label>
+                        <Input
+                          id="div_surplus_quantity"
+                          type="number"
+                          min="1"
+                          value={missingFormData.divergence_surplus_quantity}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_quantity: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 2"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="div_surplus_cost_value">Valor de Custo do Item que Sobrou *</Label>
+                        <Input
+                          id="div_surplus_cost_value"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={missingFormData.divergence_surplus_cost_value}
+                          onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_cost_value: e.target.value })}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 250.00"
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Valor total calculado (apenas para FALTA FISICA e SOBRA) */}
+                  {(missingFormData.missing_type?.includes('FALTA FISICA') || missingFormData.missing_type?.includes('SOBRA')) && 
+                   missingFormData.cost_value && missingFormData.quantity && (
                     <div className="space-y-2 md:col-span-2">
                       <Label>Valor Total Calculado</Label>
                       <div className="bg-secondary p-3 rounded-lg border border-border">
@@ -2000,6 +2457,20 @@ const ReturnsManagement = () => {
                       </div>
                     </div>
                   )}
+
+                  {/* Valor total calculado para divergência */}
+                  {missingFormData.missing_type?.includes('DIVERGENCIA NF X FISICO') && 
+                   missingFormData.divergence_missing_cost_value && missingFormData.divergence_missing_quantity && (
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Valor Total do Item que Faltou</Label>
+                      <div className="bg-secondary p-3 rounded-lg border border-border">
+                        <span className="font-semibold text-foreground text-lg">
+                          R$ {(parseFloat(missingFormData.divergence_missing_cost_value || 0) * parseInt(missingFormData.divergence_missing_quantity || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-2 md:col-span-2 flex items-center gap-2">
                     <Checkbox
                       id="missing_moved_to_defect"

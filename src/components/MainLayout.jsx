@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import Sidebar from '@/components/Sidebar';
 import Header from '@/components/Header';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
@@ -7,6 +8,13 @@ import { Loader2 } from 'lucide-react';
 
 const MainLayout = () => {
   const { loading: authLoading } = useAuth();
+  
+  // Estado para detectar se é desktop de forma reativa
+  const [isDesktop, setIsDesktop] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth >= 1024;
+  });
+
   // Estado da sidebar: null = fechada em mobile por padrão, true/false = preferência do usuário
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     // Carregar preferência do localStorage
@@ -26,6 +34,29 @@ const MainLayout = () => {
     return false; // Começar maximizada
   });
 
+  // Atualizar isDesktop quando redimensionar
+  useEffect(() => {
+    const handleResize = () => {
+      const desktop = window.innerWidth >= 1024;
+      setIsDesktop(desktop);
+      
+      // Em desktop, manter aberta por padrão se não houver preferência salva
+      if (desktop && localStorage.getItem('sidebarOpen') === null) {
+        setIsSidebarOpen(true);
+      }
+      // Em mobile, fechar automaticamente se estiver aberta
+      if (!desktop && isSidebarOpen) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    // Verificar tamanho inicial
+    handleResize();
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isSidebarOpen]);
+
   // Salvar preferência no localStorage
   useEffect(() => {
     localStorage.setItem('sidebarOpen', String(isSidebarOpen));
@@ -34,24 +65,6 @@ const MainLayout = () => {
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
-
-  // Ajustar estado da sidebar quando redimensionar
-  useEffect(() => {
-    const handleResize = () => {
-      const isDesktop = window.innerWidth >= 1024;
-      // Em desktop, manter aberta por padrão se não houver preferência salva
-      if (isDesktop && localStorage.getItem('sidebarOpen') === null) {
-        setIsSidebarOpen(true);
-      }
-      // Em mobile, fechar automaticamente se estiver aberta
-      if (!isDesktop && isSidebarOpen) {
-        setIsSidebarOpen(false);
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [isSidebarOpen]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -62,8 +75,8 @@ const MainLayout = () => {
   };
 
   const closeSidebar = () => {
-    // Em mobile, fechar ao clicar no overlay ou ao navegar
-    if (window.innerWidth < 1024) {
+    // Em mobile, sempre fechar
+    if (!isDesktop) {
       setIsSidebarOpen(false);
     }
   };
@@ -76,16 +89,18 @@ const MainLayout = () => {
     );
   }
 
-  // Determinar se estamos em desktop
-  const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
-
   return (
-    <div className="flex h-screen bg-background text-foreground relative">
+    <div className="flex h-screen bg-background text-foreground relative overflow-hidden">
       {/* Overlay para mobile quando sidebar está aberta */}
       {isSidebarOpen && !isDesktop && (
-        <div
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
           className="fixed inset-0 bg-black/50 z-40"
           onClick={closeSidebar}
+          aria-hidden="true"
         />
       )}
       
@@ -95,9 +110,10 @@ const MainLayout = () => {
         onClose={closeSidebar}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={toggleSidebarCollapse}
+        isDesktop={isDesktop}
       />
       
-      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${isSidebarOpen ? (isDesktop && isSidebarCollapsed ? 'lg:ml-[80px]' : 'lg:ml-[256px]') : 'lg:ml-0'}`}>
+      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${isSidebarOpen && isDesktop ? (isSidebarCollapsed ? 'lg:ml-[80px]' : 'lg:ml-[256px]') : 'lg:ml-0'}`}>
         <Header onToggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} />
         <main className="flex-1 overflow-y-auto p-6 lg:p-8">
           <Outlet />

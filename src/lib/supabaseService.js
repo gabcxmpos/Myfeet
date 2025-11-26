@@ -755,40 +755,25 @@ export const resetUserPassword = async (email) => {
     throw new Error('Email é obrigatório');
   }
   
-  // Tentar usar a função RPC para resetar a senha para a senha padrão
+  // IMPORTANTE: Para resetar senha sem email, é necessário usar a API Admin do Supabase
+  // que requer service_role key. Como não temos acesso direto, vamos usar o método
+  // de reset via email do Supabase (que é o padrão e mais seguro)
+  
   try {
-    const { data, error } = await supabase.rpc('reset_user_password_to_default', {
-      p_email: sanitizedEmail
+    // Usar o método padrão do Supabase para reset de senha via email
+    // O usuário receberá um email com link para resetar a senha
+    const { data, error } = await supabase.auth.resetPasswordForEmail(sanitizedEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
     });
     
     if (error) {
-      // Se a função RPC não existir, tentar alternativa
-      if (error.code === 'PGRST202' || error.message?.includes('not found')) {
-        console.warn('Função RPC não encontrada, tentando método alternativo...');
-        
-        // Método alternativo: usar a API Admin do Supabase
-        // Como não temos acesso direto à API Admin, vamos usar uma abordagem diferente
-        // Buscar o usuário pelo email e usar updateUser se o usuário estiver logado
-        // Mas isso não funciona para outros usuários
-        
-        // Por enquanto, vamos lançar um erro com instruções
-        throw new Error(`Não foi possível resetar a senha. A função RPC não está disponível. Execute o script CRIAR_FUNCAO_RESET_SENHA.sql no Supabase SQL Editor para criar a função necessária.`);
-      }
-      
       throw error;
     }
     
-    // Verificar se a função retornou sucesso
-    if (data && data.success) {
-      console.log('✅ Senha resetada com sucesso:', data.message);
-      return true;
-    } else if (data && !data.success) {
-      throw new Error(data.error || 'Erro ao resetar senha');
-    }
-    
+    console.log('✅ Email de reset de senha enviado com sucesso');
     return true;
   } catch (error) {
-    console.error('Erro ao resetar senha:', error);
+    console.error('Erro ao enviar email de reset de senha:', error);
     throw error;
   }
 };
@@ -929,19 +914,26 @@ export const fetchEvaluations = async () => {
       }
     }
     
-    // Buscar dados dos usuários
-    if (userIds.length > 0) {
+    // Buscar IDs dos usuários que aprovaram (approved_by)
+    const approvedByUserIds = [...new Set(data.map(evaluation => evaluation.approved_by).filter(id => id))];
+    const allUserIds = [...new Set([...userIds, ...approvedByUserIds])];
+    
+    // Buscar dados dos usuários (criadores e aprovadores)
+    if (allUserIds.length > 0) {
       try {
         const { data: usersData } = await supabase
           .from('app_users')
-          .select('id, username')
-          .in('id', userIds);
+          .select('id, username, name')
+          .in('id', allUserIds);
         
         if (usersData) {
           const usersMap = new Map(usersData.map(user => [user.id, user]));
           data.forEach(evaluation => {
             if (evaluation.user_id && usersMap.has(evaluation.user_id)) {
               evaluation.app_user = usersMap.get(evaluation.user_id);
+            }
+            if (evaluation.approved_by && usersMap.has(evaluation.approved_by)) {
+              evaluation.approved_by_user = usersMap.get(evaluation.approved_by);
             }
           });
         }
@@ -956,7 +948,9 @@ export const fetchEvaluations = async () => {
       storeId: evaluation.store_id,
       formId: evaluation.form_id,
       userId: evaluation.user_id,
-      date: evaluation.created_at || evaluation.date
+      approvedBy: evaluation.approved_by,
+      date: evaluation.created_at || evaluation.date,
+      approvedByUser: evaluation.approved_by_user || null
     }));
   }
   
@@ -1031,15 +1025,30 @@ export const createEvaluation = async (evaluationData) => {
 };
 
 export const updateEvaluation = async (id, updates) => {
+  // Converter camelCase para snake_case se necessário
+  const updatesToSend = { ...updates };
+  if (updatesToSend.approvedBy) {
+    updatesToSend.approved_by = updatesToSend.approvedBy;
+    delete updatesToSend.approvedBy;
+  }
+  
   const { data, error } = await supabase
     .from('evaluations')
-    .update(updates)
+    .update(updatesToSend)
     .eq('id', id)
     .select()
     .single();
   
   if (error) throw error;
-  return data;
+  
+  // Converter snake_case para camelCase no retorno
+  return {
+    ...data,
+    storeId: data.store_id,
+    formId: data.form_id,
+    userId: data.user_id || null,
+    approvedBy: data.approved_by || null
+  };
 };
 
 export const deleteEvaluation = async (id) => {
@@ -2606,7 +2615,23 @@ export const createPhysicalMissing = async (missingData) => {
     total_value: missingData.total_value !== undefined && missingData.total_value !== null ? missingData.total_value : (missingData.totalValue !== undefined && missingData.totalValue !== null ? missingData.totalValue : null),
     moved_to_defect: missingData.moved_to_defect !== undefined ? missingData.moved_to_defect : (missingData.movedToDefect !== undefined ? missingData.movedToDefect : false),
     status: missingData.status || 'processo_aberto',
-    created_by: missingData.created_by || missingData.createdBy || null
+    created_by: missingData.created_by || missingData.createdBy || null,
+    // Novo campo de tipo (array JSON ou texto)
+    missing_type: missingData.missing_type ? (Array.isArray(missingData.missing_type) ? missingData.missing_type : [missingData.missing_type]) : null,
+    // Campos de divergência (o que faltou)
+    divergence_missing_brand: missingData.divergence_missing_brand || null,
+    divergence_missing_sku: missingData.divergence_missing_sku || null,
+    divergence_missing_color: missingData.divergence_missing_color || null,
+    divergence_missing_size: missingData.divergence_missing_size || null,
+    divergence_missing_quantity: missingData.divergence_missing_quantity !== undefined && missingData.divergence_missing_quantity !== null ? missingData.divergence_missing_quantity : null,
+    divergence_missing_cost_value: missingData.divergence_missing_cost_value !== undefined && missingData.divergence_missing_cost_value !== null ? missingData.divergence_missing_cost_value : null,
+    // Campos de divergência (o que sobrou no lugar)
+    divergence_surplus_brand: missingData.divergence_surplus_brand || null,
+    divergence_surplus_sku: missingData.divergence_surplus_sku || null,
+    divergence_surplus_color: missingData.divergence_surplus_color || null,
+    divergence_surplus_size: missingData.divergence_surplus_size || null,
+    divergence_surplus_quantity: missingData.divergence_surplus_quantity !== undefined && missingData.divergence_surplus_quantity !== null ? missingData.divergence_surplus_quantity : null,
+    divergence_surplus_cost_value: missingData.divergence_surplus_cost_value !== undefined && missingData.divergence_surplus_cost_value !== null ? missingData.divergence_surplus_cost_value : null
   };
   
   // Campos antigos para compatibilidade (só incluir se fornecidos)
@@ -2682,6 +2707,89 @@ export const updatePhysicalMissing = async (id, updates) => {
 export const deletePhysicalMissing = async (id) => {
   const { error } = await supabase
     .from('physical_missing')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+  return true;
+};
+
+// ============ RETURNS PLANNER ============
+export const fetchReturnsPlanner = async () => {
+  console.log('🔍 [fetchReturnsPlanner] Iniciando busca de planner de devoluções...');
+  const { data, error } = await supabase
+    .from('returns_planner')
+    .select('*')
+    .order('opening_date', { ascending: false });
+  
+  if (error) {
+    console.error('❌ [fetchReturnsPlanner] Erro ao buscar planner:', error);
+    throw error;
+  }
+  
+  console.log(`✅ [fetchReturnsPlanner] Registros encontrados: ${data?.length || 0}`);
+  return data || [];
+};
+
+export const createReturnsPlanner = async (plannerData) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  const dataToInsert = {
+    store_id: plannerData.store_id || null,
+    supervisor: plannerData.supervisor || null,
+    return_type: plannerData.return_type,
+    opening_date: plannerData.opening_date,
+    brand: plannerData.brand || null,
+    case_number: plannerData.case_number || null,
+    invoice_number: plannerData.invoice_number || null,
+    invoice_issue_date: plannerData.invoice_issue_date || null,
+    return_value: plannerData.return_value ? parseFloat(plannerData.return_value) : null,
+    items_quantity: plannerData.items_quantity ? parseInt(plannerData.items_quantity) : null,
+    status: plannerData.status || 'Aguardando aprovação da marca',
+    responsible_user_id: plannerData.responsible_user_id || null,
+    created_by: user?.id || null,
+  };
+
+  const { data, error } = await supabase
+    .from('returns_planner')
+    .insert([dataToInsert])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateReturnsPlanner = async (id, updates) => {
+  const dataToUpdate = {};
+  
+  if (updates.store_id !== undefined) dataToUpdate.store_id = updates.store_id || null;
+  if (updates.supervisor !== undefined) dataToUpdate.supervisor = updates.supervisor || null;
+  if (updates.return_type !== undefined) dataToUpdate.return_type = updates.return_type;
+  if (updates.opening_date !== undefined) dataToUpdate.opening_date = updates.opening_date;
+  if (updates.brand !== undefined) dataToUpdate.brand = updates.brand || null;
+  if (updates.case_number !== undefined) dataToUpdate.case_number = updates.case_number || null;
+  if (updates.invoice_number !== undefined) dataToUpdate.invoice_number = updates.invoice_number || null;
+  if (updates.invoice_issue_date !== undefined) dataToUpdate.invoice_issue_date = updates.invoice_issue_date || null;
+  if (updates.return_value !== undefined) dataToUpdate.return_value = updates.return_value ? parseFloat(updates.return_value) : null;
+  if (updates.items_quantity !== undefined) dataToUpdate.items_quantity = updates.items_quantity ? parseInt(updates.items_quantity) : null;
+  if (updates.status !== undefined) dataToUpdate.status = updates.status;
+  if (updates.responsible_user_id !== undefined) dataToUpdate.responsible_user_id = updates.responsible_user_id || null;
+
+  const { data, error } = await supabase
+    .from('returns_planner')
+    .update(dataToUpdate)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteReturnsPlanner = async (id) => {
+  const { error } = await supabase
+    .from('returns_planner')
     .delete()
     .eq('id', id);
   
