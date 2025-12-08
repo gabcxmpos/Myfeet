@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Bell, Settings, UserPlus, Eye, Menu } from 'lucide-react';
+import { LogOut, User, Bell, Settings, UserPlus, Eye, Menu, AlertCircle } from 'lucide-react';
 import { useNavigate, NavLink } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -11,11 +11,37 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from '@/components/ui/badge';
+import AlertsModal from '@/components/AlertsModal';
+import { fetchUnreadAlerts } from '@/lib/supabaseService';
+import { cn } from '@/lib/utils';
 
-const Header = ({ onToggleSidebar, isSidebarOpen }) => {
+const Header = ({ onToggleSidebar, isSidebarOpen, isDesktop }) => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
+  const isStore = user?.role === 'loja' || user?.role === 'loja_franquia' || user?.role === 'admin_loja';
+  const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
+  const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (isStore && user?.storeId) {
+      loadUnreadAlerts();
+      // Atualizar a cada 30 segundos
+      const interval = setInterval(loadUnreadAlerts, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [isStore, user?.storeId]);
+
+  const loadUnreadAlerts = async () => {
+    if (!user?.storeId) return;
+    try {
+      const alerts = await fetchUnreadAlerts(user.storeId);
+      setUnreadAlertsCount(alerts?.length || 0);
+    } catch (error) {
+      console.error('Erro ao carregar alertas não lidos:', error);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -29,31 +55,67 @@ const Header = ({ onToggleSidebar, isSidebarOpen }) => {
     }
   };
 
-  const handleToggleSidebar = () => {
+  const handleToggleSidebar = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔄 [Header] handleToggleSidebar chamado. isDesktop:', isDesktop, 'isSidebarOpen:', isSidebarOpen);
+    }
     if (onToggleSidebar) {
       onToggleSidebar();
+    } else {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('⚠️ [Header] onToggleSidebar não está definido!');
+      }
     }
   };
 
   return (
-    <header className="bg-card border-b border-border px-6 py-3 flex items-center justify-between">
+    <header className="bg-card border-b border-border px-4 sm:px-6 py-3 flex items-center justify-between relative z-[55] w-full" style={{ zIndex: 55 }}>
       <div className="flex items-center gap-3">
-        {/* Botão de toggle da sidebar - sempre visível */}
+        {/* Botão de toggle da sidebar - sempre visível e com z-index alto, especialmente em mobile */}
         <Button
           variant="ghost"
           size="icon"
           onClick={handleToggleSidebar}
+          onTouchStart={handleToggleSidebar}
           aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
-          className="cursor-pointer"
+          className="cursor-pointer z-50 relative flex items-center justify-center"
+          style={{ zIndex: 50, minWidth: '2.5rem', minHeight: '2.5rem' }}
         >
           <Menu className="w-5 h-5" />
         </Button>
       </div>
       
       <div className="flex items-center gap-4 ml-auto">
-         <Button variant="ghost" size="icon">
-          <Bell className="w-5 h-5 text-muted-foreground" />
-        </Button>
+        {isStore && (
+          <Button 
+            variant="ghost" 
+            size="icon"
+            onClick={() => setIsAlertsModalOpen(true)}
+            className="relative"
+            title="Alertas e Comunicados"
+          >
+            <AlertCircle className={cn(
+              "w-5 h-5",
+              unreadAlertsCount > 0 ? "text-primary" : "text-muted-foreground"
+            )} />
+            {unreadAlertsCount > 0 && (
+              <Badge 
+                variant="destructive" 
+                className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+              >
+                {unreadAlertsCount > 9 ? '9+' : unreadAlertsCount}
+              </Badge>
+            )}
+          </Button>
+        )}
+        
+        {!isStore && (
+          <Button variant="ghost" size="icon">
+            <Bell className="w-5 h-5 text-muted-foreground" />
+          </Button>
+        )}
 
         {isAdmin && (
           <div className="flex items-center gap-1">
@@ -97,6 +159,20 @@ const Header = ({ onToggleSidebar, isSidebarOpen }) => {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {isStore && user?.storeId && (
+        <AlertsModal
+          open={isAlertsModalOpen}
+          onOpenChange={(open) => {
+            setIsAlertsModalOpen(open);
+            if (!open) {
+              // Recarregar contagem quando fechar o modal
+              loadUnreadAlerts();
+            }
+          }}
+          storeId={user.storeId}
+        />
+      )}
     </header>
   );
 };

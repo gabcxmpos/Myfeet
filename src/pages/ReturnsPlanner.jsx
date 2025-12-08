@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useData } from '@/contexts/DataContext';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash2, Calendar, Store, FileText, User, Search, BarChart3, Clock, TrendingUp, AlertCircle, CheckCircle, DollarSign, Package, CheckSquare, Save, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, Store, FileText, User, Search, BarChart3, Clock, TrendingUp, AlertCircle, CheckCircle, DollarSign, Package, CheckSquare, Save, X, Settings } from 'lucide-react';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +17,8 @@ import { format, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { ResponsiveContainer, BarChart, XAxis, YAxis, Bar, Cell, Tooltip, PieChart, Pie, Legend, LineChart, Line } from 'recharts';
+import { AVAILABLE_BRANDS as DEFAULT_BRANDS } from '@/lib/brands';
+import { fetchAppSettings } from '@/lib/supabaseService';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,16 +34,19 @@ const ReturnsPlanner = () => {
   const { stores, users, returnsPlanner, addReturnsPlanner, updateReturnsPlanner, deleteReturnsPlanner, fetchData } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [editingItem, setEditingItem] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [storeFilter, setStoreFilter] = useState('all');
+  const [availableBrands, setAvailableBrands] = useState(DEFAULT_BRANDS);
   
   // Filtros para dashboard
   const [dashboardFilters, setDashboardFilters] = useState({
     stores: [],
     supervisors: [],
     status: [],
+    brands: [],
   });
   const [dateRange, setDateRange] = useState({
     startDate: format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'), // 30 dias atrás
@@ -49,6 +55,23 @@ const ReturnsPlanner = () => {
 
   // Refresh automático otimizado para mobile
   useOptimizedRefresh(fetchData);
+
+  // Carregar marcas do banco de dados
+  useEffect(() => {
+    const loadBrands = async () => {
+      try {
+        const savedBrands = await fetchAppSettings('available_brands');
+        if (savedBrands && Array.isArray(savedBrands) && savedBrands.length > 0) {
+          setAvailableBrands(savedBrands);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar marcas:', error);
+        // Usar marcas padrão em caso de erro
+        setAvailableBrands(DEFAULT_BRANDS);
+      }
+    };
+    loadBrands();
+  }, []);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -87,7 +110,8 @@ const ReturnsPlanner = () => {
         item.case_number?.toLowerCase().includes(term) ||
         item.invoice_number?.toLowerCase().includes(term) ||
         stores.find(s => s.id === item.store_id)?.name?.toLowerCase().includes(term) ||
-        item.supervisor?.toLowerCase().includes(term)
+        item.supervisor?.toLowerCase().includes(term) ||
+        item.brand?.toLowerCase().includes(term)
       );
     }
 
@@ -101,6 +125,11 @@ const ReturnsPlanner = () => {
       filtered = filtered.filter(item => item.store_id === storeFilter);
     }
 
+    // Filtro por marca (dashboardFilters)
+    if (dashboardFilters.brands && dashboardFilters.brands.length > 0) {
+      filtered = filtered.filter(item => item.brand && dashboardFilters.brands.includes(item.brand));
+    }
+
     return filtered.sort((a, b) => {
       try {
         if (!a.opening_date || !b.opening_date) return 0;
@@ -112,7 +141,7 @@ const ReturnsPlanner = () => {
         return 0;
       }
     });
-  }, [returnsPlanner, searchTerm, statusFilter, storeFilter, stores]);
+  }, [returnsPlanner, searchTerm, statusFilter, storeFilter, stores, dashboardFilters]);
 
   // Reset form
   const resetForm = () => {
@@ -186,6 +215,58 @@ const ReturnsPlanner = () => {
     if (!formData.status) {
       toast({ title: 'Erro', description: 'Selecione o status.', variant: 'destructive' });
       return;
+    }
+    // Validar marca obrigatória
+    if (!formData.brand || formData.brand === 'none' || formData.brand.trim() === '') {
+      toast({ title: 'Erro', description: 'Selecione uma marca. O campo marca é obrigatório.', variant: 'destructive' });
+      return;
+    }
+
+    // Verificar duplicidade apenas ao criar novo registro
+    if (!editingItem || editingItem === 'new' || !editingItem.id) {
+      const duplicateCheck = returnsPlanner.find(item => {
+        // Comparar loja (obrigatório)
+        if (item.store_id !== formData.store_id) return false;
+        
+        // Comparar marca (obrigatório)
+        const itemBrand = (item.brand || '').toString().trim();
+        const formBrand = (formData.brand || '').toString().trim();
+        if (itemBrand !== formBrand) return false;
+        
+        // Comparar caso (se ambos tiverem valor, devem ser iguais)
+        const itemCase = (item.case_number || '').toString().trim();
+        const formCase = (formData.case_number || '').toString().trim();
+        const hasItemCase = itemCase && itemCase !== '';
+        const hasFormCase = formCase && formCase !== '';
+        
+        // Se ambos têm caso, devem ser iguais
+        if (hasItemCase && hasFormCase && itemCase !== formCase) return false;
+        // Se apenas um tem caso, são diferentes (não é duplicado)
+        if (hasItemCase !== hasFormCase) return false;
+        
+        // Comparar NF (se ambos tiverem valor, devem ser iguais)
+        const itemInvoice = (item.invoice_number || '').toString().trim();
+        const formInvoice = (formData.invoice_number || '').toString().trim();
+        const hasItemInvoice = itemInvoice && itemInvoice !== '';
+        const hasFormInvoice = formInvoice && formInvoice !== '';
+        
+        // Se ambos têm NF, devem ser iguais
+        if (hasItemInvoice && hasFormInvoice && itemInvoice !== formInvoice) return false;
+        // Se apenas um tem NF, são diferentes (não é duplicado)
+        if (hasItemInvoice !== hasFormInvoice) return false;
+        
+        // Se chegou aqui, é duplicado (mesma loja + marca + mesmo estado de caso + mesmo estado de NF)
+        return true;
+      });
+
+      if (duplicateCheck) {
+        toast({ 
+          title: 'Erro', 
+          description: 'Já existe um registro com esta combinação de Loja + Caso + Marca + Nota Fiscal. Verifique os dados e tente novamente.', 
+          variant: 'destructive' 
+        });
+        return;
+      }
     }
 
     try {
@@ -321,6 +402,11 @@ const ReturnsPlanner = () => {
     // Filtro por status
     if (dashboardFilters.status.length > 0) {
       data = data.filter(item => dashboardFilters.status.includes(item.status));
+    }
+    
+    // Filtro por marca
+    if (dashboardFilters.brands && dashboardFilters.brands.length > 0) {
+      data = data.filter(item => item.brand && dashboardFilters.brands.includes(item.brand));
     }
     
     return data;
@@ -583,6 +669,16 @@ const ReturnsPlanner = () => {
             <h1 className="text-3xl font-bold text-foreground">Planner de Devoluções</h1>
             <p className="text-muted-foreground mt-1">Registro e acompanhamento de devoluções</p>
           </div>
+          {user?.role === 'devoluções' || user?.role === 'admin' ? (
+            <Button
+              variant="outline"
+              onClick={() => navigate('/brands-settings')}
+              className="gap-2"
+            >
+              <Settings className="w-4 h-4" />
+              Configurar Marcas
+            </Button>
+          ) : null}
         </div>
 
         {/* Tabs */}
@@ -658,6 +754,12 @@ const ReturnsPlanner = () => {
                     selected={dashboardFilters.status}
                     onChange={(val) => setDashboardFilters(prev => ({ ...prev, status: val }))}
                     placeholder="Filtrar por Status..."
+                  />
+                  <MultiSelectFilter
+                    options={availableBrands.map(brand => ({ value: brand, label: brand }))}
+                    selected={dashboardFilters.brands}
+                    onChange={(val) => setDashboardFilters(prev => ({ ...prev, brands: val }))}
+                    placeholder="Filtrar por Marca..."
                   />
                 </div>
               </CardContent>
@@ -1090,12 +1192,20 @@ const ReturnsPlanner = () => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Marca</Label>
-                      <Input
-                        value={formData.brand || ''}
-                        onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                        placeholder="Digite a marca (ex: Nike, Adidas, etc.)"
-                      />
+                      <Label>Marca *</Label>
+                      <Select 
+                        value={formData.brand || ''} 
+                        onValueChange={(value) => setFormData({ ...formData, brand: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione a marca" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableBrands.map(brand => (
+                            <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Data de Abertura *</Label>
@@ -1278,12 +1388,20 @@ const ReturnsPlanner = () => {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Marca</Label>
-                        <Input
-                          value={formData.brand || ''}
-                          onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                          placeholder="Digite a marca (ex: Nike, Adidas, etc.)"
-                        />
+                        <Label>Marca *</Label>
+                        <Select 
+                          value={formData.brand || ''} 
+                          onValueChange={(value) => setFormData({ ...formData, brand: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione a marca" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableBrands.map(brand => (
+                              <SelectItem key={brand} value={brand}>{brand}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
                         <Label>Data de Abertura *</Label>

@@ -1,13 +1,30 @@
-import { supabase } from '@/lib/customSupabaseClient';
-
-// ============ STORES ============
+﻿import { supabase } from '@/lib/customSupabaseClient';// ============ STORES ============
 export const fetchStores = async () => {
+  console.log('🔍 [fetchStores] Buscando lojas do servidor...');
   const { data, error } = await supabase
     .from('stores')
     .select('*')
     .order('name');
   
-  if (error) throw error;
+  if (error) {
+    console.error('❌ [fetchStores] Erro ao buscar lojas:', error);
+    throw error;
+  }
+  
+  // Log para verificar se os dados JSONB estão sendo retornados
+  if (data && data.length > 0) {
+    const sampleStore = data[0];
+    console.log('📊 [fetchStores] Exemplo de loja retornada:', {
+      id: sampleStore.id,
+      name: sampleStore.name,
+      hasStoreResults: !!sampleStore.store_results,
+      hasCollaboratorResults: !!sampleStore.collaborator_results,
+      hasGoals: !!sampleStore.goals,
+      hasWeights: !!sampleStore.weights,
+      storeResultsKeys: sampleStore.store_results ? Object.keys(sampleStore.store_results) : [],
+      collaboratorResultsKeys: sampleStore.collaborator_results ? Object.keys(sampleStore.collaborator_results) : []
+    });
+  }
   
   // Se houver dados, ordenar numericamente pelo código (ex: af011, af013)
   // Isso garante que códigos como "af11" venham depois de "af011"
@@ -40,48 +57,25 @@ export const fetchStores = async () => {
     });
   }
   
+  console.log(`✅ [fetchStores] ${data?.length || 0} lojas encontradas`);
   return data || [];
 };
-
 export const createStore = async (storeData) => {
-  const { data, error } = await supabase
-    .from('stores')
-    .insert([storeData])
-    .select()
-    .single();
-  
+  const { data, error } = await supabase    .from('stores')    .insert([storeData])    .select()    .single();  
   if (error) throw error;
   return data;
-};
-
-// Salvar histórico de metas antes de atualizar
-export const saveGoalsHistory = async (storeId, goals, weights, changedBy = null) => {
-  try {
-    const historyData = {
-      store_id: storeId,
-      goals: goals || {},
-      weights: weights || {}
-    };
-    
-    // Se tiver informação do usuário que está fazendo a mudança, adicionar
-    if (changedBy) {
-      historyData.changed_by = changedBy;
-    }
-    
-    const { error } = await supabase
-      .from('goals_history')
-      .insert([historyData]);
-    
-    // Não lançar erro se a tabela não existir ainda (para não quebrar a aplicação)
-    if (error && error.code !== '42P01') { // 42P01 = table does not exist
-      console.warn('⚠️ Erro ao salvar histórico de metas (continuando mesmo assim):', error);
-    }
-  } catch (error) {
-    // Não lançar erro - apenas logar
-    console.warn('⚠️ Erro ao salvar histórico de metas (continuando mesmo assim):', error);
+};// Salvar histórico de metas antes de atualizar
+export const saveGoalsHistory = async (storeId, goals, weights, changedBy = null) => {  try {  
+  const historyData = {      store_id: storeId,      goals: goals || {},      weights: weights || {}  
+};        // Se tiver informação do usuário que está fazendo a mudança, adicionar  
+  if (changedBy) {      historyData.changed_by = changedBy;  
+  }      
+  const { error } = await supabase      .from('goals_history')      .insert([historyData]);        // Não lançar erro se a tabela não existir ainda (para não quebrar a aplicação)  
+  if (error && error.code !== '42P01') { // 42P01 = table does not exist      console.warn('⚠️ Erro ao salvar histórico de metas (continuando mesmo assim):', error);  
+  }
+  } catch (error) {    // Não lançar erro - apenas logar    console.warn('⚠️ Erro ao salvar histórico de metas (continuando mesmo assim):', error);
   }
 };
-
 export const updateStore = async (id, updates) => {
   // Se estiver atualizando goals ou weights, salvar histórico primeiro
   if (updates.goals || updates.weights) {
@@ -112,118 +106,257 @@ export const updateStore = async (id, updates) => {
       console.warn('⚠️ Erro ao preparar histórico de metas (continuando mesmo assim):', error);
     }
   }
-  const { data, error } = await supabase
-    .from('stores')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
   
-  if (error) throw error;
-  return data;
-};
-
-// Buscar histórico de metas de uma loja
-export const fetchGoalsHistory = async (storeId, limit = 50) => {
-  try {
-    const { data, error } = await supabase
-      .from('goals_history')
-      .select('*')
-      .eq('store_id', storeId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-    
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    // Se a tabela não existir ainda, retornar array vazio
-    if (error.code === '42P01') { // 42P01 = table does not exist
-      console.warn('⚠️ Tabela goals_history não existe ainda. Execute o script CRIAR_HISTORICO_METAS.sql');
-      return [];
-    }
-    throw error;
-  }
-};
-
-export const deleteStore = async (id) => {
-  const { error } = await supabase
-    .from('stores')
-    .delete()
-    .eq('id', id);
+  console.log('💾 [updateStore] Atualizando loja:', { 
+    id, 
+    updates,
+    store_results_type: typeof updates.store_results,
+    store_results_value: updates.store_results,
+    store_results_stringified: JSON.stringify(updates.store_results),
+    collaborator_results_type: typeof updates.collaborator_results,
+    collaborator_results_value: updates.collaborator_results,
+    collaborator_results_stringified: JSON.stringify(updates.collaborator_results)
+  });
   
-  if (error) throw error;
-};
-
-// ============ USERS ============
-export const fetchAppUsers = async () => {
-  console.log('🔍 [fetchAppUsers] Iniciando busca de usuários...');
-  // Buscar usuários da tabela app_users (sem relacionamento automático)
-  const { data, error } = await supabase
-    .from('app_users')
-    .select('*')
-    .order('username');
+  // Garantir que store_results e collaborator_results sejam objetos válidos JSONB
+  const sanitizedUpdates = { ...updates };
   
-  if (error) {
-    console.error('❌ [fetchAppUsers] Erro ao buscar usuários:', error);
-    throw error;
-  }
-  
-  console.log(`✅ [fetchAppUsers] Usuários encontrados: ${data?.length || 0}`, data);
-  
-  // Se houver usuários com store_id, buscar dados das lojas
-  if (data && data.length > 0) {
-    const storeIds = data
-      .map(user => user.store_id)
-      .filter(id => id !== null && id !== undefined);
-    
-    if (storeIds.length > 0) {
+  // Sanitizar store_results
+  if (sanitizedUpdates.store_results !== undefined) {
+    if (sanitizedUpdates.store_results === null) {
+      sanitizedUpdates.store_results = {};
+    } else if (typeof sanitizedUpdates.store_results === 'string') {
       try {
-        const { data: storesData } = await supabase
-          .from('stores')
-          .select('id, name, code')
-          .in('id', storeIds)
-          .order('code', { ascending: true });
-        
-        // Adicionar dados da loja a cada usuário
-        if (storesData) {
-          const storesMap = new Map(storesData.map(store => [store.id, store]));
-          data.forEach(user => {
-            if (user.store_id && storesMap.has(user.store_id)) {
-              user.store = storesMap.get(user.store_id);
-            }
-          });
-        }
-      } catch (storeError) {
-        // Se falhar ao buscar lojas, continuar sem os dados das lojas
-        console.log('Erro ao buscar dados das lojas:', storeError);
+        sanitizedUpdates.store_results = JSON.parse(sanitizedUpdates.store_results);
+      } catch (e) {
+        console.warn('⚠️ [updateStore] Erro ao parsear store_results como JSON:', e);
+        sanitizedUpdates.store_results = {};
+      }
+    } else if (Array.isArray(sanitizedUpdates.store_results)) {
+      console.warn('⚠️ [updateStore] store_results é um array, convertendo para objeto');
+      sanitizedUpdates.store_results = {};
+    } else if (typeof sanitizedUpdates.store_results !== 'object') {
+      console.warn('⚠️ [updateStore] store_results não é um objeto válido, convertendo para objeto vazio');
+      sanitizedUpdates.store_results = {};
+    }
+  }
+  
+  // Sanitizar collaborator_results
+  if (sanitizedUpdates.collaborator_results !== undefined) {
+    if (sanitizedUpdates.collaborator_results === null) {
+      sanitizedUpdates.collaborator_results = {};
+    } else if (typeof sanitizedUpdates.collaborator_results === 'string') {
+      try {
+        sanitizedUpdates.collaborator_results = JSON.parse(sanitizedUpdates.collaborator_results);
+      } catch (e) {
+        console.warn('⚠️ [updateStore] Erro ao parsear collaborator_results como JSON:', e);
+        sanitizedUpdates.collaborator_results = {};
+      }
+    } else if (Array.isArray(sanitizedUpdates.collaborator_results)) {
+      console.warn('⚠️ [updateStore] collaborator_results é um array, convertendo para objeto');
+      sanitizedUpdates.collaborator_results = {};
+    } else if (typeof sanitizedUpdates.collaborator_results !== 'object') {
+      console.warn('⚠️ [updateStore] collaborator_results não é um objeto válido, convertendo para objeto vazio');
+      sanitizedUpdates.collaborator_results = {};
+    }
+  }
+  
+  // Sanitizar cto_data
+  if (sanitizedUpdates.cto_data !== undefined) {
+    console.log('💾 [updateStore] Sanitizando cto_data:', {
+      type: typeof sanitizedUpdates.cto_data,
+      isNull: sanitizedUpdates.cto_data === null,
+      isArray: Array.isArray(sanitizedUpdates.cto_data),
+      value: sanitizedUpdates.cto_data
+    });
+    
+    if (sanitizedUpdates.cto_data === null) {
+      sanitizedUpdates.cto_data = {};
+    } else if (typeof sanitizedUpdates.cto_data === 'string') {
+      try {
+        sanitizedUpdates.cto_data = JSON.parse(sanitizedUpdates.cto_data);
+      } catch (e) {
+        console.warn('⚠️ [updateStore] Erro ao parsear cto_data como JSON:', e);
+        sanitizedUpdates.cto_data = {};
+      }
+    } else if (Array.isArray(sanitizedUpdates.cto_data)) {
+      console.warn('⚠️ [updateStore] cto_data é um array, convertendo para objeto');
+      sanitizedUpdates.cto_data = {};
+    } else if (typeof sanitizedUpdates.cto_data !== 'object') {
+      console.warn('⚠️ [updateStore] cto_data não é um objeto válido, convertendo para objeto vazio');
+      sanitizedUpdates.cto_data = {};
+    }
+    
+    // Garantir que cto_data sempre seja um objeto válido
+    if (!sanitizedUpdates.cto_data || typeof sanitizedUpdates.cto_data !== 'object') {
+      sanitizedUpdates.cto_data = {};
+    }
+    
+    console.log('✅ [updateStore] cto_data sanitizado:', sanitizedUpdates.cto_data);
+  }
+  
+  // Fazer o update
+  const { data: updateData, error: updateError } = await supabase
+    .from('stores')
+    .update(sanitizedUpdates)
+    .eq('id', id)
+    .select(); // Adicionar select para verificar se o update foi aplicado
+  
+  if (updateError) {
+    console.error('❌ [updateStore] Erro ao atualizar:', updateError);
+    console.error('❌ [updateStore] Código do erro:', updateError.code);
+    console.error('❌ [updateStore] Mensagem do erro:', updateError.message);
+    console.error('❌ [updateError] Detalhes completos:', JSON.stringify(updateError, null, 2));
+    console.error('❌ [updateStore] Updates que causaram erro:', sanitizedUpdates);
+    console.error('❌ [updateStore] Store ID:', id);
+    
+    // Verificar se é erro de permissão/RLS
+    if (updateError.code === '42501' || updateError.message?.includes('permission') || updateError.message?.includes('policy')) {
+      console.error('🚨 [updateStore] ERRO DE PERMISSÃO/RLS DETECTADO!');
+      console.error('🚨 [updateStore] Verifique as políticas RLS da tabela stores no Supabase.');
+      console.error('🚨 [updateStore] O usuário precisa ter permissão para UPDATE na tabela stores.');
+    }
+    
+    throw updateError;
+  }
+  
+  // Verificar se o update realmente foi aplicado
+  if (updateData && updateData.length > 0) {
+    console.log('✅ [updateStore] Update confirmado - dados retornados:', updateData[0]);
+  } else {
+    console.warn('⚠️ [updateStore] Update executado mas nenhum dado retornado (pode ser problema de RLS)');
+  }
+  
+  console.log('✅ [updateStore] Update executado com sucesso. Buscando dados atualizados...');
+  
+  // Buscar os dados atualizados separadamente (para evitar problemas com RLS)
+  const { data, error: selectError } = await supabase
+    .from('stores')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  
+  if (selectError) {
+    console.error('❌ [updateStore] Erro ao buscar dados atualizados:', selectError);
+    throw selectError;
+  }
+  
+  // Se não encontrou, retornar pelo menos os updates aplicados
+  if (!data) {
+    console.warn('⚠️ [updateStore] Não foi possível buscar dados atualizados após o update. Retornando updates aplicados.');
+    return { id, ...updates };
+  }
+  
+  // Log detalhado dos dados recuperados
+  const storeResultsKeys = data.store_results ? Object.keys(data.store_results) : [];
+  const collaboratorResultsKeys = data.collaborator_results ? Object.keys(data.collaborator_results) : [];
+  const ctoDataKeys = data.cto_data ? Object.keys(data.cto_data) : [];
+  
+  // Se estamos atualizando cto_data, verificar se foi salvo corretamente
+  if (updates.cto_data) {
+    console.log('✅ [updateStore] Verificando cto_data salvo:', {
+      hasCtoData: !!data.cto_data,
+      ctoDataKeys,
+      hasMonthlyBills: !!data.cto_data?.monthlyBills,
+      hasMonthlySales: !!data.cto_data?.monthlySales,
+      monthlyBillsKeys: data.cto_data?.monthlyBills ? Object.keys(data.cto_data.monthlyBills) : [],
+      monthlySalesKeys: data.cto_data?.monthlySales ? Object.keys(data.cto_data.monthlySales) : [],
+      sentCtoData: updates.cto_data,
+      receivedCtoData: data.cto_data
+    });
+  }
+  
+  // Se estamos atualizando store_results, verificar se o mês foi salvo
+  if (updates.store_results) {
+    const updatedMonth = Object.keys(updates.store_results).find(key => 
+      typeof updates.store_results[key] === 'object' && updates.store_results[key] !== null
+    ) || Object.keys(updates.store_results)[0];
+    
+    console.log('✅ [updateStore] Dados atualizados recuperados do SERVIDOR:', {
+      id: data.id,
+      name: data.name,
+      hasStoreResults: !!data.store_results,
+      hasCollaboratorResults: !!data.collaborator_results,
+      storeResultsKeys,
+      updatedMonth,
+      monthDataInStore: data.store_results?.[updatedMonth],
+      monthDataSent: updates.store_results[updatedMonth],
+      storeResultsValue: JSON.stringify(data.store_results),
+      collaboratorResultsKeys,
+      collaboratorResultsValue: JSON.stringify(data.collaborator_results),
+      // Verificar se os dados foram realmente salvos
+      dataMatches: JSON.stringify(data.store_results) === JSON.stringify(updates.store_results),
+      collaboratorMatches: JSON.stringify(data.collaborator_results) === JSON.stringify(updates.collaborator_results)
+    });
+    
+    // Verificar se os dados foram realmente salvos
+    if (updatedMonth && data.store_results?.[updatedMonth]) {
+      const savedData = data.store_results[updatedMonth];
+      const sentData = updates.store_results[updatedMonth];
+      const dataMatches = JSON.stringify(savedData) === JSON.stringify(sentData);
+      
+      if (!dataMatches) {
+        console.warn('⚠️ [updateStore] Dados salvos não correspondem aos dados enviados!', {
+          saved: savedData,
+          sent: sentData
+        });
+      } else {
+        console.log('✅ [updateStore] Dados confirmados no servidor - salvamento bem-sucedido!');
       }
     }
+  } else {
+    console.log('✅ [updateStore] Dados atualizados recuperados:', {
+      id: data.id,
+      name: data.name,
+      hasStoreResults: !!data.store_results,
+      hasCollaboratorResults: !!data.collaborator_results,
+      storeResultsKeys,
+      collaboratorResultsKeys
+    });
   }
   
+  // IMPORTANTE: Retornar os dados do servidor (fonte da verdade)
+  return data;
+};// Buscar histórico de metas de uma loja
+export const fetchGoalsHistory = async (storeId, limit = 50) => {  try {  
+  const { data, error } = await supabase      .from('goals_history')      .select('*')      .eq('store_id', storeId)      .order('created_at', { ascending: false })      .limit(limit);      
+  if (error) throw error;  
   return data || [];
+  } catch (error) {    // Se a tabela não existir ainda, retornar array vazio  
+  if (error.code === '42P01') { // 42P01 = table does not exist      console.warn('⚠️ Tabela goals_history não existe ainda. Execute o script CRIAR_HISTORICO_METAS.sql');    
+  return [];  
+  }    throw error;
+  }
 };
-
-// Buscar email do usuário através do auth.users
-// Nota: Isso requer uma função edge ou RPC no Supabase que use a service role key
-// Por enquanto, vamos armazenar o email na tabela app_users ou buscar de outra forma
-export const getUserEmail = async (userId) => {
-  // Tentar buscar o email do usuário
-  // Como não temos acesso direto ao auth.users com anon key,
-  // vamos tentar buscar através de uma função RPC ou edge function
-  // Por enquanto, retornamos null e vamos armazenar o email na tabela app_users
-  
-  // Solução: Armazenar o email na tabela app_users quando criar o usuário
-  // ou buscar através de uma função RPC/Edge que use service role key
-  
+export const deleteStore = async (id) => {
+  const { error } = await supabase    .from('stores')    .delete()    .eq('id', id);  
+  if (error) throw error;
+};// ============ USERS ============
+export const fetchAppUsers = async () => {  console.log('🔍 [fetchAppUsers] Iniciando busca de usuários...');  // Buscar usuários da tabela app_users (sem relacionamento automático)
+  const { data, error } = await supabase    .from('app_users')    .select('*')    .order('username');  
+  if (error) {    console.error('❌ [fetchAppUsers] Erro ao buscar usuários:', error);    throw error;
+  }    console.log(`✅ [fetchAppUsers] Usuários encontrados: ${data?.length || 0}`, data);    // Se houver usuários com store_id, buscar dados das lojas
+  if (data && data.length > 0) {  
+  const storeIds = data      .map(user => user.store_id)      .filter(id => id !== null && id !== undefined);      
+  if (storeIds.length > 0) {      try {      
+  const { data: storesData } = await supabase          .from('stores')          .select('id, name, code')          .in('id', storeIds)          .order('code', { ascending: true });                // Adicionar dados da loja a cada usuário      
+  if (storesData) {        
+  const storesMap = new Map(storesData.map(store => [store.id, store]));          data.forEach(user => {          
+  if (user.store_id && storesMap.has(user.store_id)) {              user.store = storesMap.get(user.store_id);          
+  }        
+  });      
+  }    
+  } catch (storeError) {        // Se falhar ao buscar lojas, continuar sem os dados das lojas        console.log('Erro ao buscar dados das lojas:', storeError);    
+  }  
+  }
+  }  
+  return data || [];
+};// Buscar email do usuário através do auth.users// Nota: Isso requer uma função edge ou RPC no Supabase que use a service role key// Por enquanto, vamos armazenar o email na tabela app_users ou buscar de outra forma
+export const getUserEmail = async (userId) => {  // Tentar buscar o email do usuário  // Como não temos acesso direto ao auth.users com anon key,  // vamos tentar buscar através de uma função RPC ou edge function  // Por enquanto, retornamos null e vamos armazenar o email na tabela app_users    // Solução: Armazenar o email na tabela app_users quando criar o usuário  // ou buscar através de uma função RPC/Edge que use service role key  
   return null;
 };
-
-export const createAppUser = async (email, password, userData) => {
-  // Senha padrão para primeiro acesso
-  const DEFAULT_PASSWORD = 'afeet10';
-  
-  // Se não houver senha fornecida, usar senha padrão
-  // Todos os novos usuários terão a senha padrão e precisarão definir uma nova senha no primeiro acesso
+export const createAppUser = async (email, password, userData) => {  // Senha padrão para primeiro acesso
+  const DEFAULT_PASSWORD = 'afeet10';    // Se não houver senha fornecida, usar senha padrão  // Todos os novos usuários terão a senha padrão e precisarão definir uma nova senha no primeiro acesso
   const userPassword = password || DEFAULT_PASSWORD;
   const sanitizedEmail = email.trim().toLowerCase();
   
@@ -232,8 +365,9 @@ export const createAppUser = async (email, password, userData) => {
   let adminSession = null;
   let adminAccessToken = null;
   let adminRefreshToken = null;
+  
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession();  
     if (session) {
       adminSession = session;
       adminAccessToken = session.access_token;
@@ -288,7 +422,7 @@ export const createAppUser = async (email, password, userData) => {
   
   if (authError) {
     // Se o erro for de usuário já existente
-    if (authError.message?.includes('User already registered') || 
+    if (authError.message?.includes('User already registered') ||
         authError.message?.includes('already registered') ||
         (authError.message?.includes('email') && authError.message?.includes('already'))) {
       throw new Error(`Usuário com o email ${sanitizedEmail} já existe no sistema. Use a função de reset de senha se necessário.`);
@@ -335,6 +469,7 @@ export const createAppUser = async (email, password, userData) => {
         
         // Verificar se a sessão foi realmente restaurada
         const { data: { session: verifySession } } = await supabase.auth.getSession();
+        
         if (verifySession && verifySession.user.id === adminSession.user.id) {
           console.log('✅ Verificação: Sessão do admin confirmada - você permanecerá logado');
         } else {
@@ -388,7 +523,7 @@ export const createAppUser = async (email, password, userData) => {
       const userUsername = userData?.username || sanitizedEmail.split('@')[0];
       const userStoreId = userData?.store_id || null;
       
-      const needsUpdate = 
+      const needsUpdate =
         (userUsername && existingProfile.username !== userUsername) ||
         (userRole && existingProfile.role !== userRole) ||
         (userStoreId !== null && existingProfile.store_id !== userStoreId);
@@ -532,11 +667,11 @@ export const createAppUser = async (email, password, userData) => {
         };
         
         const { data: createdProfile, error: createError } = await supabase
-    .from('app_users')
+          .from('app_users')
           .insert([profileData])
-    .select()
-    .single();
-  
+          .select()
+          .single();
+        
         if (createError) {
           // Se o erro for de foreign key, verificar se é problema de timing ou foreign key incorreta
           if (createError.code === '23503' || createError.message?.includes('foreign key')) {
@@ -593,7 +728,7 @@ Código do erro: ${createError.code}`;
     } catch (manualCreateError) {
       // Se falhar ao criar manualmente, lançar erro detalhado
       const errorMessage = manualCreateError.message || String(manualCreateError);
-      const isForeignKeyError = errorMessage.includes('foreign key') || 
+      const isForeignKeyError = errorMessage.includes('foreign key') ||
                                 errorMessage.includes('23503') ||
                                 errorMessage.includes('Key is not present in table');
       
@@ -650,7 +785,7 @@ SOLUÇÃO:
       try {
         const { data: updatedProfile, error: updateError } = await supabase
           .from('app_users')
-          .update({ 
+          .update({
             role: userRole,
             status: userStatus,
             username: userUsername,
@@ -831,146 +966,64 @@ export const updateForm = async (id, updates) => {
   if (error) throw error;
   return data;
 };
-
 export const deleteForm = async (id) => {
-  if (!id) {
-    throw new Error('ID do formulário é obrigatório');
-  }
-  
-  console.log('🗑️ Tentando excluir formulário:', id);
-  
-  // Primeiro, verificar se o formulário existe
-  const { data: existingForm, error: fetchError } = await supabase
-    .from('forms')
-    .select('id')
-    .eq('id', id)
-    .maybeSingle();
-  
-  if (fetchError) {
-    console.error('❌ Erro ao verificar formulário:', fetchError);
-    throw fetchError;
-  }
-  
-  if (!existingForm) {
-    console.warn('⚠️ Formulário não encontrado:', id);
-    // Se não existe, considerar como sucesso (já foi excluído)
-    return { success: true, deleted: false };
-  }
-  
-  // Tentar excluir
-  const { data, error } = await supabase
-    .from('forms')
-    .delete()
-    .eq('id', id)
-    .select();
-  
-  if (error) {
-    console.error('❌ Erro ao excluir formulário:', error);
-    throw error;
-  }
-  
-  // Verificar se realmente foi excluído
-  const { data: verifyDeleted, error: verifyError } = await supabase
-    .from('forms')
-    .select('id')
-    .eq('id', id)
-    .maybeSingle();
-  
-  if (verifyError && verifyError.code !== 'PGRST116') {
-    console.error('❌ Erro ao verificar exclusão:', verifyError);
-    throw verifyError;
-  }
-  
-  if (verifyDeleted) {
-    console.error('❌ Formulário ainda existe após exclusão:', id);
-    throw new Error('A exclusão falhou. O formulário ainda existe no banco de dados.');
-  }
-  
-  console.log('✅ Formulário excluído com sucesso:', id);
-  return { success: true, deleted: true, data };
+  if (!id) {    throw new Error('ID do formulário é obrigatório');
+  }    console.log('🗑️ Tentando excluir formulário:', id);    // Primeiro, verificar se o formulário existe
+  const { data: existingForm, error: fetchError } = await supabase    .from('forms')    .select('id')    .eq('id', id)    .maybeSingle();  
+  if (fetchError) {    console.error('❌ Erro ao verificar formulário:', fetchError);    throw fetchError;
+  }  
+  if (!existingForm) {    console.warn('⚠️ Formulário não encontrado:', id);    // Se não existe, considerar como sucesso (já foi excluído)  
+  return { success: true, deleted: false 
 };
-
-// ============ EVALUATIONS ============
-export const fetchEvaluations = async () => {
-  // Buscar avaliações sem relacionamento automático
-  const { data, error } = await supabase
-    .from('evaluations')
-    .select('*')
-    .order('created_at', { ascending: false });
-  
-  if (error) throw error;
-  
-  // Se houver dados, buscar informações das lojas e usuários separadamente
-  if (data && data.length > 0) {
-    // Buscar store_ids únicos
-    const storeIds = [...new Set(data.map(evaluation => evaluation.store_id).filter(id => id))];
-    const userIds = [...new Set(data.map(evaluation => evaluation.user_id).filter(id => id))];
-    
-    // Buscar dados das lojas
-    if (storeIds.length > 0) {
-      try {
-        const { data: storesData } = await supabase
-          .from('stores')
-          .select('id, name, code')
-          .in('id', storeIds)
-          .order('code', { ascending: true });
-        
-        if (storesData) {
-          const storesMap = new Map(storesData.map(store => [store.id, store]));
-          data.forEach(evaluation => {
-            if (evaluation.store_id && storesMap.has(evaluation.store_id)) {
-              evaluation.store = storesMap.get(evaluation.store_id);
-            }
-          });
-        }
-      } catch (storeError) {
-        console.log('Erro ao buscar dados das lojas:', storeError);
-      }
-    }
-    
-    // Buscar IDs dos usuários que aprovaram (approved_by)
-    const approvedByUserIds = [...new Set(data.map(evaluation => evaluation.approved_by).filter(id => id))];
-    const allUserIds = [...new Set([...userIds, ...approvedByUserIds])];
-    
-    // Buscar dados dos usuários (criadores e aprovadores)
-    if (allUserIds.length > 0) {
-      try {
-        const { data: usersData } = await supabase
-          .from('app_users')
-          .select('id, username, name')
-          .in('id', allUserIds);
-        
-        if (usersData) {
-          const usersMap = new Map(usersData.map(user => [user.id, user]));
-          data.forEach(evaluation => {
-            if (evaluation.user_id && usersMap.has(evaluation.user_id)) {
-              evaluation.app_user = usersMap.get(evaluation.user_id);
-            }
-            if (evaluation.approved_by && usersMap.has(evaluation.approved_by)) {
-              evaluation.approved_by_user = usersMap.get(evaluation.approved_by);
-            }
-          });
-        }
-      } catch (userError) {
-        console.log('Erro ao buscar dados dos usuários:', userError);
-      }
-    }
-    
-    // Converter snake_case para camelCase para manter consistência com o frontend
-    return data.map(evaluation => ({
-      ...evaluation,
-      storeId: evaluation.store_id,
-      formId: evaluation.form_id,
-      userId: evaluation.user_id,
-      approvedBy: evaluation.approved_by,
-      date: evaluation.created_at || evaluation.date,
-      approvedByUser: evaluation.approved_by_user || null
-    }));
-  }
-  
+  }    // Tentar excluir
+  const { data, error } = await supabase    .from('forms')    .delete()    .eq('id', id)    .select();  
+  if (error) {    console.error('❌ Erro ao excluir formulário:', error);    throw error;
+  }    // Verificar se realmente foi excluído
+  const { data: verifyDeleted, error: verifyError } = await supabase    .from('forms')    .select('id')    .eq('id', id)    .maybeSingle();  
+  if (verifyError && verifyError.code !== 'PGRST116') {    console.error('❌ Erro ao verificar exclusão:', verifyError);    throw verifyError;
+  }  
+  if (verifyDeleted) {    console.error('❌ Formulário ainda existe após exclusão:', id);    throw new Error('A exclusão falhou. O formulário ainda existe no banco de dados.');
+  }    console.log('✅ Formulário excluído com sucesso:', id);
+  return { success: true, deleted: true, data 
+};
+};// ============ EVALUATIONS ============
+export const fetchEvaluations = async () => {  // Buscar avaliações sem relacionamento automático
+  const { data, error } = await supabase    .from('evaluations')    .select('*')    .order('created_at', { ascending: false });  
+  if (error) throw error;    // Se houver dados, buscar informações das lojas e usuários separadamente
+  if (data && data.length > 0) {    // Buscar store_ids únicos  
+  const storeIds = [...new Set(data.map(evaluation => evaluation.store_id).filter(id => id))];  
+  const userIds = [...new Set(data.map(evaluation => evaluation.user_id).filter(id => id))];        // Buscar dados das lojas  
+  if (storeIds.length > 0) {      try {      
+  const { data: storesData } = await supabase          .from('stores')          .select('id, name, code')          .in('id', storeIds)          .order('code', { ascending: true });              
+  if (storesData) {        
+  const storesMap = new Map(storesData.map(store => [store.id, store]));          data.forEach(evaluation => {          
+  if (evaluation.store_id && storesMap.has(evaluation.store_id)) {              evaluation.store = storesMap.get(evaluation.store_id);          
+  }        
+  });      
+  }    
+  } catch (storeError) {        console.log('Erro ao buscar dados das lojas:', storeError);    
+  }  
+  }        // Buscar IDs dos usuários que aprovaram (approved_by)  
+  const approvedByUserIds = [...new Set(data.map(evaluation => evaluation.approved_by).filter(id => id))];  
+  const allUserIds = [...new Set([...userIds, ...approvedByUserIds])];        // Buscar dados dos usuários (criadores e aprovadores)  
+  if (allUserIds.length > 0) {      try {      
+  const { data: usersData } = await supabase          .from('app_users')          .select('id, username')          .in('id', allUserIds);              
+  if (usersData) {        
+  const usersMap = new Map(usersData.map(user => [user.id, user]));          data.forEach(evaluation => {          
+  if (evaluation.user_id && usersMap.has(evaluation.user_id)) {              evaluation.app_user = usersMap.get(evaluation.user_id);          
+  }          
+  if (evaluation.approved_by && usersMap.has(evaluation.approved_by)) {              evaluation.approved_by_user = usersMap.get(evaluation.approved_by);          
+  }        
+  });      
+  }    
+  } catch (userError) {        console.log('Erro ao buscar dados dos usuários:', userError);    
+  }  
+  }        // Converter snake_case para camelCase para manter consistência com o frontend  
+  return data.map(evaluation => ({      ...evaluation,      storeId: evaluation.store_id,      formId: evaluation.form_id,      userId: evaluation.user_id,      approvedBy: evaluation.approved_by,      date: evaluation.created_at || evaluation.date,      approvedByUser: evaluation.approved_by_user || null  
+  }));
+  }  
   return data || [];
 };
-
 export const createEvaluation = async (evaluationData) => {
   // Converter camelCase para snake_case
   // NOTA: A tabela evaluations não tem coluna user_id, então não incluímos
@@ -1193,6 +1246,7 @@ export const updateCollaborator = async (id, updates) => {
   // Filtrar apenas campos que existem na tabela (para evitar erros se a coluna não existir)
   const allowedFields = ['name', 'role', 'store_id', 'cpf', 'email', 'status'];
   const filteredUpdates = {};
+  
   Object.keys(updates).forEach(key => {
     if (allowedFields.includes(key)) {
       filteredUpdates[key] = updates[key];
@@ -1322,6 +1376,7 @@ export const fetchTrainings = async (storeId = null) => {
           const storeIdsStr = storeIds.map(id => String(id).toLowerCase().trim());
           const storeIdStr = String(storeId).toLowerCase().trim();
           const isIncluded = storeIdsStr.includes(storeIdStr);
+          
           console.log(`🔍 [fetchTrainings] Treinamento "${training.title}":`, {
             store_ids_original: storeIds,
             store_ids_string: storeIdsStr,
@@ -1344,6 +1399,7 @@ export const fetchTrainings = async (storeId = null) => {
           }
           return false;
         }
+        
         console.log('❌ [fetchTrainings] Treinamento sem array válido:', training.title, {
           store_ids: training.store_ids,
           store_ids_type: typeof training.store_ids
@@ -1385,7 +1441,6 @@ export const fetchTrainings = async (storeId = null) => {
   
   return data || [];
 };
-
 export const createTraining = async (trainingData) => {
   const { data: { user } } = await supabase.auth.getUser();
   
@@ -1703,134 +1758,75 @@ export const fetchFeedbacks = async (storeId = null) => {
       storeId: feedback.store_id,
       collaboratorId: feedback.collaborator_id,
       feedbackText: feedback.feedback_text,
-      developmentPoint: feedback.development_point || null,
-      isPromotionCandidate: feedback.is_promotion_candidate || false,
-      satisfaction: feedback.satisfaction || 3,
-      date: feedback.created_at || feedback.date
+      developmentPoint: feedback.development_point ?? null,
+      isPromotionCandidate: feedback.is_promotion_candidate ?? false,
+      satisfaction: feedback.satisfaction ?? null,
+      managerSatisfaction: feedback.manager_satisfaction ?? null,
+      manager_satisfaction: feedback.manager_satisfaction ?? null,
+      collaboratorSatisfaction: feedback.collaborator_satisfaction ?? null,
+      collaborator_satisfaction: feedback.collaborator_satisfaction ?? null,
+      date: feedback.created_at ?? feedback.date
     }));
   }
   
   return data || [];
 };
-
-export const createFeedback = async (feedbackData) => {
-  // Validar campos obrigatórios
+export const createFeedback = async (feedbackData) => {  // Validar campos obrigatórios
   const feedbackText = feedbackData.feedback_text || feedbackData.feedbackText || '';
   const storeId = feedbackData.store_id || feedbackData.storeId;
-  const collaboratorId = feedbackData.collaborator_id || feedbackData.collaboratorId;
-  
-  if (!storeId) {
-    throw new Error('store_id é obrigatório');
+  const collaboratorId = feedbackData.collaborator_id || feedbackData.collaboratorId;  
+  if (!storeId) {    throw new Error('store_id é obrigatório');
   }
-  if (!collaboratorId) {
-    throw new Error('collaborator_id é obrigatório');
+  if (!collaboratorId) {    throw new Error('collaborator_id é obrigatório');
   }
-  if (!feedbackText) {
-    throw new Error('feedback_text é obrigatório');
+  if (!feedbackText) {    throw new Error('feedback_text é obrigatório');
+  }    try {    // Buscar o nome do colaborador antes de inserir    // A tabela feedbacks requer collaborator_name (NOT NULL)  
+  const { data: collaborator, error: collaboratorError } = await supabase      .from('collaborators')      .select('name')      .eq('id', collaboratorId)      .single();      
+  if (collaboratorError || !collaborator) {      throw new Error(`Colaborador não encontrado: ${collaboratorError?.message || 'ID inválido'}`);  
+  }        // Criar objeto com campos obrigatórios (incluindo collaborator_name)  
+  const basicData = {      feedback_text: feedbackText,      store_id: storeId,      collaborator_id: collaboratorId,      collaborator_name: collaborator.name  // Campo obrigatório NOT NULL  
+};        // Preparar campos opcionais (serão adicionados depois da inserção básica se necessário)  
+  const optionalFields = {
+};  
+  if (feedbackData.development_point || feedbackData.developmentPoint) {      optionalFields.development_point = feedbackData.development_point || feedbackData.developmentPoint;  
+  }  
+  if (feedbackData.satisfaction !== undefined) {      optionalFields.satisfaction = feedbackData.satisfaction;  
   }
-  
-  try {
-    // Buscar o nome do colaborador antes de inserir
-    // A tabela feedbacks requer collaborator_name (NOT NULL)
-    const { data: collaborator, error: collaboratorError } = await supabase
-      .from('collaborators')
-      .select('name')
-      .eq('id', collaboratorId)
-      .single();
-    
-    if (collaboratorError || !collaborator) {
-      throw new Error(`Colaborador não encontrado: ${collaboratorError?.message || 'ID inválido'}`);
-    }
-    
-    // Criar objeto com campos obrigatórios (incluindo collaborator_name)
-    const basicData = {
-      feedback_text: feedbackText,
-      store_id: storeId,
-      collaborator_id: collaboratorId,
-      collaborator_name: collaborator.name  // Campo obrigatório NOT NULL
-    };
-    
-    // Preparar campos opcionais (serão adicionados depois da inserção básica se necessário)
-    const optionalFields = {};
-    if (feedbackData.development_point || feedbackData.developmentPoint) {
-      optionalFields.development_point = feedbackData.development_point || feedbackData.developmentPoint;
-    }
-    if (feedbackData.satisfaction !== undefined) {
-      optionalFields.satisfaction = feedbackData.satisfaction;
-    }
-    if (feedbackData.is_promotion_candidate !== undefined || feedbackData.isPromotionCandidate !== undefined) {
-      optionalFields.is_promotion_candidate = feedbackData.is_promotion_candidate !== undefined 
-        ? feedbackData.is_promotion_candidate 
-        : feedbackData.isPromotionCandidate;
-    }
-    
-    // Se temos campos opcionais, adicionar ao objeto básico para inserir tudo de uma vez
-    // Isso evita fazer UPDATE depois e funciona melhor com cache do PostgREST
-    const dataToInsert = {
-      ...basicData,
-      ...optionalFields
-    };
-    
-    // Inserir todos os dados de uma vez
-    const { data: insertedData, error: insertError } = await supabase
-      .from('feedbacks')
-      .insert([dataToInsert])
-      .select('*')
-      .single();
-    
-    if (insertError) {
-      // Se o INSERT falhar com campos opcionais, tentar apenas com campos obrigatórios
-      if (insertError.code === 'PGRST204' || Object.keys(optionalFields).length > 0) {
-        console.warn('⚠️ Tentando inserir apenas com campos obrigatórios...');
-        
-        const { data: basicInsertData, error: basicInsertError } = await supabase
-          .from('feedbacks')
-          .insert([basicData])
-          .select('*')
-          .single();
-        
-        if (basicInsertError) {
-          console.error('Erro ao inserir feedback (campos básicos):', basicInsertError);
-          throw new Error(`Erro ao criar feedback: ${basicInsertError.message}`);
-        }
-        
-        // Se inserção básica funcionou, retornar dados
-        return {
-          ...basicInsertData,
-          storeId: basicInsertData.store_id,
-          collaboratorId: basicInsertData.collaborator_id,
-          feedbackText: basicInsertData.feedback_text,
-          developmentPoint: optionalFields.development_point || null,
-          isPromotionCandidate: optionalFields.is_promotion_candidate || false,
-          satisfaction: optionalFields.satisfaction || 3
-        };
-      }
-      
-      console.error('Erro ao inserir feedback:', insertError);
-      throw new Error(`Erro ao criar feedback: ${insertError.message}`);
-    }
-    
-    // Se inserção funcionou, retornar dados formatados
-    if (insertedData) {
-      return {
-        ...insertedData,
-        storeId: insertedData.store_id,
-        collaboratorId: insertedData.collaborator_id,
-        feedbackText: insertedData.feedback_text,
-        developmentPoint: insertedData.development_point || null,
-        isPromotionCandidate: insertedData.is_promotion_candidate || false,
-        satisfaction: insertedData.satisfaction || 3
-      };
-    }
-    
-    throw new Error('Erro ao criar feedback: Nenhum dado retornado');
-    
-  } catch (error) {
-    console.error('Erro ao criar feedback:', error);
-    throw error;
+  if (feedbackData.manager_satisfaction !== undefined || feedbackData.managerSatisfaction !== undefined) {
+    optionalFields.manager_satisfaction = feedbackData.manager_satisfaction !== undefined
+      ? feedbackData.manager_satisfaction
+      : feedbackData.managerSatisfaction;
+  } else if (feedbackData.managerSatisfaction !== undefined) {
+    optionalFields.manager_satisfaction = feedbackData.managerSatisfaction;
+  }
+  if (feedbackData.collaborator_satisfaction !== undefined || feedbackData.collaboratorSatisfaction !== undefined) {
+    optionalFields.collaborator_satisfaction = feedbackData.collaborator_satisfaction !== undefined
+      ? feedbackData.collaborator_satisfaction
+      : feedbackData.collaboratorSatisfaction;
+  } else if (feedbackData.collaboratorSatisfaction !== undefined) {
+    optionalFields.collaborator_satisfaction = feedbackData.collaboratorSatisfaction;
+  }
+  if (feedbackData.is_promotion_candidate !== undefined || feedbackData.isPromotionCandidate !== undefined) {      optionalFields.is_promotion_candidate = feedbackData.is_promotion_candidate !== undefined         ? feedbackData.is_promotion_candidate         : feedbackData.isPromotionCandidate;  
+  }        // Se temos campos opcionais, adicionar ao objeto básico para inserir tudo de uma vez    // Isso evita fazer UPDATE depois e funciona melhor com cache do PostgREST  
+  const dataToInsert = {      ...basicData,      ...optionalFields  
+};        // Inserir todos os dados de uma vez  
+  const { data: insertedData, error: insertError } = await supabase      .from('feedbacks')      .insert([dataToInsert])      .select('*')      .single();      
+  if (insertError) {      // Se o INSERT falhar com campos opcionais, tentar apenas com campos obrigatórios    
+  if (insertError.code === 'PGRST204' || Object.keys(optionalFields).length > 0) {        console.warn('⚠️ Tentando inserir apenas com campos obrigatórios...');              
+  const { data: basicInsertData, error: basicInsertError } = await supabase          .from('feedbacks')          .insert([basicData])          .select('*')          .single();              
+  if (basicInsertError) {          console.error('Erro ao inserir feedback (campos básicos):', basicInsertError);          throw new Error(`Erro ao criar feedback: ${basicInsertError.message}`);      
+  }                // Se inserção básica funcionou, retornar dados      
+  return {          ...basicInsertData,          storeId: basicInsertData.store_id,          collaboratorId: basicInsertData.collaborator_id,          feedbackText: basicInsertData.feedback_text,          developmentPoint: optionalFields.development_point ?? null,          isPromotionCandidate: optionalFields.is_promotion_candidate ?? false,          satisfaction: optionalFields.satisfaction ?? null,          managerSatisfaction: optionalFields.manager_satisfaction ?? null,          manager_satisfaction: optionalFields.manager_satisfaction ?? null,          collaboratorSatisfaction: optionalFields.collaborator_satisfaction ?? null,          collaborator_satisfaction: optionalFields.collaborator_satisfaction ?? null      
+};    
+  }            console.error('Erro ao inserir feedback:', insertError);      throw new Error(`Erro ao criar feedback: ${insertError.message}`);  
+  }        // Se inserção funcionou, retornar dados formatados  
+  if (insertedData) {    
+  return {        ...insertedData,        storeId: insertedData.store_id,        collaboratorId: insertedData.collaborator_id,        feedbackText: insertedData.feedback_text,        developmentPoint: insertedData.development_point ?? null,        isPromotionCandidate: insertedData.is_promotion_candidate ?? false,        satisfaction: insertedData.satisfaction ?? null,        managerSatisfaction: insertedData.manager_satisfaction ?? null,        manager_satisfaction: insertedData.manager_satisfaction ?? null,        collaboratorSatisfaction: insertedData.collaborator_satisfaction ?? null,        collaborator_satisfaction: insertedData.collaborator_satisfaction ?? null    
+};  
+  }        throw new Error('Erro ao criar feedback: Nenhum dado retornado');    
+  } catch (error) {    console.error('Erro ao criar feedback:', error);    throw error;
   }
 };
-
 export const deleteFeedback = async (feedbackId) => {
   if (!feedbackId) {
     throw new Error('ID do feedback é obrigatório');
@@ -1919,52 +1915,27 @@ export const deleteFeedbacksBySatisfaction = async (satisfactionLevels) => {
   const deletedCount = data?.length || 0;
   console.log(`✅ ${deletedCount} feedback(s) excluído(s) com sucesso`);
   return { success: true, deleted: deletedCount, total: feedbackIds.length };
-};
-
-// ============ DAILY CHECKLISTS ============
-// Função genérica para buscar checklist por tipo (operacional ou gerencial)
-export const fetchDailyChecklist = async (storeId, date, checklistType = 'operacional') => {
-  // Validar parâmetros
-  if (!storeId) {
-    console.error('❌ storeId é obrigatório para buscar checklist');
-    throw new Error('storeId é obrigatório');
+};// ============ DAILY CHECKLISTS ============// Função genérica para buscar checklist por tipo (operacional ou gerencial)
+export const fetchDailyChecklist = async (storeId, date, checklistType = 'operacional') => {  // Validar parâmetros
+  if (!storeId) {    console.error('❌ storeId é obrigatório para buscar checklist');    throw new Error('storeId é obrigatório');
   }
-  if (!date) {
-    console.error('❌ date é obrigatório para buscar checklist');
-    throw new Error('date é obrigatório');
+  if (!date) {    console.error('❌ date é obrigatório para buscar checklist');    throw new Error('date é obrigatório');
+  }    // Buscar todos os checklists para essa loja e data (pode haver operacional e gerencial)
+  const { data: checklists, error } = await supabase    .from('daily_checklists')    .select('*')    .eq('store_id', storeId)    .eq('date', date);  
+  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found    // Se não encontrou dados, retornar null
+  if (!checklists || checklists.length === 0) return null;    // Buscar checklist com o tipo específico
+  const checklistWithType = checklists.find(c => c.checklist_type === checklistType);  
+  if (checklistWithType) {  
+  return checklistWithType;
+  }    // Se não encontrou com tipo e estamos buscando operacional, buscar legado (sem tipo)
+  if (checklistType === 'operacional') {  
+  const legacyChecklist = checklists.find(c => !c.checklist_type || c.checklist_type === null);  
+  if (legacyChecklist) {    
+  return legacyChecklist;  
   }
-  
-  // Buscar todos os checklists para essa loja e data (pode haver operacional e gerencial)
-  const { data: checklists, error } = await supabase
-    .from('daily_checklists')
-    .select('*')
-    .eq('store_id', storeId)
-    .eq('date', date);
-  
-  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
-  
-  // Se não encontrou dados, retornar null
-  if (!checklists || checklists.length === 0) return null;
-  
-  // Buscar checklist com o tipo específico
-  const checklistWithType = checklists.find(c => c.checklist_type === checklistType);
-  
-  if (checklistWithType) {
-    return checklistWithType;
-  }
-  
-  // Se não encontrou com tipo e estamos buscando operacional, buscar legado (sem tipo)
-  if (checklistType === 'operacional') {
-    const legacyChecklist = checklists.find(c => !c.checklist_type || c.checklist_type === null);
-    if (legacyChecklist) {
-      return legacyChecklist;
-    }
-  }
-  
-  // Não encontrou checklist do tipo solicitado
+  }    // Não encontrou checklist do tipo solicitado
   return null;
 };
-
 export const upsertDailyChecklist = async (storeId, date, tasks, checklistType = 'operacional') => {
   // Validar parâmetros
   if (!storeId) {
@@ -2099,10 +2070,10 @@ export const upsertDailyChecklist = async (storeId, date, tasks, checklistType =
     
     // Se insert falhou com conflito, fazer UPDATE
     if (insertError) {
-      const isConflict = insertError.code === '23505' || 
-                        insertError.code === 'PGRST301' || 
+      const isConflict = insertError.code === '23505' ||
+                        insertError.code === 'PGRST301' ||
                         insertError.code === '409' ||
-                        insertError.message?.includes('duplicate') || 
+                        insertError.message?.includes('duplicate') ||
                         insertError.message?.includes('unique') ||
                         insertError.message?.includes('conflict');
       
@@ -2155,7 +2126,6 @@ export const upsertDailyChecklist = async (storeId, date, tasks, checklistType =
     }
     
     return insertedData;
-    
   } catch (error) {
     console.error('Erro ao fazer upsert do checklist:', error);
     throw error;
@@ -2190,199 +2160,101 @@ export const fetchChecklistHistory = async (storeId, startDate, endDate, checkli
   }
   
   return data || [];
-};
-
-// Buscar todas as tarefas do checklist operacional (configuração)
+};// Buscar todas as tarefas do checklist operacional (configuração)
 export const fetchChecklistTasks = async () => {
-  const tasks = await fetchAppSettings('daily_checklist_tasks');
-  // Se não houver tarefas salvas, retornar array vazio (será criado pela primeira vez)
-  if (!tasks) return [];
-  // Se tasks for um array, retornar diretamente
-  if (Array.isArray(tasks)) return tasks;
-  // Se tasks for um objeto com tasks, retornar tasks
+  const tasks = await fetchAppSettings('daily_checklist_tasks');  // Se não houver tarefas salvas, retornar array vazio (será criado pela primeira vez)
+  if (!tasks) return [];  // Se tasks for um array, retornar diretamente
+  if (Array.isArray(tasks)) return tasks;  // Se tasks for um objeto com tasks, retornar tasks
   if (tasks && tasks.tasks && Array.isArray(tasks.tasks)) return tasks.tasks;
   return [];
-};
-
-// Buscar todas as tarefas do checklist gerencial (configuração)
+};// Buscar todas as tarefas do checklist gerencial (configuração)
 export const fetchGerencialChecklistTasks = async () => {
-  const tasks = await fetchAppSettings('daily_checklist_gerencial_tasks');
-  // Se não houver tarefas salvas, retornar array vazio (será criado pela primeira vez)
-  if (!tasks) return [];
-  // Se tasks for um array, retornar diretamente
-  if (Array.isArray(tasks)) return tasks;
-  // Se tasks for um objeto com tasks, retornar tasks
+  const tasks = await fetchAppSettings('daily_checklist_gerencial_tasks');  // Se não houver tarefas salvas, retornar array vazio (será criado pela primeira vez)
+  if (!tasks) return [];  // Se tasks for um array, retornar diretamente
+  if (Array.isArray(tasks)) return tasks;  // Se tasks for um objeto com tasks, retornar tasks
   if (tasks && tasks.tasks && Array.isArray(tasks.tasks)) return tasks.tasks;
   return [];
-};
-
-// Salvar tarefas do checklist operacional (configuração)
+};// Salvar tarefas do checklist operacional (configuração)
 export const saveChecklistTasks = async (tasks) => {
   return await upsertAppSettings('daily_checklist_tasks', tasks);
-};
-
-// Salvar tarefas do checklist gerencial (configuração)
+};// Salvar tarefas do checklist gerencial (configuração)
 export const saveGerencialChecklistTasks = async (tasks) => {
   return await upsertAppSettings('daily_checklist_gerencial_tasks', tasks);
-};
-
-// ============ JOB ROLES (CARGOS) ============
+};// ============ JOB ROLES (CARGOS) ============
 export const fetchJobRoles = async () => {
   const roles = await fetchAppSettings('job_roles');
   if (!roles) return [];
   if (Array.isArray(roles)) return roles.filter(role => typeof role === 'string' && role.trim().length > 0);
-  if (roles?.roles && Array.isArray(roles.roles)) {
-    return roles.roles.filter(role => typeof role === 'string' && role.trim().length > 0);
+  if (roles?.roles && Array.isArray(roles.roles)) {  
+  return roles.roles.filter(role => typeof role === 'string' && role.trim().length > 0);
   }
   return [];
 };
-
 export const saveJobRoles = async (roles) => {
-  if (!Array.isArray(roles)) {
-    throw new Error('Lista de cargos inválida.');
+  if (!Array.isArray(roles)) {    throw new Error('Lista de cargos inválida.');
   }
   return await upsertAppSettings('job_roles', roles);
-};
-
-// Buscar checklist de uma data específica para histórico (operacional)
+};// Buscar checklist de uma data específica para histórico (operacional)
 export const fetchChecklistByDate = async (storeId, date) => {
   return await fetchDailyChecklist(storeId, date, 'operacional');
-};
-
-// Buscar checklist gerencial de uma data específica para histórico
+};// Buscar checklist gerencial de uma data específica para histórico
 export const fetchGerencialChecklistByDate = async (storeId, date) => {
   return await fetchDailyChecklist(storeId, date, 'gerencial');
-};
-
-// ======== CHECKLIST AUDIT ========
-const normalizeChecklistType = (checklistType) => checklistType || 'operacional';
-
+};// ======== CHECKLIST AUDIT ========const normalizeChecklistType = (checklistType) => checklistType || 'operacional';
 export const fetchChecklistAudit = async (storeId, date, checklistType = 'operacional') => {
   if (!storeId || !date) return null;
-  const { data, error } = await supabase
-    .from('checklist_audits')
-    .select('*')
-    .eq('store_id', storeId)
-    .eq('date', date)
-    .eq('checklist_type', normalizeChecklistType(checklistType))
-    .maybeSingle();
+  const { data, error } = await supabase    .from('checklist_audits')    .select('*')    .eq('store_id', storeId)    .eq('date', date)    .eq('checklist_type', normalizeChecklistType(checklistType))    .maybeSingle();
   if (error && error.code !== 'PGRST116') throw error;
   return data || null;
 };
-
 export const fetchChecklistAuditsByDate = async (date, checklistType = null) => {
-  if (!date) return [];
-  let query = supabase
-    .from('checklist_audits')
-    .select('*')
-    .eq('date', date);
-  if (checklistType) {
-    query = query.eq('checklist_type', normalizeChecklistType(checklistType));
+  if (!date) return [];  let query = supabase    .from('checklist_audits')    .select('*')    .eq('date', date);
+  if (checklistType) {    query = query.eq('checklist_type', normalizeChecklistType(checklistType));
   }
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
 };
-
 export const fetchChecklistAuditsRange = async (storeId, startDate, endDate, checklistType = 'operacional') => {
   if (!storeId || !startDate || !endDate) return [];
-  const { data, error } = await supabase
-    .from('checklist_audits')
-    .select('*')
-    .eq('store_id', storeId)
-    .eq('checklist_type', normalizeChecklistType(checklistType))
-    .gte('date', startDate)
-    .lte('date', endDate);
+  const { data, error } = await supabase    .from('checklist_audits')    .select('*')    .eq('store_id', storeId)    .eq('checklist_type', normalizeChecklistType(checklistType))    .gte('date', startDate)    .lte('date', endDate);
   if (error) throw error;
   return data || [];
 };
-
 export const upsertChecklistAudit = async ({ storeId, date, checklistType = 'operacional', auditedBy, auditedByName }) => {
-  if (!storeId || !date) {
-    throw new Error('storeId e date são obrigatórios para registrar auditoria.');
+  if (!storeId || !date) {    throw new Error('storeId e date são obrigatórios para registrar auditoria.');
   }
-  const payload = {
-    store_id: storeId,
-    date,
-    checklist_type: normalizeChecklistType(checklistType),
-    audited_by: auditedBy || null,
-    audited_by_name: auditedByName || null,
-  };
-  const { data, error } = await supabase
-    .from('checklist_audits')
-    .upsert(payload, { onConflict: 'store_id,date,checklist_type' })
-    .select('*')
-    .single();
+  const payload = {    store_id: storeId,    date,    checklist_type: normalizeChecklistType(checklistType),    audited_by: auditedBy || null,    audited_by_name: auditedByName || null,
+};
+  const { data, error } = await supabase    .from('checklist_audits')    .upsert(payload, { onConflict: 'store_id,date,checklist_type' })    .select('*')    .single();
   if (error) throw error;
   return data;
 };
-
 export const deleteChecklistAudit = async (storeId, date, checklistType = 'operacional') => {
   if (!storeId || !date) return;
-  const { error } = await supabase
-    .from('checklist_audits')
-    .delete()
-    .eq('store_id', storeId)
-    .eq('date', date)
-    .eq('checklist_type', normalizeChecklistType(checklistType));
+  const { error } = await supabase    .from('checklist_audits')    .delete()    .eq('store_id', storeId)    .eq('date', date)    .eq('checklist_type', normalizeChecklistType(checklistType));
   if (error) throw error;
-};
-
-// Buscar todas as auditorias com informações das lojas
-export const fetchAllChecklistAudits = async (startDate = null, endDate = null, checklistType = null) => {
-  let query = supabase
-    .from('checklist_audits')
-    .select(`
-      *,
-      stores (
-        id,
-        name,
-        code,
-        bandeira,
-        supervisor
-      )
-    `)
-    .order('date', { ascending: false });
-  
-  if (startDate) {
-    query = query.gte('date', startDate);
+};// Buscar todas as auditorias com informações das lojas
+export const fetchAllChecklistAudits = async (startDate = null, endDate = null, checklistType = null) => {  let query = supabase    .from('checklist_audits')    .select(`      *,      stores (        id,        name,        code,        bandeira,        supervisor      )    `)    .order('date', { ascending: false });  
+  if (startDate) {    query = query.gte('date', startDate);
   }
-  if (endDate) {
-    query = query.lte('date', endDate);
+  if (endDate) {    query = query.lte('date', endDate);
   }
-  if (checklistType) {
-    query = query.eq('checklist_type', normalizeChecklistType(checklistType));
-  }
-  
+  if (checklistType) {    query = query.eq('checklist_type', normalizeChecklistType(checklistType));
+  }  
   const { data, error } = await query;
   if (error) throw error;
   return data || [];
-};
-
-// ============ APP SETTINGS ============
+};// ============ APP SETTINGS ============
 export const fetchAppSettings = async (key) => {
-  const { data, error } = await supabase
-    .from('app_settings')
-    .select('*')
-    .eq('key', key)
-    .single();
-  
+  const { data, error } = await supabase    .from('app_settings')    .select('*')    .eq('key', key)    .single();  
   if (error && error.code !== 'PGRST116') throw error;
   return data?.value;
 };
-
 export const upsertAppSettings = async (key, value) => {
-  const { data, error } = await supabase
-    .from('app_settings')
-    .upsert({
-      key,
-      value
-    }, {
-      onConflict: 'key'
-    })
-    .select()
-    .single();
-  
+  const { data, error } = await supabase    .from('app_settings')    .upsert({      key,      value  
+  }, {      onConflict: 'key'  
+  })    .select()    .single();  
   if (error) throw error;
   return data;
 };
@@ -2395,6 +2267,7 @@ export const fetchCurrentUserProfile = async () => {
     let authUser = null;
     try {
       const { data, error: getUserError } = await supabase.auth.getUser();
+      
       if (getUserError) {
         // Se for erro 403 ou 401, a sessão está expirada - não tentar mais nada
         if (getUserError.status === 403 || getUserError.status === 401) {
@@ -2422,14 +2295,14 @@ export const fetchCurrentUserProfile = async () => {
       // Se não conseguir obter usuário, retornar null
       return null;
     }
-  
-  if (!authUser) return null;
-  
+    
+    if (!authUser) return null;
+    
     // Buscar perfil do usuário (sem relacionamento automático com stores)
-  const { data, error } = await supabase
-    .from('app_users')
+    const { data, error } = await supabase
+      .from('app_users')
       .select('*')
-    .eq('id', authUser.id)
+      .eq('id', authUser.id)
       .maybeSingle();
     
     if (error) {
@@ -2437,7 +2310,7 @@ export const fetchCurrentUserProfile = async () => {
       if (error.code === 'PGRST116') {
         return null;
       }
-      // Se o erro for de relacionamento não encontrado (PGRST200), 
+      // Se o erro for de relacionamento não encontrado (PGRST200),
       // ainda tentar buscar sem relacionamento
       if (error.code === 'PGRST200') {
         // Já estamos buscando sem relacionamento, então este erro não deveria acontecer
@@ -2472,336 +2345,151 @@ export const fetchCurrentUserProfile = async () => {
       }
     }
     
-  return data;
+    return data;
   } catch (error) {
     // Capturar qualquer erro inesperado e retornar null em vez de propagar
     console.error('Erro ao buscar perfil do usuário:', error);
     return null;
   }
-};
-
-// ============ RETURNS (DEVOLUÇÕES) ============
+};// ============ RETURNS (DEVOLUÇÕES) ============
 export const fetchReturns = async () => {
-  const { data, error } = await supabase
-    .from('returns')
-    .select('*')
-    .order('created_at', { ascending: false });
-  
-  if (error) {
-    // Se a tabela não existir, retornar array vazio (para não quebrar a aplicação)
-    if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
-      console.warn('⚠️ Tabela returns não existe ainda. Retornando array vazio.');
-      return [];
-    }
-    throw error;
-  }
-  
+  const { data, error } = await supabase    .from('returns')    .select('*')    .order('created_at', { ascending: false });  
+  if (error) {    // Se a tabela não existir, retornar array vazio (para não quebrar a aplicação)  
+  if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {      console.warn('⚠️ Tabela returns não existe ainda. Retornando array vazio.');    
+  return [];  
+  }    throw error;
+  }  
   return data || [];
 };
-
-export const createReturn = async (returnData) => {
-  // Converter camelCase para snake_case
-  const dataToInsert = {
-    store_id: returnData.store_id || returnData.storeId,
-    brand: returnData.brand,
-    nf_number: returnData.nf_number || returnData.nfNumber || 'SEM_NF',
-    nf_emission_date: returnData.nf_emission_date || returnData.nfEmissionDate || null,
-    nf_value: returnData.nf_value !== undefined && returnData.nf_value !== null ? returnData.nf_value : (returnData.nfValue !== undefined && returnData.nfValue !== null ? returnData.nfValue : null),
-    volume_quantity: returnData.volume_quantity || returnData.volumeQuantity,
-    date: returnData.date,
-    admin_status: returnData.admin_status || returnData.adminStatus || 'aguardando_coleta',
-    collected_at: returnData.collected_at || returnData.collectedAt || null,
-    created_by: returnData.created_by || returnData.createdBy || null
-  };
-
-  const { data, error } = await supabase
-    .from('returns')
-    .insert([dataToInsert])
-    .select()
-    .single();
-  
+export const createReturn = async (returnData) => {  // Converter camelCase para snake_case
+  const dataToInsert = {    store_id: returnData.store_id || returnData.storeId,    brand: returnData.brand,    nf_number: returnData.nf_number || returnData.nfNumber || 'SEM_NF',    nf_emission_date: returnData.nf_emission_date || returnData.nfEmissionDate || null,    nf_value: returnData.nf_value !== undefined && returnData.nf_value !== null ? returnData.nf_value : (returnData.nfValue !== undefined && returnData.nfValue !== null ? returnData.nfValue : null),    volume_quantity: returnData.volume_quantity || returnData.volumeQuantity,    date: returnData.date,    admin_status: returnData.admin_status || returnData.adminStatus || 'aguardando_coleta',    collected_at: returnData.collected_at || returnData.collectedAt || null,    created_by: returnData.created_by || returnData.createdBy || null
+};
+  const { data, error } = await supabase    .from('returns')    .insert([dataToInsert])    .select()    .single();  
   if (error) throw error;
   return data;
 };
-
-export const updateReturn = async (id, updates) => {
-  // Buscar status anterior para histórico
-  const { data: currentReturn } = await supabase
-    .from('returns')
-    .select('admin_status')
-    .eq('id', id)
-    .single();
-  
-  const oldStatus = currentReturn?.admin_status;
-  
-  // Converter camelCase para snake_case
-  const dataToUpdate = {};
-  
-  if (updates.store_id !== undefined || updates.storeId !== undefined) {
-    dataToUpdate.store_id = updates.store_id || updates.storeId;
+export const updateReturn = async (id, updates) => {  // Buscar status anterior para histórico
+  const { data: currentReturn } = await supabase    .from('returns')    .select('admin_status')    .eq('id', id)    .single();  
+  const oldStatus = currentReturn?.admin_status;    // Converter camelCase para snake_case
+  const dataToUpdate = {
+};  
+  if (updates.store_id !== undefined || updates.storeId !== undefined) {    dataToUpdate.store_id = updates.store_id || updates.storeId;
   }
   if (updates.brand !== undefined) dataToUpdate.brand = updates.brand;
-  if (updates.nf_number !== undefined || updates.nfNumber !== undefined) {
-    dataToUpdate.nf_number = updates.nf_number || updates.nfNumber;
+  if (updates.nf_number !== undefined || updates.nfNumber !== undefined) {    dataToUpdate.nf_number = updates.nf_number || updates.nfNumber;
   }
-  if (updates.nf_emission_date !== undefined || updates.nfEmissionDate !== undefined) {
-    dataToUpdate.nf_emission_date = updates.nf_emission_date || updates.nfEmissionDate;
+  if (updates.nf_emission_date !== undefined || updates.nfEmissionDate !== undefined) {    dataToUpdate.nf_emission_date = updates.nf_emission_date || updates.nfEmissionDate;
   }
-  if (updates.nf_value !== undefined || updates.nfValue !== undefined) {
-    dataToUpdate.nf_value = updates.nf_value !== undefined && updates.nf_value !== null ? updates.nf_value : (updates.nfValue !== undefined && updates.nfValue !== null ? updates.nfValue : null);
+  if (updates.nf_value !== undefined || updates.nfValue !== undefined) {    dataToUpdate.nf_value = updates.nf_value !== undefined && updates.nf_value !== null ? updates.nf_value : (updates.nfValue !== undefined && updates.nfValue !== null ? updates.nfValue : null);
   }
-  if (updates.volume_quantity !== undefined || updates.volumeQuantity !== undefined) {
-    dataToUpdate.volume_quantity = updates.volume_quantity || updates.volumeQuantity;
+  if (updates.volume_quantity !== undefined || updates.volumeQuantity !== undefined) {    dataToUpdate.volume_quantity = updates.volume_quantity || updates.volumeQuantity;
   }
   if (updates.date !== undefined) dataToUpdate.date = updates.date;
-  if (updates.admin_status !== undefined || updates.adminStatus !== undefined) {
-    dataToUpdate.admin_status = updates.admin_status || updates.adminStatus;
+  if (updates.admin_status !== undefined || updates.adminStatus !== undefined) {    dataToUpdate.admin_status = updates.admin_status || updates.adminStatus;
   }
-  if (updates.collected_at !== undefined || updates.collectedAt !== undefined) {
-    dataToUpdate.collected_at = updates.collected_at || updates.collectedAt;
+  if (updates.collected_at !== undefined || updates.collectedAt !== undefined) {    dataToUpdate.collected_at = updates.collected_at || updates.collectedAt;
   }
-
-  const { data, error } = await supabase
-    .from('returns')
-    .update(dataToUpdate)
-    .eq('id', id)
-    .select()
-    .single();
-  
-  if (error) throw error;
-  
-  // Salvar histórico se status mudou
+  const { data, error } = await supabase    .from('returns')    .update(dataToUpdate)    .eq('id', id)    .select()    .single();  
+  if (error) throw error;    // Salvar histórico se status mudou
   const newStatus = dataToUpdate.admin_status;
-  if (oldStatus && newStatus && oldStatus !== newStatus) {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      await saveReturnStatusHistory(id, oldStatus, newStatus, user?.id || null);
-    } catch (historyError) {
-      console.warn('⚠️ Erro ao salvar histórico de status:', historyError);
-    }
+  if (oldStatus && newStatus && oldStatus !== newStatus) {    try {    
+  const { data: { user } } = await supabase.auth.getUser();      await saveReturnStatusHistory(id, oldStatus, newStatus, user?.id || null);  
+  } catch (historyError) {      console.warn('⚠️ Erro ao salvar histórico de status:', historyError);  
   }
-  
+  }  
   return data;
 };
-
 export const deleteReturn = async (id) => {
-  const { error } = await supabase
-    .from('returns')
-    .delete()
-    .eq('id', id);
-  
+  const { error } = await supabase    .from('returns')    .delete()    .eq('id', id);  
   if (error) throw error;
   return true;
-};
-
-// Salvar histórico de mudanças de status de devolução
-export const saveReturnStatusHistory = async (returnId, oldStatus, newStatus, changedBy = null) => {
-  try {
-    const historyData = {
-      return_id: returnId,
-      old_status: oldStatus,
-      new_status: newStatus,
-      changed_at: new Date().toISOString()
-    };
-    
-    if (changedBy) {
-      historyData.changed_by = changedBy;
-    }
-    
-    const { error } = await supabase
-      .from('returns_status_history')
-      .insert([historyData]);
-    
-    // Não lançar erro se a tabela não existir ainda
-    if (error && error.code !== '42P01') {
-      console.warn('⚠️ Erro ao salvar histórico de status (continuando mesmo assim):', error);
-    }
-  } catch (error) {
-    console.warn('⚠️ Erro ao salvar histórico de status (continuando mesmo assim):', error);
+};// Salvar histórico de mudanças de status de devolução
+export const saveReturnStatusHistory = async (returnId, oldStatus, newStatus, changedBy = null) => {  try {  
+  const historyData = {      return_id: returnId,      old_status: oldStatus,      new_status: newStatus,      changed_at: new Date().toISOString()  
+};      
+  if (changedBy) {      historyData.changed_by = changedBy;  
+  }      
+  const { error } = await supabase      .from('returns_status_history')      .insert([historyData]);        // Não lançar erro se a tabela não existir ainda  
+  if (error && error.code !== '42P01') {      console.warn('⚠️ Erro ao salvar histórico de status (continuando mesmo assim):', error);  
   }
-};
-
-// ============ PHYSICAL MISSING (FALTA FÍSICA) ============
+  } catch (error) {    console.warn('⚠️ Erro ao salvar histórico de status (continuando mesmo assim):', error);
+  }
+};// ============ PHYSICAL MISSING (FALTA FÍSICA) ============
 export const fetchPhysicalMissing = async () => {
-  const { data, error } = await supabase
-    .from('physical_missing')
-    .select('*')
-    .order('created_at', { ascending: false });
-  
-  if (error) {
-    // Se a tabela não existir, retornar array vazio
-    if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
-      console.warn('⚠️ Tabela physical_missing não existe ainda. Retornando array vazio.');
-      return [];
-    }
-    throw error;
-  }
-  
+  const { data, error } = await supabase    .from('physical_missing')    .select('*')    .order('created_at', { ascending: false });  
+  if (error) {    // Se a tabela não existir, retornar array vazio  
+  if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {      console.warn('⚠️ Tabela physical_missing não existe ainda. Retornando array vazio.');    
+  return [];  
+  }    throw error;
+  }  
   return data || [];
 };
-
 export const createPhysicalMissing = async (missingData) => {
-  const dataToInsert = {
-    store_id: missingData.store_id || missingData.storeId,
-    brand: missingData.brand || null,
-    nf_number: missingData.nf_number || missingData.nfNumber || null,
-    sku: missingData.sku || null,
-    color: missingData.color || null,
-    size: missingData.size || null,
-    sku_info: missingData.sku_info || missingData.skuInfo || null,
-    cost_value: missingData.cost_value !== undefined && missingData.cost_value !== null ? missingData.cost_value : (missingData.costValue !== undefined && missingData.costValue !== null ? missingData.costValue : null),
-    quantity: missingData.quantity !== undefined && missingData.quantity !== null ? missingData.quantity : null,
-    total_value: missingData.total_value !== undefined && missingData.total_value !== null ? missingData.total_value : (missingData.totalValue !== undefined && missingData.totalValue !== null ? missingData.totalValue : null),
-    moved_to_defect: missingData.moved_to_defect !== undefined ? missingData.moved_to_defect : (missingData.movedToDefect !== undefined ? missingData.movedToDefect : false),
-    status: missingData.status || 'processo_aberto',
-    created_by: missingData.created_by || missingData.createdBy || null,
-    // Novo campo de tipo (array JSON ou texto)
-    missing_type: missingData.missing_type ? (Array.isArray(missingData.missing_type) ? missingData.missing_type : [missingData.missing_type]) : null,
-    // Campos de divergência (o que faltou)
-    divergence_missing_brand: missingData.divergence_missing_brand || null,
-    divergence_missing_sku: missingData.divergence_missing_sku || null,
-    divergence_missing_color: missingData.divergence_missing_color || null,
-    divergence_missing_size: missingData.divergence_missing_size || null,
-    divergence_missing_quantity: missingData.divergence_missing_quantity !== undefined && missingData.divergence_missing_quantity !== null ? missingData.divergence_missing_quantity : null,
-    divergence_missing_cost_value: missingData.divergence_missing_cost_value !== undefined && missingData.divergence_missing_cost_value !== null ? missingData.divergence_missing_cost_value : null,
-    // Campos de divergência (o que sobrou no lugar)
-    divergence_surplus_brand: missingData.divergence_surplus_brand || null,
-    divergence_surplus_sku: missingData.divergence_surplus_sku || null,
-    divergence_surplus_color: missingData.divergence_surplus_color || null,
-    divergence_surplus_size: missingData.divergence_surplus_size || null,
-    divergence_surplus_quantity: missingData.divergence_surplus_quantity !== undefined && missingData.divergence_surplus_quantity !== null ? missingData.divergence_surplus_quantity : null,
-    divergence_surplus_cost_value: missingData.divergence_surplus_cost_value !== undefined && missingData.divergence_surplus_cost_value !== null ? missingData.divergence_surplus_cost_value : null
-  };
-  
-  // Campos antigos para compatibilidade (só incluir se fornecidos)
-  if (missingData.product_name || missingData.productName) {
-    dataToInsert.product_name = missingData.product_name || missingData.productName;
+  const dataToInsert = {    store_id: missingData.store_id || missingData.storeId,    brand: missingData.brand || null,    nf_number: missingData.nf_number || missingData.nfNumber || null,    sku: missingData.sku || null,    color: missingData.color || null,    size: missingData.size || null,    sku_info: missingData.sku_info || missingData.skuInfo || null,    cost_value: missingData.cost_value !== undefined && missingData.cost_value !== null ? missingData.cost_value : (missingData.costValue !== undefined && missingData.costValue !== null ? missingData.costValue : null),    quantity: missingData.quantity !== undefined && missingData.quantity !== null ? missingData.quantity : null,    total_value: missingData.total_value !== undefined && missingData.total_value !== null ? missingData.total_value : (missingData.totalValue !== undefined && missingData.totalValue !== null ? missingData.totalValue : null),    moved_to_defect: missingData.moved_to_defect !== undefined ? missingData.moved_to_defect : (missingData.movedToDefect !== undefined ? missingData.movedToDefect : false),    status: missingData.status || 'processo_aberto',    created_by: missingData.created_by || missingData.createdBy || null,    // Novo campo de tipo (array JSON ou texto)    missing_type: missingData.missing_type ? (Array.isArray(missingData.missing_type) ? missingData.missing_type : [missingData.missing_type]) : null,    // Campos de divergência (o que faltou)    divergence_missing_brand: missingData.divergence_missing_brand || null,    divergence_missing_sku: missingData.divergence_missing_sku || null,    divergence_missing_color: missingData.divergence_missing_color || null,    divergence_missing_size: missingData.divergence_missing_size || null,    divergence_missing_quantity: missingData.divergence_missing_quantity !== undefined && missingData.divergence_missing_quantity !== null ? missingData.divergence_missing_quantity : null,    divergence_missing_cost_value: missingData.divergence_missing_cost_value !== undefined && missingData.divergence_missing_cost_value !== null ? missingData.divergence_missing_cost_value : null,    // Campos de divergência (o que sobrou no lugar)    divergence_surplus_brand: missingData.divergence_surplus_brand || null,    divergence_surplus_sku: missingData.divergence_surplus_sku || null,    divergence_surplus_color: missingData.divergence_surplus_color || null,    divergence_surplus_size: missingData.divergence_surplus_size || null,    divergence_surplus_quantity: missingData.divergence_surplus_quantity !== undefined && missingData.divergence_surplus_quantity !== null ? missingData.divergence_surplus_quantity : null,    divergence_surplus_cost_value: missingData.divergence_surplus_cost_value !== undefined && missingData.divergence_surplus_cost_value !== null ? missingData.divergence_surplus_cost_value : null
+};    // Campos antigos para compatibilidade (só incluir se fornecidos)
+  if (missingData.product_name || missingData.productName) {    dataToInsert.product_name = missingData.product_name || missingData.productName;
   }
-  if (missingData.product_code || missingData.productCode) {
-    dataToInsert.product_code = missingData.product_code || missingData.productCode;
+  if (missingData.product_code || missingData.productCode) {    dataToInsert.product_code = missingData.product_code || missingData.productCode;
   }
-  if (missingData.notes) {
-    dataToInsert.notes = missingData.notes;
+  if (missingData.notes) {    dataToInsert.notes = missingData.notes;
   }
-
-  const { data, error } = await supabase
-    .from('physical_missing')
-    .insert([dataToInsert])
-    .select()
-    .single();
-  
+  const { data, error } = await supabase    .from('physical_missing')    .insert([dataToInsert])    .select()    .single();  
   if (error) throw error;
   return data;
 };
-
 export const updatePhysicalMissing = async (id, updates) => {
-  const dataToUpdate = {};
-  
-  if (updates.store_id !== undefined || updates.storeId !== undefined) {
-    dataToUpdate.store_id = updates.store_id || updates.storeId;
+  const dataToUpdate = {
+};  
+  if (updates.store_id !== undefined || updates.storeId !== undefined) {    dataToUpdate.store_id = updates.store_id || updates.storeId;
   }
   if (updates.brand !== undefined) dataToUpdate.brand = updates.brand;
-  if (updates.nf_number !== undefined || updates.nfNumber !== undefined) {
-    dataToUpdate.nf_number = updates.nf_number || updates.nfNumber;
+  if (updates.nf_number !== undefined || updates.nfNumber !== undefined) {    dataToUpdate.nf_number = updates.nf_number || updates.nfNumber;
   }
   if (updates.sku !== undefined) dataToUpdate.sku = updates.sku;
   if (updates.color !== undefined) dataToUpdate.color = updates.color;
   if (updates.size !== undefined) dataToUpdate.size = updates.size;
-  if (updates.sku_info !== undefined || updates.skuInfo !== undefined) {
-    dataToUpdate.sku_info = updates.sku_info || updates.skuInfo;
+  if (updates.sku_info !== undefined || updates.skuInfo !== undefined) {    dataToUpdate.sku_info = updates.sku_info || updates.skuInfo;
   }
-  if (updates.cost_value !== undefined || updates.costValue !== undefined) {
-    dataToUpdate.cost_value = updates.cost_value !== undefined && updates.cost_value !== null ? updates.cost_value : (updates.costValue !== undefined && updates.costValue !== null ? updates.costValue : null);
+  if (updates.cost_value !== undefined || updates.costValue !== undefined) {    dataToUpdate.cost_value = updates.cost_value !== undefined && updates.cost_value !== null ? updates.cost_value : (updates.costValue !== undefined && updates.costValue !== null ? updates.costValue : null);
   }
-  if (updates.quantity !== undefined && updates.quantity !== null) {
-    dataToUpdate.quantity = updates.quantity;
+  if (updates.quantity !== undefined && updates.quantity !== null) {    dataToUpdate.quantity = updates.quantity;
   }
-  if (updates.total_value !== undefined || updates.totalValue !== undefined) {
-    dataToUpdate.total_value = updates.total_value !== undefined && updates.total_value !== null ? updates.total_value : (updates.totalValue !== undefined && updates.totalValue !== null ? updates.totalValue : null);
+  if (updates.total_value !== undefined || updates.totalValue !== undefined) {    dataToUpdate.total_value = updates.total_value !== undefined && updates.total_value !== null ? updates.total_value : (updates.totalValue !== undefined && updates.totalValue !== null ? updates.totalValue : null);
   }
-  if (updates.moved_to_defect !== undefined || updates.movedToDefect !== undefined) {
-    dataToUpdate.moved_to_defect = updates.moved_to_defect !== undefined ? updates.moved_to_defect : updates.movedToDefect;
+  if (updates.moved_to_defect !== undefined || updates.movedToDefect !== undefined) {    dataToUpdate.moved_to_defect = updates.moved_to_defect !== undefined ? updates.moved_to_defect : updates.movedToDefect;
+  }  // Campos antigos para compatibilidade
+  if (updates.product_name !== undefined || updates.productName !== undefined) {    dataToUpdate.product_name = updates.product_name || updates.productName;
   }
-  // Campos antigos para compatibilidade
-  if (updates.product_name !== undefined || updates.productName !== undefined) {
-    dataToUpdate.product_name = updates.product_name || updates.productName;
-  }
-  if (updates.product_code !== undefined || updates.productCode !== undefined) {
-    dataToUpdate.product_code = updates.product_code || updates.productCode;
+  if (updates.product_code !== undefined || updates.productCode !== undefined) {    dataToUpdate.product_code = updates.product_code || updates.productCode;
   }
   if (updates.notes !== undefined) dataToUpdate.notes = updates.notes;
   if (updates.status !== undefined) dataToUpdate.status = updates.status;
-
-  const { data, error } = await supabase
-    .from('physical_missing')
-    .update(dataToUpdate)
-    .eq('id', id)
-    .select()
-    .single();
-  
+  const { data, error } = await supabase    .from('physical_missing')    .update(dataToUpdate)    .eq('id', id)    .select()    .single();  
   if (error) throw error;
   return data;
 };
-
 export const deletePhysicalMissing = async (id) => {
-  const { error } = await supabase
-    .from('physical_missing')
-    .delete()
-    .eq('id', id);
-  
+  const { error } = await supabase    .from('physical_missing')    .delete()    .eq('id', id);  
   if (error) throw error;
   return true;
-};
-
-// ============ RETURNS PLANNER ============
-export const fetchReturnsPlanner = async () => {
-  console.log('🔍 [fetchReturnsPlanner] Iniciando busca de planner de devoluções...');
-  const { data, error } = await supabase
-    .from('returns_planner')
-    .select('*')
-    .order('opening_date', { ascending: false });
-  
-  if (error) {
-    console.error('❌ [fetchReturnsPlanner] Erro ao buscar planner:', error);
-    throw error;
-  }
-  
-  console.log(`✅ [fetchReturnsPlanner] Registros encontrados: ${data?.length || 0}`);
+};// ============ RETURNS PLANNER ============
+export const fetchReturnsPlanner = async () => {  console.log('🔍 [fetchReturnsPlanner] Iniciando busca de planner de devoluções...');
+  const { data, error } = await supabase    .from('returns_planner')    .select('*')    .order('opening_date', { ascending: false });  
+  if (error) {    console.error('❌ [fetchReturnsPlanner] Erro ao buscar planner:', error);    throw error;
+  }    console.log(`✅ [fetchReturnsPlanner] Registros encontrados: ${data?.length || 0}`);
   return data || [];
 };
-
 export const createReturnsPlanner = async (plannerData) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  
-  const dataToInsert = {
-    store_id: plannerData.store_id || null,
-    supervisor: plannerData.supervisor || null,
-    return_type: plannerData.return_type,
-    opening_date: plannerData.opening_date,
-    brand: plannerData.brand || null,
-    case_number: plannerData.case_number || null,
-    invoice_number: plannerData.invoice_number || null,
-    invoice_issue_date: plannerData.invoice_issue_date || null,
-    return_value: plannerData.return_value ? parseFloat(plannerData.return_value) : null,
-    items_quantity: plannerData.items_quantity ? parseInt(plannerData.items_quantity) : null,
-    status: plannerData.status || 'Aguardando aprovação da marca',
-    responsible_user_id: plannerData.responsible_user_id || null,
-    created_by: user?.id || null,
-  };
-
-  const { data, error } = await supabase
-    .from('returns_planner')
-    .insert([dataToInsert])
-    .select()
-    .single();
-  
+  const { data: { user } } = await supabase.auth.getUser();  
+  const dataToInsert = {    store_id: plannerData.store_id || null,    supervisor: plannerData.supervisor || null,    return_type: plannerData.return_type,    opening_date: plannerData.opening_date,    brand: plannerData.brand || null,    case_number: plannerData.case_number || null,    invoice_number: plannerData.invoice_number || null,    invoice_issue_date: plannerData.invoice_issue_date || null,    return_value: plannerData.return_value ? parseFloat(plannerData.return_value) : null,    items_quantity: plannerData.items_quantity ? parseInt(plannerData.items_quantity) : null,    status: plannerData.status || 'Aguardando aprovação da marca',    responsible_user_id: plannerData.responsible_user_id || null,    created_by: user?.id || null,
+};
+  const { data, error } = await supabase    .from('returns_planner')    .insert([dataToInsert])    .select()    .single();  
   if (error) throw error;
   return data;
 };
-
 export const updateReturnsPlanner = async (id, updates) => {
-  const dataToUpdate = {};
-  
+  const dataToUpdate = {
+};  
   if (updates.store_id !== undefined) dataToUpdate.store_id = updates.store_id || null;
   if (updates.supervisor !== undefined) dataToUpdate.supervisor = updates.supervisor || null;
   if (updates.return_type !== undefined) dataToUpdate.return_type = updates.return_type;
@@ -2814,9 +2502,249 @@ export const updateReturnsPlanner = async (id, updates) => {
   if (updates.items_quantity !== undefined) dataToUpdate.items_quantity = updates.items_quantity ? parseInt(updates.items_quantity) : null;
   if (updates.status !== undefined) dataToUpdate.status = updates.status;
   if (updates.responsible_user_id !== undefined) dataToUpdate.responsible_user_id = updates.responsible_user_id || null;
+  const { data, error } = await supabase    .from('returns_planner')    .update(dataToUpdate)    .eq('id', id)    .select()    .single();  
+  if (error) throw error;
+  return data;
+};
+export const deleteReturnsPlanner = async (id) => {
+  const { error } = await supabase    .from('returns_planner')    .delete()    .eq('id', id);  
+  if (error) throw error;
+  return true;
+};// ============ ACIONAMENTOS ============
+export const fetchAcionamentos = async () => {
+  const { data, error } = await supabase    .from('acionamentos')    .select('*')    .order('created_at', { ascending: false });  
+  if (error) throw error;
+  return data || [];
+};
+export const createAcionamento = async (acionamentoData) => {
+  const { data, error } = await supabase    .from('acionamentos')    .insert([{      store_id: acionamentoData.store_id,      motivo: acionamentoData.motivo,      status: acionamentoData.status || 'em_tratativa',      user_id: acionamentoData.user_id || null  
+  }])    .select()    .single();  
+  if (error) throw error;
+  return data;
+};
+export const updateAcionamento = async (id, updates) => {
+  const { data, error } = await supabase    .from('acionamentos')    .update({      store_id: updates.store_id,      motivo: updates.motivo,      status: updates.status,      updated_at: new Date().toISOString()  
+  })    .eq('id', id)    .select()    .single();  
+  if (error) throw error;
+  return data;
+};
+export const deleteAcionamento = async (id) => {
+  const { error } = await supabase    .from('acionamentos')    .delete()    .eq('id', id);  
+  if (error) throw error;
+  return true;
+};// ============ ALERTAS E COMUNICADOS ============
+export const fetchAlerts = async (storeId = null) => {  let query = supabase    .from('alerts')    .select('*')    .order('created_at', { ascending: false });  
+  const { data, error } = await query;  
+  if (error) throw error;
+  return data || [];
+};
+export const createAlert = async (alertData) => {
+  const { data: { user } } = await supabase.auth.getUser();  
+  const { data, error } = await supabase    .from('alerts')    .insert([{      title: alertData.title,      message: alertData.message,      created_by: user?.id || null,      expires_at: alertData.expires_at || null,      is_active: alertData.is_active !== undefined ? alertData.is_active : true,      store_ids: alertData.store_ids && alertData.store_ids.length > 0 ? alertData.store_ids : null,      franqueado_names: alertData.franqueado_names && alertData.franqueado_names.length > 0 ? alertData.franqueado_names : null,      bandeira_names: alertData.bandeira_names && alertData.bandeira_names.length > 0 ? alertData.bandeira_names : null  
+  }])    .select()    .single();  
+  if (error) throw error;
+  return data;
+};
+export const updateAlert = async (id, updates) => {
+  const dataToUpdate = {
+};  
+  if (updates.title !== undefined) dataToUpdate.title = updates.title;
+  if (updates.message !== undefined) dataToUpdate.message = updates.message;
+  if (updates.expires_at !== undefined) dataToUpdate.expires_at = updates.expires_at || null;
+  if (updates.is_active !== undefined) dataToUpdate.is_active = updates.is_active;
+  if (updates.store_ids !== undefined) dataToUpdate.store_ids = updates.store_ids && updates.store_ids.length > 0 ? updates.store_ids : null;
+  if (updates.franqueado_names !== undefined) dataToUpdate.franqueado_names = updates.franqueado_names && updates.franqueado_names.length > 0 ? updates.franqueado_names : null;
+  if (updates.bandeira_names !== undefined) dataToUpdate.bandeira_names = updates.bandeira_names && updates.bandeira_names.length > 0 ? updates.bandeira_names : null;
+  const { data, error } = await supabase    .from('alerts')    .update(dataToUpdate)    .eq('id', id)    .select()    .single();  
+  if (error) throw error;
+  return data;
+};
+export const deleteAlert = async (id) => {
+  const { error } = await supabase    .from('alerts')    .delete()    .eq('id', id);  
+  if (error) throw error;
+  return true;
+};// Buscar alertas não visualizados por um usuário/loja
+export const fetchUnreadAlerts = async (storeId) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || !storeId) return [];  // Buscar informações da loja
+  const { data: store, error: storeError } = await supabase    .from('stores')    .select('id, franqueado, bandeira')    .eq('id', storeId)    .single();  
+  if (storeError || !store) return [];  // Buscar alertas ativos
+  const { data: alerts, error: alertsError } = await supabase    .from('alerts')    .select('*')    .eq('is_active', true)    .order('created_at', { ascending: false });  
+  if (alertsError) throw alertsError;
+  if (!alerts || alerts.length === 0) return [];  // Buscar visualizações do usuário
+  const { data: views, error: viewsError } = await supabase    .from('alert_views')    .select('alert_id')    .eq('user_id', user.id);  
+  if (viewsError) throw viewsError;  
+  const viewedAlertIds = new Set((views || []).map(v => v.alert_id));    // Filtrar alertas não visualizados e destinados à loja
+  const unreadAlerts = alerts.filter(alert => {    // Verificar se já foi visualizado  
+  if (viewedAlertIds.has(alert.id)) return false;        // Verificar se o alerta não expirou  
+  if (alert.expires_at && new Date(alert.expires_at) < new Date()) {    
+  return false;  
+  }        // Se não tem destinatários específicos, é para todas as lojas  
+  if (!alert.store_ids && !alert.franqueado_names && !alert.bandeira_names) {    
+  return true;  
+  }        // Verificar se a loja está na lista de destinatários  
+  if (alert.store_ids && alert.store_ids.length > 0) {    
+  if (alert.store_ids.includes(storeId)) {      
+  return true;    
+  }  
+  }        // Verificar se o franqueado está na lista  
+  if (alert.franqueado_names && alert.franqueado_names.length > 0) {    
+  if (store.franqueado && alert.franqueado_names.includes(store.franqueado)) {      
+  return true;    
+  }  
+  }        // Verificar se a bandeira está na lista  
+  if (alert.bandeira_names && alert.bandeira_names.length > 0) {    
+  if (store.bandeira && alert.bandeira_names.includes(store.bandeira)) {      
+  return true;    
+  }  
+  }      
+  return false;
+  });  
+  return unreadAlerts || [];
+};// Marcar alerta como visualizado
+export const markAlertAsViewed = async (alertId, storeId) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {    throw new Error('Usuário não autenticado');
+  }
+  if (!storeId) {    throw new Error('ID da loja não fornecido');
+  }  console.log('📝 Marcando alerta como visualizado:', { alertId, storeId, userId: user.id });
+  const { data, error } = await supabase    .from('alert_views')    .insert([{      alert_id: alertId,      user_id: user.id,      store_id: storeId  
+  }])    .select()    .single();  
+  if (error) {    console.error('❌ Erro ao inserir visualização:', error);    // Se já existe, não é erro - retornar sucesso  
+  if (error.code === '23505') { // Unique violation      console.log('✅ Visualização já existe, retornando sucesso');    
+  return { id: alertId, viewed: true, already_exists: true 
+};  
+  }    throw error;
+  }    console.log('✅ Visualização registrada com sucesso:', data);
+  return data;
+};// Buscar visualizações de um alerta (para comunicação ver quem visualizou)
+export const fetchAlertViews = async (alertId) => {  // Buscar visualizações primeiro
+  const { data: views, error: viewsError } = await supabase    .from('alert_views')    .select('*, store:stores(id, name, code, bandeira, franqueado)')    .eq('alert_id', alertId)    .order('viewed_at', { ascending: false });  
+  if (viewsError) throw viewsError;
+  if (!views || views.length === 0) return [];  // Buscar dados dos usuários da tabela app_users
+  const userIds = views.map(v => v.user_id).filter(Boolean);
+  if (userIds.length === 0) return views;
+  const { data: users, error: usersError } = await supabase    .from('app_users')    .select('id, username, email, role')    .in('id', userIds);
+  if (usersError) {    console.warn('Erro ao buscar usuários:', usersError);    // Retornar views mesmo sem dados de usuário  
+  return views || [];
+  }  // Combinar dados
+  const usersMap = new Map(users.map(u => [u.id, u]));
+  return views.map(view => ({    ...view,    user: usersMap.get(view.user_id) || null
+  }));
+};
 
+// Buscar lojas destinatárias de um alerta (para comparar com visualizações)
+export const fetchAlertRecipients = async (alertId) => {
+  // Buscar o alerta primeiro
+  const { data: alert, error: alertError } = await supabase
+    .from('alerts')
+    .select('store_ids, franqueado_names, bandeira_names')
+    .eq('id', alertId)
+    .single();
+  
+  if (alertError) throw alertError;
+  if (!alert) return [];
+  
+  let query = supabase
+    .from('stores')
+    .select('id, name, code, bandeira, franqueado');
+  
+  // Se tem lojas específicas
+  if (alert.store_ids && alert.store_ids.length > 0) {
+    query = query.in('id', alert.store_ids);
+  }
+  // Se tem franqueados específicos
+  else if (alert.franqueado_names && alert.franqueado_names.length > 0) {
+    query = query.in('franqueado', alert.franqueado_names);
+  }
+  // Se tem bandeiras específicas
+  else if (alert.bandeira_names && alert.bandeira_names.length > 0) {
+    query = query.in('bandeira', alert.bandeira_names);
+  }
+  // Se não tem destinatários específicos, retornar todas as lojas
+  // (não aplicamos filtro)
+  
+  const { data, error } = await query.order('name');
+  
+  if (error) throw error;
+  return data || [];
+};
+
+// ============ RETURNS PROCESSING CAPACITY (CAPACIDADE DE PROCESSAMENTO) ============
+export const fetchReturnsCapacity = async () => {
   const { data, error } = await supabase
-    .from('returns_planner')
+    .from('returns_processing_capacity')
+    .select('*')
+    .order('data_referencia', { ascending: false })
+    .order('store_id', { ascending: true })
+    .order('mu', { ascending: true });
+  
+  if (error) {
+    // Se a tabela não existir, retornar array vazio
+    if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+      console.warn('⚠️ Tabela returns_processing_capacity não existe ainda. Retornando array vazio.');
+      return [];
+    }
+    throw error;
+  }
+  return data || [];
+};
+
+export const createReturnsCapacity = async (capacityData) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  const dataToInsert = {
+    store_id: capacityData.store_id || capacityData.storeId,
+    mu: capacityData.mu,
+    capacidade_estoque: capacityData.capacidade_estoque || capacityData.capacidadeEstoque || 0,
+    estoque_atual: capacityData.estoque_atual !== undefined ? capacityData.estoque_atual : (capacityData.estoqueAtual !== undefined ? capacityData.estoqueAtual : 0),
+    sku: capacityData.sku || 0,
+    ate_4_pecas: capacityData.ate_4_pecas !== undefined ? capacityData.ate_4_pecas : (capacityData.ate4Pecas !== undefined ? capacityData.ate4Pecas : 0),
+    percentual_ultimas_pecas: capacityData.percentual_ultimas_pecas !== undefined ? capacityData.percentual_ultimas_pecas : (capacityData.percentualUltimasPecas !== undefined ? capacityData.percentualUltimasPecas : 0),
+    capacidade_estoque_venda: capacityData.capacidade_estoque_venda !== undefined ? capacityData.capacidade_estoque_venda : (capacityData.capacidadeEstoqueVenda !== undefined ? capacityData.capacidadeEstoqueVenda : 0),
+    data_referencia: capacityData.data_referencia || capacityData.dataReferencia || new Date().toISOString().split('T')[0],
+    created_by: user?.id || null
+  };
+  
+  const { data, error } = await supabase
+    .from('returns_processing_capacity')
+    .insert([dataToInsert])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateReturnsCapacity = async (id, updates) => {
+  const dataToUpdate = {};
+  
+  if (updates.store_id !== undefined || updates.storeId !== undefined) {
+    dataToUpdate.store_id = updates.store_id || updates.storeId;
+  }
+  if (updates.mu !== undefined) dataToUpdate.mu = updates.mu;
+  if (updates.capacidade_estoque !== undefined || updates.capacidadeEstoque !== undefined) {
+    dataToUpdate.capacidade_estoque = updates.capacidade_estoque !== undefined ? updates.capacidade_estoque : updates.capacidadeEstoque;
+  }
+  if (updates.estoque_atual !== undefined || updates.estoqueAtual !== undefined) {
+    dataToUpdate.estoque_atual = updates.estoque_atual !== undefined ? updates.estoque_atual : updates.estoqueAtual;
+  }
+  if (updates.sku !== undefined) dataToUpdate.sku = updates.sku;
+  if (updates.ate_4_pecas !== undefined || updates.ate4Pecas !== undefined) {
+    dataToUpdate.ate_4_pecas = updates.ate_4_pecas !== undefined ? updates.ate_4_pecas : updates.ate4Pecas;
+  }
+  if (updates.percentual_ultimas_pecas !== undefined || updates.percentualUltimasPecas !== undefined) {
+    dataToUpdate.percentual_ultimas_pecas = updates.percentual_ultimas_pecas !== undefined ? updates.percentual_ultimas_pecas : updates.percentualUltimasPecas;
+  }
+  if (updates.capacidade_estoque_venda !== undefined || updates.capacidadeEstoqueVenda !== undefined) {
+    dataToUpdate.capacidade_estoque_venda = updates.capacidade_estoque_venda !== undefined ? updates.capacidade_estoque_venda : updates.capacidadeEstoqueVenda;
+  }
+  if (updates.data_referencia !== undefined || updates.dataReferencia !== undefined) {
+    dataToUpdate.data_referencia = updates.data_referencia || updates.dataReferencia;
+  }
+  
+  const { data, error } = await supabase
+    .from('returns_processing_capacity')
     .update(dataToUpdate)
     .eq('id', id)
     .select()
@@ -2826,9 +2754,9 @@ export const updateReturnsPlanner = async (id, updates) => {
   return data;
 };
 
-export const deleteReturnsPlanner = async (id) => {
+export const deleteReturnsCapacity = async (id) => {
   const { error } = await supabase
-    .from('returns_planner')
+    .from('returns_processing_capacity')
     .delete()
     .eq('id', id);
   

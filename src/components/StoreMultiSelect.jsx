@@ -86,25 +86,33 @@ const StoreMultiSelect = ({ stores, selected, onChange, placeholder, className }
           <div className="flex gap-1 flex-wrap">
             {selectedStores.length > 0 ? (
               selectedStores.map(store => (
-                <Badge
-                  key={store.id}
-                  variant="secondary"
-                  className="rounded-sm px-1 font-normal flex items-center gap-1"
-                >
-                  <span>{store.code || store.name}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleToggle(store.id);
-                    }}
-                    className="ml-1 hover:bg-destructive/20 rounded-full p-0.5"
-                    title="Remover"
+                  <Badge
+                    key={store.id}
+                    variant="secondary"
+                    className="rounded-sm px-1 font-normal flex items-center gap-1"
                   >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
+                    <span>{store.code || store.name}</span>
+                    <span
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleToggle(store.id);
+                      }}
+                      className="ml-1 hover:bg-destructive/20 rounded-full p-0.5 cursor-pointer"
+                      title="Remover"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleToggle(store.id);
+                        }
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </span>
+                  </Badge>
               ))
             ) : (
               <span className="text-muted-foreground">{placeholder}</span>

@@ -104,6 +104,63 @@ export const DataProvider = ({ children }) => {
   const [returns, setReturns] = useState([]);
   const [physicalMissing, setPhysicalMissing] = useState([]);
   const [returnsPlanner, setReturnsPlanner] = useState([]);
+  const [returnsCapacity, setReturnsCapacity] = useState([]);
+  const [acionamentos, setAcionamentos] = useState([]);
+  
+  // Realtime subscriptions
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Subscription para mudanças na tabela stores (para resultados em tempo real)
+    const storesChannel = supabase
+      .channel('stores-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'stores'
+        },
+        (payload) => {
+          console.log('🔄 [Realtime] Mudança detectada na tabela stores:', payload.eventType, payload.new?.id);
+          
+          // Recarregar stores quando houver mudança (mas apenas se não for a própria loja do usuário editando)
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+            const updatedStoreId = payload.new?.id || payload.old?.id;
+            if (updatedStoreId) {
+              // Verificar se mudou algo relevante (store_results ou collaborator_results)
+              const oldData = payload.old;
+              const newData = payload.new;
+              const changedResults = (
+                (oldData?.store_results !== newData?.store_results) ||
+                (oldData?.collaborator_results !== newData?.collaborator_results) ||
+                (oldData?.results_locks !== newData?.results_locks)
+              );
+              
+              if (changedResults) {
+                // Recarregar todas as stores (mais simples e garante consistência)
+                api.fetchStores()
+                  .then(updatedStores => {
+                    setStores(updatedStores);
+                    console.log('✅ [Realtime] Stores atualizadas:', updatedStores.length);
+                  })
+                  .catch(error => {
+                    console.error('❌ [Realtime] Erro ao atualizar stores:', error);
+                  });
+              } else {
+                console.log('ℹ️ [Realtime] Mudança detectada mas não relacionada a resultados. Ignorando.');
+              }
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('🔌 [Realtime] Desconectando subscription de stores...');
+      supabase.removeChannel(storesChannel);
+    };
+  }, [isAuthenticated]);
   
   // App Settings
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
@@ -165,6 +222,7 @@ export const DataProvider = ({ children }) => {
       }
       
       // Buscar returns planner com tratamento de erro individual (tabela pode não existir ainda)
+      let fetchedReturnsCapacity = [];
       if (typeof api.fetchReturnsPlanner === 'function') {
         try {
           console.log('🔍 [DataContext] Tentando buscar planner de devoluções...');
@@ -181,6 +239,23 @@ export const DataProvider = ({ children }) => {
         }
       }
       
+      // Buscar capacidade de processamento com tratamento de erro individual
+      if (typeof api.fetchReturnsCapacity === 'function') {
+        try {
+          console.log('🔍 [DataContext] Tentando buscar capacidade de processamento...');
+          fetchedReturnsCapacity = await api.fetchReturnsCapacity();
+          console.log('✅ [DataContext] Capacidade de processamento buscada com sucesso:', fetchedReturnsCapacity?.length || 0);
+        } catch (capacityError) {
+          if (capacityError.code === 'PGRST205' || capacityError.message?.includes('Could not find the table')) {
+            console.warn('⚠️ [DataContext] Tabela returns_processing_capacity não encontrada. Execute o script CRIAR_TABELA_CAPACIDADE_PROCESSAMENTO.sql no Supabase.');
+            fetchedReturnsCapacity = [];
+          } else {
+            console.error('❌ [DataContext] Erro ao buscar capacidade de processamento:', capacityError);
+            fetchedReturnsCapacity = [];
+          }
+        }
+      }
+      
       const [
         fetchedStores,
         fetchedEvaluations,
@@ -190,6 +265,7 @@ export const DataProvider = ({ children }) => {
         fetchedTrainingRegistrations,
         fetchedReturns,
         fetchedPhysicalMissing,
+        fetchedAcionamentos,
         fetchedPatents,
         fetchedChave,
         fetchedMenu,
@@ -205,6 +281,17 @@ export const DataProvider = ({ children }) => {
         api.fetchTrainingRegistrations(),
         api.fetchReturns(),
         api.fetchPhysicalMissing(),
+        (async () => {
+          try {
+            return await api.fetchAcionamentos();
+          } catch (error) {
+            if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+              console.warn('⚠️ [DataContext] Tabela acionamentos não encontrada. Execute o script CRIAR_TABELA_ACIONAMENTOS.sql no Supabase.');
+              return [];
+            }
+            throw error;
+          }
+        })(),
         api.fetchAppSettings('patent_settings'),
         api.fetchAppSettings('chave_content'),
         api.fetchAppSettings('menu_visibility'),
@@ -243,6 +330,8 @@ export const DataProvider = ({ children }) => {
       setReturns(fetchedReturns || []);
       setPhysicalMissing(fetchedPhysicalMissing || []);
       setReturnsPlanner(fetchedReturnsPlanner || []);
+      setReturnsCapacity(fetchedReturnsCapacity || []);
+      setAcionamentos(fetchedAcionamentos || []);
       
       if (fetchedPatents) setPatentSettings(fetchedPatents);
       // Garantir que chaveContent sempre seja uma string
@@ -495,7 +584,58 @@ export const DataProvider = ({ children }) => {
 
   // Stores
   const addStore = (store) => handleApiCall(() => api.createStore(store), 'Loja adicionada.');
-  const updateStore = (id, data) => handleApiCall(() => api.updateStore(id, data), 'Loja atualizada.');
+  const updateStore = async (id, data) => {
+    try {
+      const updatedStore = await api.updateStore(id, data);
+      
+      // Atualizar o estado local SEM recarregar tudo
+      setStores(prevStores => {
+        const storeIndex = prevStores.findIndex(store => store.id === id);
+        if (storeIndex === -1) {
+          console.warn('⚠️ [DataContext] Store não encontrada no estado local:', id);
+          return prevStores;
+        }
+        
+        const currentStore = prevStores[storeIndex];
+        // IMPORTANTE: Usar os dados do servidor como fonte da verdade
+        // Se o servidor retornou dados, usar eles (mesmo que sejam vazios)
+        // Isso garante que dados salvos sejam persistidos corretamente
+        const mergedStore = { 
+          ...currentStore, 
+          ...updatedStore,
+          // Usar dados do servidor se disponíveis, senão manter os atuais
+          store_results: updatedStore.store_results !== undefined ? updatedStore.store_results : currentStore.store_results,
+          collaborator_results: updatedStore.collaborator_results !== undefined ? updatedStore.collaborator_results : currentStore.collaborator_results,
+          results_locks: updatedStore.results_locks !== undefined ? updatedStore.results_locks : currentStore.results_locks,
+          goals: updatedStore.goals !== undefined ? updatedStore.goals : currentStore.goals,
+          weights: updatedStore.weights !== undefined ? updatedStore.weights : currentStore.weights
+        };
+        
+        const updatedStores = [...prevStores];
+        updatedStores[storeIndex] = mergedStore;
+        
+        console.log('🔄 [DataContext] Store atualizada no estado local:', {
+          id,
+          hasStoreResults: !!mergedStore.store_results,
+          storeResultsKeys: mergedStore.store_results ? Object.keys(mergedStore.store_results) : [],
+          hasCollaboratorResults: !!mergedStore.collaborator_results,
+          collaboratorResultsKeys: mergedStore.collaborator_results ? Object.keys(mergedStore.collaborator_results) : []
+        });
+        
+        return updatedStores;
+      });
+      
+      toast({ 
+        title: 'Sucesso!', 
+        description: 'Loja atualizada com sucesso.' 
+      });
+      
+      return updatedStore;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro na Operação', description: error.message });
+      throw error;
+    }
+  };
   const deleteStore = (id) => handleApiCall(() => api.deleteStore(id), 'Loja removida.');
 
   // Users
@@ -1247,6 +1387,90 @@ export const DataProvider = ({ children }) => {
     }
   };
 
+  // Returns Capacity (Capacidade de Processamento)
+  const addReturnsCapacity = async (capacityData) => {
+    try {
+      const newCapacity = await api.createReturnsCapacity(capacityData);
+      setReturnsCapacity(prev => [newCapacity, ...prev]);
+      toast({ title: 'Sucesso!', description: 'Capacidade de processamento cadastrada com sucesso.' });
+      return newCapacity;
+    } catch (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        toast({ 
+          variant: 'destructive', 
+          title: 'Tabela não encontrada', 
+          description: 'A tabela de capacidade de processamento ainda não foi criada no banco. Execute o script SQL CRIAR_TABELA_CAPACIDADE_PROCESSAMENTO.sql no Supabase.' 
+        });
+      } else {
+        toast({ variant: 'destructive', title: 'Erro ao cadastrar capacidade', description: error.message });
+      }
+      throw error;
+    }
+  };
+
+  const updateReturnsCapacity = async (id, updates) => {
+    try {
+      const updatedCapacity = await api.updateReturnsCapacity(id, updates);
+      setReturnsCapacity(prev => prev.map(cap => cap.id === id ? updatedCapacity : cap));
+      toast({ title: 'Sucesso!', description: 'Capacidade de processamento atualizada com sucesso.' });
+      return updatedCapacity;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar capacidade', description: error.message });
+      throw error;
+    }
+  };
+
+  const deleteReturnsCapacity = async (id) => {
+    try {
+      await api.deleteReturnsCapacity(id);
+      setReturnsCapacity(prev => prev.filter(cap => cap.id !== id));
+      toast({ title: 'Sucesso!', description: 'Capacidade de processamento excluída com sucesso.' });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir capacidade', description: error.message });
+      throw error;
+    }
+  };
+
+  // Acionamentos
+  const addAcionamento = async (acionamentoData) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const newAcionamento = await api.createAcionamento({
+        ...acionamentoData,
+        user_id: user?.id || null
+      });
+      setAcionamentos(prev => [newAcionamento, ...prev]);
+      toast({ title: 'Sucesso!', description: 'Acionamento criado com sucesso.' });
+      return newAcionamento;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao criar acionamento', description: error.message });
+      throw error;
+    }
+  };
+
+  const updateAcionamento = async (id, updates) => {
+    try {
+      const updatedAcionamento = await api.updateAcionamento(id, updates);
+      setAcionamentos(prev => prev.map(ac => ac.id === id ? updatedAcionamento : ac));
+      toast({ title: 'Sucesso!', description: 'Acionamento atualizado com sucesso.' });
+      return updatedAcionamento;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar acionamento', description: error.message });
+      throw error;
+    }
+  };
+
+  const deleteAcionamento = async (id) => {
+    try {
+      await api.deleteAcionamento(id);
+      setAcionamentos(prev => prev.filter(ac => ac.id !== id));
+      toast({ title: 'Sucesso!', description: 'Acionamento excluído com sucesso.' });
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir acionamento', description: error.message });
+      throw error;
+    }
+  };
+
   // Log quando o value é criado/atualizado
   console.log('🎯 [DataContext] Criando value object:', {
     usersCount: users?.length || 0,
@@ -1325,6 +1549,14 @@ export const DataProvider = ({ children }) => {
     addReturnsPlanner,
     updateReturnsPlanner,
     deleteReturnsPlanner,
+    returnsCapacity,
+    addReturnsCapacity,
+    updateReturnsCapacity,
+    deleteReturnsCapacity,
+    acionamentos,
+    addAcionamento,
+    updateAcionamento,
+    deleteAcionamento,
     fetchData, // Expor fetchData para permitir refresh manual em componentes
   };
 

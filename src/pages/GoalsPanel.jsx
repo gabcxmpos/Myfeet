@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DollarSign, Percent, Hash, Truck, Target, BarChart, Save, Upload, Download, FileText } from 'lucide-react';
+import { DollarSign, Percent, Hash, Truck, Target, BarChart, Save, Upload, Download, FileText, Store, TrendingUp, Settings } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
@@ -28,14 +28,28 @@ const GoalStoreCard = ({ store, onSelect, selected }) => {
     <motion.div
       onClick={() => onSelect(store.id)}
       className={cn(
-        "bg-card p-4 rounded-lg cursor-pointer border-2 transition-all",
-        selected ? 'border-primary shadow-lg' : 'border-border hover:border-primary/50',
+        "relative px-4 py-3 rounded-xl cursor-pointer border transition-all group",
+        selected 
+          ? 'border-primary bg-primary/10 shadow-md shadow-primary/10' 
+          : 'border-border/50 bg-secondary/30 hover:border-primary/50 hover:bg-secondary/50',
         getBrandClass(store.bandeira)
       )}
-      whileHover={{ y: -5 }}
+      whileHover={{ scale: 1.02, x: 2 }}
+      whileTap={{ scale: 0.98 }}
     >
-      <p className="font-semibold text-foreground truncate">{store.name}</p>
-      <p className="text-sm text-muted-foreground">{store.code}</p>
+      {selected && (
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-l-xl" />
+      )}
+      <div className="flex items-center gap-2">
+        <div className={cn(
+          "w-2 h-2 rounded-full transition-all",
+          selected ? 'bg-primary' : 'bg-muted-foreground/30 group-hover:bg-primary/50'
+        )} />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-foreground truncate text-sm leading-tight">{store.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{store.code}</p>
+        </div>
+      </div>
     </motion.div>
   );
 };
@@ -62,6 +76,10 @@ const GoalsPanel = () => {
   const [filters, setFilters] = useState({ supervisor: 'all', franqueado: 'all', bandeira: 'all' });
   const [goals, setGoals] = useState({});
   const [weights, setWeights] = useState({});
+  const [goalMonth, setGoalMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -84,10 +102,22 @@ const GoalsPanel = () => {
     setSelectedStore(storeId);
     const store = stores.find(s => s.id === storeId);
     if (store) {
-      setGoals(store.goals || { faturamento: 0, pa: 0, ticketMedio: 0, prateleiraInfinita: 0, conversao: 0 });
-      setWeights(store.weights || { faturamento: 20, pa: 20, ticketMedio: 20, prateleiraInfinita: 20, conversao: 20 });
+      // Carregar metas do mês selecionado usando JSONB (goals[goalMonth])
+      const storeGoals = store.goals || {};
+      const monthGoals = typeof storeGoals === 'object' && !Array.isArray(storeGoals) 
+        ? (storeGoals[goalMonth] || { faturamento: 0, pa: 0, ticketMedio: 0, prateleiraInfinita: 0, conversao: 0 })
+        : { faturamento: 0, pa: 0, ticketMedio: 0, prateleiraInfinita: 0, conversao: 0 };
+      
+      // Carregar pesos do mês selecionado usando JSONB (weights[goalMonth])
+      const storeWeights = store.weights || {};
+      const monthWeights = typeof storeWeights === 'object' && !Array.isArray(storeWeights)
+        ? (storeWeights[goalMonth] || { faturamento: 20, pa: 20, ticketMedio: 20, prateleiraInfinita: 20, conversao: 20 })
+        : { faturamento: 20, pa: 20, ticketMedio: 20, prateleiraInfinita: 20, conversao: 20 };
+      
+      setGoals(monthGoals);
+      setWeights(monthWeights);
     }
-  }, [stores]);
+  }, [stores, goalMonth]);
   
   useEffect(() => {
     const storeIdFromQuery = query.get('storeId');
@@ -164,13 +194,24 @@ const GoalsPanel = () => {
     setWeights(finalRoundedWeights);
   };
 
-  const handleSaveGoals = () => {
+  const handleSaveGoals = async () => {
     if (!selectedStore) return;
-    updateStore(selectedStore, { goals });
-    toast({ title: 'Sucesso!', description: 'Metas da loja salvas.' });
+    
+    const store = stores.find(s => s.id === selectedStore);
+    if (!store) return;
+    
+    // Atualizar goals usando JSONB (goals[goalMonth])
+    const currentGoals = store.goals || {};
+    const updatedGoals = {
+      ...(typeof currentGoals === 'object' && !Array.isArray(currentGoals) ? currentGoals : {}),
+      [goalMonth]: goals
+    };
+    
+    await updateStore(selectedStore, { goals: updatedGoals });
+    toast({ title: 'Sucesso!', description: `Metas da loja salvas para ${goalMonth}.` });
   };
 
-  const handleSaveAll = (e) => {
+  const handleSaveAll = async (e) => {
     e.preventDefault();
     if (!selectedStore) {
       toast({ title: 'Erro', description: 'Por favor, selecione uma loja.', variant: 'destructive' });
@@ -181,14 +222,36 @@ const GoalsPanel = () => {
       toast({ title: 'Erro de Validação', description: `A soma dos pesos deve ser 100%. Atualmente é ${totalWeight.toFixed(0)}%.`, variant: 'destructive' });
       return;
     }
-    updateStore(selectedStore, { goals, weights });
-    toast({ title: 'Sucesso!', description: 'Metas e pesos da loja atualizados.' });
+    
+    const store = stores.find(s => s.id === selectedStore);
+    if (!store) return;
+    
+    // Atualizar goals usando JSONB (goals[goalMonth])
+    const currentGoals = store.goals || {};
+    const updatedGoals = {
+      ...(typeof currentGoals === 'object' && !Array.isArray(currentGoals) ? currentGoals : {}),
+      [goalMonth]: goals
+    };
+    
+    // Atualizar weights usando JSONB (weights[goalMonth])
+    const currentWeights = store.weights || {};
+    const updatedWeights = {
+      ...(typeof currentWeights === 'object' && !Array.isArray(currentWeights) ? currentWeights : {}),
+      [goalMonth]: weights
+    };
+    
+    await updateStore(selectedStore, { 
+      goals: updatedGoals,
+      weights: updatedWeights
+    });
+    toast({ title: 'Sucesso!', description: `Metas e pesos da loja atualizados para ${goalMonth}.` });
   };
 
   // Função para gerar template CSV
   const generateCSVTemplate = () => {
     const headers = [
       'codigo_loja',
+      'mes_ano',
       'faturamento',
       'pa',
       'ticketMedio',
@@ -197,11 +260,13 @@ const GoalsPanel = () => {
     ];
     
     // Exemplos com diferentes formatos: formato brasileiro, valor vazio, zerado
-    // IMPORTANTE: codigo_loja é obrigatório, mas valores de metas podem estar vazios ou zerados
+    // IMPORTANTE: codigo_loja é obrigatório, mes_ano é opcional (se vazio, usa o mês selecionado no formulário)
+    // Valores de metas podem estar vazios ou zerados
+    const currentMonth = goalMonth; // Usar o mês atual selecionado como exemplo
     const exampleRows = [
-      ['af013', 'R$ 150.000,00', '2,8', '250,50', '15000', '15'],
-      ['af015', '180000', '3.0', 'R$ 280,00', '', '18'],
-      ['af017', 'R$ 200.000,50', '3,2', '300', '0', '20']
+      ['af013', currentMonth, 'R$ 150.000,00', '2,8', '250,50', '15000', '15'],
+      ['af015', currentMonth, '180000', '3.0', 'R$ 280,00', '', '18'],
+      ['af017', '', 'R$ 200.000,50', '3,2', '300', '0', '20'] // Exemplo sem mês (usará o mês do formulário)
     ];
     
     const csvContent = [
@@ -221,7 +286,7 @@ const GoalsPanel = () => {
     
     toast({ 
       title: 'Template baixado!', 
-      description: 'Preencha o arquivo com os dados das lojas. Aceita valores formatados (R$, pontos, vírgulas) e células vazias. Os pesos serão fixos em 20% cada.' 
+      description: 'Preencha o arquivo com os dados das lojas. A coluna "mes_ano" é opcional (formato YYYY-MM). Se vazia, usará o mês selecionado no formulário. Aceita valores formatados (R$, pontos, vírgulas) e células vazias. Os pesos serão fixos em 20% cada.' 
     });
   };
 
@@ -293,6 +358,8 @@ const GoalsPanel = () => {
     if (missingHeaders.length > 0) {
       throw new Error(`Cabeçalhos obrigatórios faltando: ${missingHeaders.join(', ')}`);
     }
+    
+    // mes_ano é opcional - se não existir, será usado o mês selecionado no formulário
     
     const data = [];
     for (let i = 1; i < lines.length; i++) {
@@ -378,9 +445,37 @@ const GoalsPanel = () => {
           conversao: 20
         };
         
+        // Usar o mês do CSV se disponível, senão usar o mês selecionado no formulário
+        const rowMonth = row.mes_ano || row['mes_ano'] || '';
+        // Validar formato do mês (YYYY-MM)
+        let targetMonth = goalMonth; // Padrão: mês do formulário
+        if (rowMonth && rowMonth.trim() !== '') {
+          const monthRegex = /^\d{4}-\d{2}$/;
+          if (monthRegex.test(rowMonth.trim())) {
+            targetMonth = rowMonth.trim();
+          } else {
+            errors.push(`Linha ${csvData.indexOf(row) + 2}: Formato de mês inválido "${rowMonth}". Use YYYY-MM (ex: 2024-01). Usando mês do formulário.`);
+          }
+        }
+        
         try {
-          // Atualizar a loja usando a API diretamente com metas e pesos fixos
-          await updateStoreAPI(store.id, { goals, weights });
+          // Atualizar a loja usando JSONB (goals[targetMonth] e weights[targetMonth])
+          const currentGoals = store.goals || {};
+          const updatedGoals = {
+            ...(typeof currentGoals === 'object' && !Array.isArray(currentGoals) ? currentGoals : {}),
+            [targetMonth]: goals
+          };
+          
+          const currentWeights = store.weights || {};
+          const updatedWeights = {
+            ...(typeof currentWeights === 'object' && !Array.isArray(currentWeights) ? currentWeights : {}),
+            [targetMonth]: weights
+          };
+          
+          await updateStoreAPI(store.id, { 
+            goals: updatedGoals,
+            weights: updatedWeights
+          });
           successCount++;
         } catch (error) {
           errors.push(`Linha ${csvData.indexOf(row) + 2}: Erro ao atualizar loja "${codigoLoja}": ${error.message || 'Erro desconhecido'}`);
@@ -457,6 +552,18 @@ const GoalsPanel = () => {
             <p className="text-muted-foreground mt-1">Selecione uma loja e defina suas metas e pesos.</p>
           </div>
           <div className="flex items-center gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="csvMonth" className="text-xs text-muted-foreground">Mês padrão CSV</Label>
+              <Input
+                id="csvMonth"
+                type="month"
+                value={goalMonth}
+                onChange={(e) => setGoalMonth(e.target.value)}
+                min="2020-01"
+                className="w-36 bg-secondary h-9 text-sm"
+                title="Mês que será usado quando a coluna mes_ano estiver vazia no CSV"
+              />
+            </div>
             <Button 
               type="button" 
               onClick={generateCSVTemplate} 
@@ -500,83 +607,272 @@ const GoalsPanel = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-h-48 overflow-y-auto pr-2">
-            {filteredStores.map(store => (
-              <GoalStoreCard key={store.id} store={store} onSelect={handleStoreSelect} selected={selectedStore === store.id} />
-            ))}
-        </div>
-
-        {selectedStore && (
-          <motion.form
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            onSubmit={handleSaveAll}
-            className="bg-card rounded-xl shadow-lg border border-border p-8 space-y-8 mt-6"
-          >
-            <div>
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-foreground flex items-center gap-2"><Target /> Metas da Loja</h2>
-                <Button type="button" onClick={handleSaveGoals} variant="outline" size="sm" className="gap-2">
-                  <Save className="w-4 h-4" /> Salvar Metas
-                </Button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mt-4">
-                {goalFields.map(field => (
-                  <div key={field.name} className="space-y-2">
-                    <Label htmlFor={field.name} className="flex items-center gap-2 text-muted-foreground"><field.icon className="w-4 h-4" />{field.label}</Label>
-                    <Input id={field.name} name={field.name} type="number" step="any" value={goals[field.name] || ''} onChange={handleGoalChange} placeholder={field.placeholder} />
+        {/* Layout de duas colunas: Lojas à esquerda, Formulário à direita */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Coluna Esquerda: Lista de Lojas */}
+          <div className="lg:col-span-1">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="bg-card rounded-2xl border border-border/50 shadow-sm h-full"
+            >
+              <div className="p-5 border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary/10 rounded-lg">
+                    <Store className="w-5 h-5 text-primary" />
                   </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-foreground">Lojas</h2>
+                    <p className="text-xs text-muted-foreground">{filteredStores.length} disponível{filteredStores.length !== 1 ? 'eis' : ''}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 space-y-2 max-h-[calc(100vh-200px)] md:max-h-[calc(100vh-280px)] overflow-y-auto overscroll-contain">
+                {filteredStores.map(store => (
+                  <GoalStoreCard key={store.id} store={store} onSelect={handleStoreSelect} selected={selectedStore === store.id} />
                 ))}
               </div>
-            </div>
-            
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">Termômetro de Peso Interativo</h2>
-              <p className="text-muted-foreground text-sm">Ajuste o peso de cada indicador. A soma é sempre 100%.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4 items-center">
-                <div className="space-y-6">
-                  {goalFields.map(field => (
-                    <div key={`weight-${field.name}`} className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor={`weight-${field.name}`} className="col-span-1 text-muted-foreground">{field.label}</Label>
-                      <Slider
-                        id={`weight-${field.name}`}
-                        name={field.name}
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={[weights[field.name] || 0]}
-                        onValueChange={(value) => handleWeightChange(field.name, value[0])}
-                        className="col-span-2"
-                      />
-                      <div className="col-span-1 flex items-center justify-end gap-2">
-                        <Input type="number" value={weights[field.name] || 0} onChange={(e) => handleWeightChange(field.name, parseInt(e.target.value) || 0)} className="w-20 h-8 text-center" />
-                        <span className="font-bold text-primary">%</span>
+            </motion.div>
+          </div>
+
+          {/* Coluna Direita: Formulário de Metas e Pesos */}
+          <div className="lg:col-span-4">
+            {selectedStore ? (
+              <motion.form
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                onSubmit={handleSaveAll}
+                className="space-y-6"
+              >
+                {/* Header Card */}
+                <div className="bg-card rounded-2xl border border-border/50 shadow-sm p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl">
+                        <TrendingUp className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-foreground">Metas de Performance</h2>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          {stores.find(s => s.id === selectedStore)?.name || 'Loja selecionada'}
+                        </p>
                       </div>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 bg-secondary/50 px-3 py-2 rounded-lg">
+                        <Label htmlFor="goalMonth" className="text-sm text-muted-foreground whitespace-nowrap">Período:</Label>
+                        <Input
+                          id="goalMonth"
+                          type="month"
+                          value={goalMonth}
+                          min="2020-01"
+                          onChange={(e) => {
+                            setGoalMonth(e.target.value);
+                            const store = stores.find(s => s.id === selectedStore);
+                            if (store) {
+                              // Carregar metas usando JSONB (goals[goalMonth])
+                              const storeGoals = store.goals || {};
+                              const newMonthGoals = typeof storeGoals === 'object' && !Array.isArray(storeGoals)
+                                ? (storeGoals[e.target.value] || { faturamento: 0, pa: 0, ticketMedio: 0, prateleiraInfinita: 0, conversao: 0 })
+                                : { faturamento: 0, pa: 0, ticketMedio: 0, prateleiraInfinita: 0, conversao: 0 };
+                              
+                              // Carregar pesos usando JSONB (weights[goalMonth])
+                              const storeWeights = store.weights || {};
+                              const newMonthWeights = typeof storeWeights === 'object' && !Array.isArray(storeWeights)
+                                ? (storeWeights[e.target.value] || { faturamento: 20, pa: 20, ticketMedio: 20, prateleiraInfinita: 20, conversao: 20 })
+                                : { faturamento: 20, pa: 20, ticketMedio: 20, prateleiraInfinita: 20, conversao: 20 };
+                              
+                              setGoals(newMonthGoals);
+                              setWeights(newMonthWeights);
+                            }
+                          }}
+                          className="w-36 bg-background border-0 h-9 text-sm font-medium"
+                        />
+                      </div>
+                      <Button type="button" onClick={handleSaveGoals} variant="outline" className="gap-2 h-9">
+                        <Save className="w-4 h-4" /> Salvar Metas
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={pieData} cx="50%" cy="50%" labelLine={false} outerRadius={120} fill="#8884d8" dataKey="value" nameKey="name">
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-              <div className="text-right mt-4 font-bold text-lg">Total: <span className={Math.round(totalWeight) === 100 ? 'text-green-400' : 'text-red-400'}>{totalWeight.toFixed(0)}%</span></div>
-            </div>
 
-            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-blue-500 text-primary-foreground gap-2">
-              <Save className="w-4 h-4" />
-              Salvar Todas as Alterações
-            </Button>
-          </motion.form>
-        )}
+                {/* Grid de Metas e Pesos - Layout Equilibrado */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Card de Metas - Metade da largura */}
+                  <motion.div 
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="bg-card rounded-2xl border border-border/50 shadow-sm p-6"
+                  >
+                    <div className="flex items-center gap-3 mb-6 pb-4 border-b border-border/50">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <Target className="w-5 h-5 text-primary" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-foreground">Metas de Performance</h3>
+                    </div>
+                    <div className="space-y-4">
+                      {goalFields.map((field, index) => (
+                        <motion.div 
+                          key={field.name} 
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.2 + index * 0.05 }}
+                          className="space-y-2"
+                        >
+                          <Label htmlFor={field.name} className="flex items-center gap-2 text-sm font-medium text-foreground">
+                            <field.icon className="w-4 h-4 text-primary" />
+                            <span>{field.label}</span>
+                          </Label>
+                          <Input 
+                            id={field.name} 
+                            name={field.name} 
+                            type="number" 
+                            step="any" 
+                            value={goals[field.name] || ''} 
+                            onChange={handleGoalChange} 
+                            placeholder={field.placeholder} 
+                            className="h-11 text-sm bg-secondary/30 border-border/50 focus:border-primary/50" 
+                          />
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
+
+                  {/* Card de Pesos e Gráfico - Metade da largura */}
+                  <motion.div 
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="bg-card rounded-2xl border border-border/50 shadow-sm p-6 flex flex-col"
+                  >
+                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-border/50">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/10 rounded-lg">
+                          <Settings className="w-5 h-5 text-primary" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-foreground">Distribuição de Pesos</h3>
+                      </div>
+                      <div className="flex items-center gap-2 px-4 py-2 bg-secondary/30 rounded-lg">
+                        <span className="text-sm text-muted-foreground">Total:</span>
+                        <span className={cn(
+                          "text-base font-bold",
+                          Math.round(totalWeight) === 100 ? 'text-green-400' : 'text-red-400'
+                        )}>
+                          {totalWeight.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Layout vertical: Sliders acima, Gráfico abaixo */}
+                    <div className="flex-1 flex flex-col gap-6">
+                      {/* Sliders de peso */}
+                      <div className="space-y-4">
+                        {goalFields.map((field, index) => (
+                          <motion.div 
+                            key={`weight-${field.name}`} 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.3 + index * 0.05 }}
+                            className="space-y-2"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <field.icon className="w-4 h-4 text-muted-foreground" />
+                                <Label htmlFor={`weight-${field.name}`} className="text-sm font-medium text-foreground">
+                                  {field.label}
+                                </Label>
+                              </div>
+                              <div className="flex items-center gap-1.5 min-w-[70px] justify-end">
+                                <Input 
+                                  type="number" 
+                                  value={weights[field.name] || 0} 
+                                  onChange={(e) => handleWeightChange(field.name, parseInt(e.target.value) || 0)} 
+                                  className="w-14 h-8 text-center text-sm font-semibold bg-secondary/30 border-border/50" 
+                                />
+                                <span className="text-sm font-bold text-primary">%</span>
+                              </div>
+                            </div>
+                            <Slider
+                              id={`weight-${field.name}`}
+                              name={field.name}
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={[weights[field.name] || 0]}
+                              onValueChange={(value) => handleWeightChange(field.name, value[0])}
+                              className="w-full"
+                            />
+                          </motion.div>
+                        ))}
+                      </div>
+                      
+                      {/* Gráfico - Centralizado abaixo dos sliders */}
+                      <div className="flex-1 flex items-center justify-center min-h-[280px] pt-4 border-t border-border/30">
+                        <div className="w-full h-full max-w-xs">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie 
+                                data={pieData} 
+                                cx="50%" 
+                                cy="50%" 
+                                labelLine={false} 
+                                outerRadius={90} 
+                                innerRadius={35}
+                                fill="#8884d8" 
+                                dataKey="value" 
+                                nameKey="name"
+                                paddingAngle={2}
+                              >
+                                {pieData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Legend 
+                                wrapperStyle={{ fontSize: '11px', paddingTop: '15px' }} 
+                                iconSize={10}
+                                formatter={(value) => <span className="text-xs">{value}</span>}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                </div>
+
+                {/* Botão de Salvar */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                >
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-gradient-to-r from-primary via-primary to-blue-600 hover:from-primary/90 hover:to-blue-600/90 text-primary-foreground gap-2 h-12 text-base font-semibold shadow-lg shadow-primary/20"
+                  >
+                    <Save className="w-5 h-5" />
+                    Salvar Todas as Alterações
+                  </Button>
+                </motion.div>
+              </motion.form>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-card rounded-2xl border border-border/50 shadow-sm p-16 text-center"
+              >
+                <div className="max-w-md mx-auto">
+                  <div className="p-4 bg-primary/10 rounded-2xl w-fit mx-auto mb-6">
+                    <Target className="w-12 h-12 text-primary/60" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-foreground mb-2">Selecione uma loja</h3>
+                  <p className="text-muted-foreground">Escolha uma loja na lista ao lado para começar a definir metas e pesos de performance.</p>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );

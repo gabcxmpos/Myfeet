@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import DevolucoesChecklistManagement from './DevolucoesChecklistManagement';
 import ComunicacaoChecklistManagement from './ComunicacaoChecklistManagement';
@@ -13,11 +14,32 @@ import { CheckSquare, Route, MessageCircle, Settings, RotateCcw } from 'lucide-r
 
 const ChecklistsManagement = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('devolucoes');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab');
+  
+  // Determinar qual aba mostrar baseado no perfil do usuário ou parâmetro da URL
+  const getInitialTab = () => {
+    if (tabFromUrl) return tabFromUrl;
+    if (!user) return 'devolucoes';
+    if (user?.role === 'admin') return 'diario';
+    if (user?.role === 'devoluções') return 'exec-devolucoes';
+    if (user?.role === 'motorista') return 'exec-motorista';
+    if (user?.role === 'comunicação') return 'exec-comunicacao';
+    return 'devolucoes';
+  };
+
+  const [activeTab, setActiveTab] = useState(getInitialTab());
+
+  // Atualizar aba quando o parâmetro da URL mudar
+  React.useEffect(() => {
+    if (tabFromUrl) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
 
   // Determinar qual aba mostrar baseado no perfil do usuário
   React.useEffect(() => {
-    if (!user) return;
+    if (!user || tabFromUrl) return;
     
     if (user?.role === 'admin') {
       setActiveTab('diario');
@@ -28,7 +50,13 @@ const ChecklistsManagement = () => {
     } else if (user?.role === 'comunicação') {
       setActiveTab('exec-comunicacao');
     }
-  }, [user]);
+  }, [user, tabFromUrl]);
+
+  // Atualizar URL quando a aba mudar
+  const handleTabChange = (value) => {
+    setActiveTab(value);
+    setSearchParams({ tab: value });
+  };
 
   if (!user) {
     return null;
@@ -53,7 +81,7 @@ const ChecklistsManagement = () => {
           </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="w-full flex flex-wrap gap-2 h-auto">
             {/* Abas para Admin */}
             {isAdmin && (

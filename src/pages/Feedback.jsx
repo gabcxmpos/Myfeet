@@ -27,6 +27,8 @@ const Feedback = () => {
   const [feedbackText, setFeedbackText] = useState('');
   const [developmentPoint, setDevelopmentPoint] = useState('');
   const [satisfaction, setSatisfaction] = useState(3);
+  const [managerSatisfaction, setManagerSatisfaction] = useState(3); // Satisfação do gerente com o colaborador
+  const [collaboratorSatisfaction, setCollaboratorSatisfaction] = useState(3); // Satisfação do colaborador
   const [isPromotionCandidate, setIsPromotionCandidate] = useState(false);
 
   const storeCollaborators = collaborators.filter(c => c.storeId === user?.storeId || c.store_id === user?.storeId);
@@ -50,6 +52,8 @@ const Feedback = () => {
         feedbackText,
         developmentPoint,
         satisfaction,
+        managerSatisfaction,
+        collaboratorSatisfaction,
         isPromotionCandidate,
       });
       toast({ title: 'Sucesso!', description: 'Feedback enviado para o supervisor.' });
@@ -57,6 +61,8 @@ const Feedback = () => {
       setFeedbackText('');
       setDevelopmentPoint('');
       setSatisfaction(3);
+      setManagerSatisfaction(3);
+      setCollaboratorSatisfaction(3);
       setIsPromotionCandidate(false);
     } catch (error) {
       // Erro já é tratado no DataContext
@@ -91,15 +97,26 @@ const Feedback = () => {
                 </SelectContent>
               </Select>
             </div>
-             <div className="space-y-2">
-              <Label>Nível de Satisfação</Label>
-               <div className="flex items-center justify-around p-2 bg-secondary rounded-lg">
+            <div className="space-y-2">
+              <Label>Satisfação do Gerente com o Colaborador</Label>
+              <div className="flex items-center justify-around p-2 bg-secondary rounded-lg">
                 {satisfactionLevels.map(({level, icon: Icon, color}) => (
-                  <button key={level} type="button" onClick={() => setSatisfaction(level)} className="p-2 rounded-full transition-all duration-200 hover:bg-accent">
-                    <Icon className={cn("w-8 h-8", satisfaction === level ? color : 'text-muted-foreground/50')} />
+                  <button key={level} type="button" onClick={() => setManagerSatisfaction(level)} className="p-2 rounded-full transition-all duration-200 hover:bg-accent">
+                    <Icon className={cn("w-8 h-8", managerSatisfaction === level ? color : 'text-muted-foreground/50')} />
                   </button>
                 ))}
-               </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Satisfação do Colaborador</Label>
+            <div className="flex items-center justify-around p-2 bg-secondary rounded-lg">
+              {satisfactionLevels.map(({level, icon: Icon, color}) => (
+                <button key={level} type="button" onClick={() => setCollaboratorSatisfaction(level)} className="p-2 rounded-full transition-all duration-200 hover:bg-accent">
+                  <Icon className={cn("w-8 h-8", collaboratorSatisfaction === level ? color : 'text-muted-foreground/50')} />
+                </button>
+              ))}
             </div>
           </div>
           

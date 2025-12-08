@@ -77,6 +77,15 @@ const TrainingManagement = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const isAdmin = user?.role === 'admin';
+  const canManageTrainings = user?.role === 'admin' || user?.role === 'comunicação';
+  
+  // Para criação de treinamento, mostrar todas as lojas (próprias e franquias) para admin e comunicação
+  const availableStoresForTraining = useMemo(() => {
+    if (user?.role === 'admin' || user?.role === 'comunicação') {
+      return stores; // Admin e comunicação veem todas as lojas
+    }
+    return stores; // Por padrão, retornar todas (pode ser ajustado se necessário)
+  }, [stores, user?.role]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTraining, setEditingTraining] = useState(null);
   const [updatingPresence, setUpdatingPresence] = useState({});
@@ -556,14 +565,14 @@ const TrainingManagement = () => {
                   <div className="space-y-2">
                     <Label htmlFor="storeIds">Lojas Destinatárias</Label>
                     <StoreMultiSelect
-                      stores={stores}
+                      stores={availableStoresForTraining}
                       selected={formData.storeIds}
                       onChange={(selected) => setFormData({ ...formData, storeIds: selected })}
                       placeholder="Selecione as lojas (ou deixe vazio para todas)"
                       className="bg-secondary"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Deixe vazio para disponibilizar para todas as lojas, ou selecione lojas específicas.
+                      Deixe vazio para disponibilizar para todas as lojas, ou selecione lojas específicas (próprias e franquias).
                     </p>
                   </div>
                 </div>
@@ -911,7 +920,7 @@ const TrainingManagement = () => {
                           >
                             <Users className="w-4 h-4" />
                           </Button>
-                          {isAdmin && (
+                          {canManageTrainings && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -948,7 +957,7 @@ const TrainingManagement = () => {
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
-                          {!isAdmin && (
+                          {!canManageTrainings && (
                             <>
                               <Button
                                 variant="ghost"

@@ -3,9 +3,13 @@ import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { Trophy, Filter } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
+import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { filterStoresByUserType } from '@/lib/storeTypeHelper';
 
 const patentIcons = {
   'Platina': { icon: Trophy, color: 'text-cyan-400' },
@@ -33,10 +37,20 @@ const PatentSummaryCard = ({ summary, className }) => (
 
 const MonthlyRanking = () => {
   const { stores, patentSettings, evaluations } = useData();
+  const { user } = useAuth();
   const [nameFilter, setNameFilter] = useState('');
   const [franquiaFilter, setFranquiaFilter] = useState('all');
+  const [periodFilter, setPeriodFilter] = useState({
+    startDate: '',
+    endDate: ''
+  });
 
-  const franqueados = useMemo(() => ['Loja Própria', ...new Set(stores.map(s => s.franqueado).filter(f => f !== 'Loja Própria'))], [stores]);
+  // Filtrar lojas por tipo (própria vs franquia)
+  const filteredStores = useMemo(() => {
+    return filterStoresByUserType(stores, user?.role, user?.storeId);
+  }, [stores, user?.role, user?.storeId]);
+
+  const franqueados = useMemo(() => ['Loja Própria', ...new Set(filteredStores.map(s => s.franqueado).filter(f => f !== 'Loja Própria'))], [filteredStores]);
 
   const getPatent = (score) => {
     if (score >= patentSettings.platina) return { name: 'Platina', color: patentIcons['Platina'].color, icon: <Trophy /> };
@@ -45,16 +59,37 @@ const MonthlyRanking = () => {
     return { name: 'Bronze', color: patentIcons['Bronze'].color, icon: <Trophy /> };
   };
 
-  // Calcular ranking baseado em avaliações aprovadas reais
-  const approvedEvaluations = useMemo(() => 
-    evaluations.filter(e => e.status === 'approved'), 
-    [evaluations]
-  );
+  // Calcular ranking baseado em avaliações aprovadas reais com filtro de período
+  const approvedEvaluations = useMemo(() => {
+    let filtered = evaluations.filter(e => e.status === 'approved');
+    
+    if (periodFilter.startDate) {
+      const start = new Date(periodFilter.startDate);
+      start.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(e => {
+        const evalDate = new Date(e.date || e.created_at);
+        evalDate.setHours(0, 0, 0, 0);
+        return evalDate >= start;
+      });
+    }
+    
+    if (periodFilter.endDate) {
+      const end = new Date(periodFilter.endDate);
+      end.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(e => {
+        const evalDate = new Date(e.date || e.created_at);
+        evalDate.setHours(23, 59, 59, 999);
+        return evalDate <= end;
+      });
+    }
+    
+    return filtered;
+  }, [evaluations, periodFilter]);
 
   const realRanking = useMemo(() => {
     const pillars = ['Pessoas', 'Performance', 'Ambientação', 'Digital'];
     
-    return stores.map((store) => {
+    return filteredStores.map((store) => {
       // Buscar avaliações aprovadas desta loja
       const storeEvaluations = approvedEvaluations.filter(e => e.storeId === store.id);
       
@@ -67,9 +102,34 @@ const MonthlyRanking = () => {
           let totalWeightedScore = 0;
           let totalWeight = 0;
           
-          const goals = store.goals || {};
-          const results = store.results || {};
-          const weights = store.weights || {};
+          // Determinar o mês baseado no filtro de data (usar o início do período ou mês atual)
+          const getMonthFromFilter = () => {
+            if (periodFilter.startDate) {
+              const date = new Date(periodFilter.startDate);
+              return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            }
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          };
+          const targetMonth = getMonthFromFilter();
+          
+          // Buscar metas usando JSONB (goals[targetMonth])
+          const storeGoals = store.goals || {};
+          const goals = typeof storeGoals === 'object' && !Array.isArray(storeGoals)
+            ? (storeGoals[targetMonth] || {})
+            : (storeGoals || {});
+          
+          // Buscar resultados usando JSONB (store_results[targetMonth])
+          const storeResults = store.store_results || {};
+          const results = typeof storeResults === 'object' && !Array.isArray(storeResults)
+            ? (storeResults[targetMonth] || {})
+            : {};
+          
+          // Buscar pesos usando JSONB (weights[targetMonth])
+          const storeWeights = store.weights || {};
+          const weights = typeof storeWeights === 'object' && !Array.isArray(storeWeights)
+            ? (storeWeights[targetMonth] || {})
+            : (storeWeights || {});
           
           performanceKPIs.forEach(kpi => {
             const goal = goals[kpi] || 0;
@@ -137,7 +197,7 @@ const MonthlyRanking = () => {
       if (!a.hasEvaluations && b.hasEvaluations) return 1;
       return b.finalScore - a.finalScore;
     });
-  }, [stores, approvedEvaluations]);
+  }, [filteredStores, approvedEvaluations]);
 
   // Filtrar apenas lojas com dados e aplicar filtros
   const filteredRanking = realRanking.filter(item => {
@@ -172,7 +232,7 @@ const MonthlyRanking = () => {
             <h1 className="text-3xl font-bold text-foreground">Ranking PPAD</h1>
             <p className="text-muted-foreground mt-1">Classificação geral de desempenho das lojas.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
@@ -191,6 +251,32 @@ const MonthlyRanking = () => {
             </Select>
           </div>
         </div>
+        
+        {/* Filtro de Período */}
+        <Card className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="startDate">Data Inicial</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={periodFilter.startDate}
+                onChange={(e) => setPeriodFilter({ ...periodFilter, startDate: e.target.value })}
+                className="bg-secondary"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="endDate">Data Final</Label>
+              <Input
+                id="endDate"
+                type="date"
+                value={periodFilter.endDate}
+                onChange={(e) => setPeriodFilter({ ...periodFilter, endDate: e.target.value })}
+                className="bg-secondary"
+              />
+            </div>
+          </div>
+        </Card>
 
         <PatentSummaryCard summary={patentSummary} />
 

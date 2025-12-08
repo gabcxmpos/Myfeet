@@ -17,6 +17,7 @@ const Chave = () => {
     const [isEditing, setIsEditing] = useState(false);
 
     const isAdmin = user?.role === 'admin';
+    const canEdit = user?.role === 'admin' || user?.role === 'comunicação';
 
     useEffect(() => {
         // Garantir que sempre tenha um valor string
@@ -53,14 +54,14 @@ const Chave = () => {
                     className="bg-card p-8 rounded-xl shadow-lg border border-border"
                 >
                     <h2 className="text-2xl font-bold text-foreground mb-4">Detalhes da Jornada</h2>
-                    {isAdmin && !isEditing ? (
+                    {canEdit && !isEditing ? (
                         <div 
                             className="prose prose-invert max-w-none text-muted-foreground" 
                             dangerouslySetInnerHTML={{ 
                                 __html: (content || '').replace(/\n/g, '<br />').replace(/### (.*)/g, '<h3>$1</h3>') 
                             }} 
                         />
-                    ) : isAdmin && isEditing ? (
+                    ) : canEdit && isEditing ? (
                         <Textarea
                             value={content || ''}
                             onChange={(e) => setContent(e.target.value)}
@@ -76,7 +77,7 @@ const Chave = () => {
                         />
                     )}
 
-                    {isAdmin && (
+                    {canEdit && (
                         <div className="mt-6 text-right">
                             {isEditing ? (
                                 <div className="flex gap-2 justify-end">

@@ -4,13 +4,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '@/contexts/DataContext';
 import { useToast } from '@/components/ui/use-toast';
+import { updateStore as updateStoreAPI } from '@/lib/supabaseService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, Target, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users, AlertCircle, FileText } from 'lucide-react';
+import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, Target, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users, AlertCircle, FileText, Download, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { filterStoresByUserType } from '@/lib/storeTypeHelper';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,9 +60,25 @@ const PerformanceCarousel = ({ stores }) => {
 
     const performanceData = useMemo(() => {
         if (!stores) return { top: [], bottom: [] };
+        // Usar mês atual como padrão
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        
         const data = stores.map(store => {
-            const goal = store.goals?.[selectedKpi] || 0;
-            const result = store.results?.[selectedKpi] || 0;
+            // Buscar metas usando JSONB (goals[currentMonth])
+            const storeGoals = store.goals || {};
+            const goals = typeof storeGoals === 'object' && !Array.isArray(storeGoals)
+              ? (storeGoals[currentMonth] || {})
+              : (storeGoals || {});
+            
+            // Buscar resultados usando JSONB (store_results[currentMonth])
+            const storeResults = store.store_results || {};
+            const results = typeof storeResults === 'object' && !Array.isArray(storeResults)
+              ? (storeResults[currentMonth] || {})
+              : {};
+            
+            const goal = goals[selectedKpi] || 0;
+            const result = results[selectedKpi] || 0;
             const percentage = goal > 0 ? (result / goal) * 100 : 0;
             return {
                 storeName: store.name,
@@ -144,10 +162,26 @@ const StoreGoalThermometer = ({ store }) => {
         setSelectedKpi('faturamento');
     }, [store.id]);
 
-    if (!store || !store.goals || !store.results) return null;
+    // Usar mês atual como padrão
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Buscar metas usando JSONB (goals[currentMonth])
+    const storeGoals = store?.goals || {};
+    const goals = typeof storeGoals === 'object' && !Array.isArray(storeGoals)
+      ? (storeGoals[currentMonth] || {})
+      : (storeGoals || {});
+    
+    // Buscar resultados usando JSONB (store_results[currentMonth])
+    const storeResults = store?.store_results || {};
+    const results = typeof storeResults === 'object' && !Array.isArray(storeResults)
+      ? (storeResults[currentMonth] || {})
+      : {};
+    
+    if (!store || (!goals[selectedKpi] && !store.goals?.[selectedKpi]) || (!results[selectedKpi] && !store.results?.[selectedKpi])) return null;
 
-    const goal = store.goals[selectedKpi] || 0;
-    const result = store.results[selectedKpi] || 0;
+    const goal = goals[selectedKpi] || 0;
+    const result = results[selectedKpi] || 0;
     const percentage = goal > 0 ? Math.min(Math.round((result / goal) * 100), 150) : 0;
     
     let bgColor = 'bg-red-500';
@@ -188,7 +222,7 @@ const StoreGoalThermometer = ({ store }) => {
 
 const StoreFormModal = ({ store, onSave, onOpenChange }) => {
   const [formData, setFormData] = useState(store || {
-    code: '', name: '', bandeira: '', shopping: '', manager: '', supervisor: '', franqueado: '', estado: '', telefone: ''
+    code: '', name: '', bandeira: '', shopping: '', manager: '', supervisor: '', franqueado: '', estado: '', telefone: '', tipo: 'propria'
   });
 
   const handleChange = (e) => {
@@ -244,61 +278,22 @@ const StoreFormModal = ({ store, onSave, onOpenChange }) => {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="tipo">Tipo de Loja *</Label>
+            <Select onValueChange={(value) => handleSelectChange('tipo', value)} value={formData.tipo || 'propria'}>
+              <SelectTrigger id="tipo" className="bg-secondary"><SelectValue placeholder="Selecione o tipo..." /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="propria">Própria</SelectItem>
+                <SelectItem value="franquia">Franquia</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <Button type="submit" className="w-full bg-primary text-primary-foreground hover:bg-primary/90">{store ? 'Salvar Alterações' : 'Cadastrar Loja'}</Button>
       </form>
     </DialogContent>
   );
 };
-
-const ResultsFormModal = ({ store, onSave, onOpenChange }) => {
-    const [results, setResults] = useState(store?.results || {});
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setResults(prev => ({...prev, [name]: parseFloat(value) || 0 }));
-    }
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(store.id, { results });
-        onOpenChange(false);
-    }
-    
-    return (
-        <DialogContent className="max-w-xl bg-card border-border">
-            <DialogHeader>
-                <DialogTitle>Lançar Resultados - {store.name}</DialogTitle>
-                <DialogDescription>
-                  Preencha os resultados da loja.
-                </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="mt-4 space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                     {resultFields.map(field => (
-                        <div key={field.name} className="space-y-2">
-                            <Label htmlFor={field.name} className="flex items-center gap-2 text-muted-foreground">
-                                <field.icon className="w-4 h-4" />{field.label}
-                            </Label>
-                            <Input 
-                                id={field.name} 
-                                name={field.name} 
-                                type="number" 
-                                step="any" 
-                                value={results[field.name] || ''} 
-                                onChange={handleChange} 
-                                placeholder={field.placeholder}
-                                className="bg-secondary"
-                            />
-                        </div>
-                    ))}
-                </div>
-                <Button type="submit" className="w-full bg-primary hover:bg-primary/90">Salvar Resultados</Button>
-            </form>
-        </DialogContent>
-    );
-};
-
 
 const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users }) => {
   if (!evaluation) return null;
@@ -431,12 +426,12 @@ const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onV
                 <Button variant="ghost" size="icon" onClick={() => onViewDetail(ev)} title="Ver detalhes">
                   <Eye className="w-5 h-5 text-blue-500 hover:text-blue-400" />
                 </Button>
-                {(user.role === 'admin' || user.role === 'supervisor') && (
+                {(user.role === 'admin' || user.role === 'supervisor' || user.role === 'supervisor_franquia' || user.role === 'comunicação') && (
                   <Button variant="ghost" size="icon" onClick={() => onApprove(ev.id)} title="Aprovar">
                     <CheckCircle className="w-5 h-5 text-green-500 hover:text-green-400" />
                   </Button>
                 )}
-                {user.role === 'admin' && (
+                {(user.role === 'admin' || user.role === 'supervisor' || user.role === 'supervisor_franquia' || user.role === 'comunicação') && (
                   <Button variant="ghost" size="icon" onClick={() => onDelete(ev.id)} title="Excluir">
                     <Trash2 className="w-5 h-5 text-destructive hover:text-red-400" />
                   </Button>
@@ -497,10 +492,10 @@ const ViewEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onView
                 <Button variant="ghost" size="icon" onClick={() => onViewDetail(ev)} title="Ver detalhes">
                   <Eye className="w-5 h-5 text-blue-500 hover:text-blue-400" />
                 </Button>
-                {(user.role === 'admin' || user.role === 'supervisor') && ev.status === 'pending' && (
+                {(user.role === 'admin' || user.role === 'supervisor' || user.role === 'comunicação') && ev.status === 'pending' && (
                   <Button variant="ghost" size="icon" onClick={() => onApprove(ev.id)}><CheckCircle className="w-5 h-5 text-green-500 hover:text-green-400" /></Button>
                 )}
-                {user.role === 'admin' && (
+                {(user.role === 'admin' || user.role === 'supervisor' || user.role === 'supervisor_franquia' || user.role === 'comunicação') && (
                   <Button variant="ghost" size="icon" onClick={() => onDelete(ev.id)}><Trash2 className="w-5 h-5 text-destructive hover:text-red-400" /></Button>
                 )}
               </div>
@@ -705,16 +700,46 @@ const StoresManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const canManageStores = user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'comunicação';
 
   // Refresh automático otimizado para mobile
   useOptimizedRefresh(fetchData);
 
+  const [franqueadoFilter, setFranqueadoFilter] = useState('all'); // 'all' ou nome do franqueado
+  const [resultMonthCSV, setResultMonthCSV] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [isUploadingResults, setIsUploadingResults] = useState(false);
+  const resultsFileInputRef = React.useRef(null);
+  
+  // Primeiro filtrar por tipo (própria vs franquia)
+  const storesByType = useMemo(() => {
+    let filtered = filterStoresByUserType(stores, user?.role, user?.storeId);
+    
+    // Aplicar filtro de franqueado se selecionado
+    if (franqueadoFilter !== 'all') {
+      filtered = filtered.filter(s => {
+        const franqueado = s.franqueado || 'Loja Própria';
+        return franqueado === franqueadoFilter;
+      });
+    }
+    
+    return filtered;
+  }, [stores, user?.role, user?.storeId, franqueadoFilter]);
+  
+  // Lista de franqueados disponíveis
+  const franqueados = useMemo(() => {
+    const filtered = filterStoresByUserType(stores, user?.role, user?.storeId);
+    return ['all', ...new Set(filtered.map(s => s.franqueado || 'Loja Própria'))];
+  }, [stores, user?.role, user?.storeId]);
+
   const filteredStores = useMemo(() => {
-    return stores.filter(store => 
+    return storesByType.filter(store => 
       store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       store.code.toLowerCase().includes(searchTerm.toLowerCase())
     );
-  }, [stores, searchTerm]);
+  }, [storesByType, searchTerm]);
 
   // Calcular avaliações pendentes por loja
   const pendingEvaluationsByStore = useMemo(() => {
@@ -738,10 +763,235 @@ const StoresManagement = () => {
     setModalState({ type: null, data: null });
   };
 
-  const handleSaveResults = (storeId, resultsData) => {
-    updateStore(storeId, resultsData);
-    toast({ title: "Resultados salvos!", description: "Os resultados da loja foram atualizados." });
-    setModalState({ type: null, data: null });
+
+  // Função para limpar e converter valores numéricos (remove R$, pontos, vírgulas)
+  const cleanNumericValue = (value) => {
+    if (!value || value === '' || value.trim() === '') {
+      return 0;
+    }
+    
+    let cleaned = String(value).trim().toUpperCase();
+    cleaned = cleaned.replace(/R\$\s*/g, '');
+    cleaned = cleaned.replace(/\s/g, '');
+    
+    if (!cleaned || cleaned === '' || cleaned === '-') {
+      return 0;
+    }
+    
+    if (cleaned.includes(',') && !cleaned.includes('.')) {
+      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+    } else if (cleaned.includes('.') && cleaned.includes(',')) {
+      const parts = cleaned.split(',');
+      if (parts.length === 2) {
+        cleaned = parts[0].replace(/\./g, '') + '.' + parts[1];
+      } else {
+        cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+      }
+    } else {
+      if (cleaned.includes('.')) {
+        const lastDotIndex = cleaned.lastIndexOf('.');
+        const afterDot = cleaned.substring(lastDotIndex + 1);
+        if (afterDot.length > 2) {
+          cleaned = cleaned.replace(/\./g, '');
+        }
+      }
+    }
+    
+    const parsed = parseFloat(cleaned);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // Função para gerar template CSV de resultados
+  const generateResultsCSVTemplate = () => {
+    const headers = [
+      'codigo_loja',
+      'mes_ano',
+      'faturamento',
+      'pa',
+      'ticketMedio',
+      'prateleiraInfinita',
+      'conversao'
+    ];
+    
+    const currentMonth = resultMonthCSV;
+    const exampleRows = [
+      ['af013', currentMonth, 'R$ 150.000,00', '2,8', '250,50', '15000', '15'],
+      ['af015', currentMonth, '180000', '3.0', 'R$ 280,00', '', '18'],
+      ['af017', '', 'R$ 200.000,50', '3,2', '300', '0', '20']
+    ];
+    
+    const csvContent = [
+      headers.join(','),
+      ...exampleRows.map(row => row.join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'template_resultados.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({ 
+      title: 'Template baixado!', 
+      description: 'Preencha o arquivo com os resultados das lojas. A coluna "mes_ano" é opcional (formato YYYY-MM). Se vazia, usará o mês selecionado no formulário. Aceita valores formatados (R$, pontos, vírgulas) e células vazias.' 
+    });
+  };
+
+  // Função para processar CSV de resultados
+  const parseResultsCSV = (csvText) => {
+    const lines = csvText.split('\n').filter(line => line.trim());
+    if (lines.length < 2) {
+      throw new Error('CSV deve ter pelo menos uma linha de cabeçalho e uma linha de dados.');
+    }
+    
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    
+    const requiredHeaders = ['codigo_loja', 'faturamento', 'pa', 'ticketmedio', 'prateleinfinita', 'conversao'];
+    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+    if (missingHeaders.length > 0) {
+      throw new Error(`Cabeçalhos obrigatórios faltando: ${missingHeaders.join(', ')}`);
+    }
+    
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim());
+      const row = {};
+      headers.forEach((header, index) => {
+        const value = values[index] || '';
+        if (header === 'codigo_loja' || header === 'mes_ano') {
+          row[header] = value;
+        } else {
+          row[header] = value;
+        }
+      });
+      data.push(row);
+    }
+    
+    return data;
+  };
+
+  // Função para fazer upload e processar CSV de resultados
+  const handleCSVUploadResults = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    if (!file.name.endsWith('.csv')) {
+      toast({ 
+        title: 'Erro', 
+        description: 'Por favor, selecione um arquivo CSV.', 
+        variant: 'destructive' 
+      });
+      return;
+    }
+    
+    setIsUploadingResults(true);
+    
+    try {
+      const text = await file.text();
+      const csvData = parseResultsCSV(text);
+      
+      if (csvData.length === 0) {
+        throw new Error('Nenhum dado encontrado no CSV.');
+      }
+      
+      let successCount = 0;
+      let errorCount = 0;
+      const errors = [];
+      
+      for (const row of csvData) {
+        const codigoLoja = row.codigo_loja || row['codigo_loja'];
+        if (!codigoLoja) {
+          errors.push(`Linha ${csvData.indexOf(row) + 2}: Código da loja não fornecido`);
+          errorCount++;
+          continue;
+        }
+        
+        const store = stores.find(s => s.code?.toLowerCase() === codigoLoja.toLowerCase());
+        if (!store) {
+          errors.push(`Linha ${csvData.indexOf(row) + 2}: Loja com código "${codigoLoja}" não encontrada`);
+          errorCount++;
+          continue;
+        }
+        
+        const results = {
+          faturamento: cleanNumericValue(row.faturamento),
+          pa: cleanNumericValue(row.pa),
+          ticketMedio: cleanNumericValue(row.ticketmedio),
+          prateleiraInfinita: cleanNumericValue(row.prateleinfinita),
+          conversao: cleanNumericValue(row.conversao)
+        };
+        
+        const rowMonth = row.mes_ano || row['mes_ano'] || '';
+        let targetMonth = resultMonthCSV;
+        if (rowMonth && rowMonth.trim() !== '') {
+          const monthRegex = /^\d{4}-\d{2}$/;
+          if (monthRegex.test(rowMonth.trim())) {
+            targetMonth = rowMonth.trim();
+          } else {
+            errors.push(`Linha ${csvData.indexOf(row) + 2}: Formato de mês inválido "${rowMonth}". Use YYYY-MM (ex: 2024-01). Usando mês do formulário.`);
+          }
+        }
+        
+        const resultsKey = `results_${targetMonth}`;
+        
+        try {
+          await updateStoreAPI(store.id, { 
+            [resultsKey]: results
+          });
+          successCount++;
+        } catch (error) {
+          errors.push(`Linha ${csvData.indexOf(row) + 2}: Erro ao atualizar loja "${codigoLoja}": ${error.message || 'Erro desconhecido'}`);
+          errorCount++;
+        }
+      }
+      
+      if (successCount > 0) {
+        setTimeout(() => {
+          fetchData();
+        }, 500);
+        
+        toast({ 
+          title: 'Upload concluído!', 
+          description: `${successCount} loja(s) atualizada(s) com sucesso.${errorCount > 0 ? ` ${errorCount} erro(s) encontrado(s).` : ''}`,
+        });
+      }
+      
+      if (errors.length > 0) {
+        console.error('Erros no upload:', errors);
+        if (errors.length <= 10) {
+          toast({
+            title: 'Erros encontrados',
+            description: errors.join('; '),
+            variant: 'destructive',
+            duration: 10000
+          });
+        } else {
+          toast({
+            title: 'Muitos erros',
+            description: `${errors.length} erros encontrados. Verifique o console para detalhes.`,
+            variant: 'destructive',
+            duration: 10000
+          });
+        }
+      }
+      
+      if (resultsFileInputRef.current) {
+        resultsFileInputRef.current.value = '';
+      }
+      
+    } catch (error) {
+      toast({ 
+        title: 'Erro ao processar CSV', 
+        description: error.message, 
+        variant: 'destructive' 
+      });
+    } finally {
+      setIsUploadingResults(false);
+    }
   };
 
   const handleDeleteStore = (store) => {
@@ -794,14 +1044,66 @@ const StoresManagement = () => {
             <p className="text-muted-foreground mt-1">Gerencie lojas e suas avaliações.</p>
           </div>
           <div className="flex items-center gap-4">
+            <Select value={franqueadoFilter} onValueChange={setFranqueadoFilter}>
+              <SelectTrigger className="w-48 bg-card border-border">
+                <SelectValue placeholder="Filtrar por Franquia" />
+              </SelectTrigger>
+              <SelectContent>
+                {franqueados.map(f => (
+                  <SelectItem key={f} value={f}>
+                    {f === 'all' ? 'Todas as Franquias' : f}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Buscar por código ou nome..." className="pl-9 w-64 bg-card" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
-            {isAdmin && (
-              <Button onClick={() => setModalState({ type: 'editStore', data: null })} className="gap-2 bg-gradient-to-r from-primary to-blue-500 text-primary-foreground hover:opacity-90">
-                <Plus className="w-4 h-4" /> Nova Loja
-              </Button>
+            {canManageStores && (
+              <>
+                <div className="space-y-1">
+                  <Label htmlFor="resultsCSVMonth" className="text-xs text-muted-foreground">Mês padrão CSV</Label>
+                  <Input
+                    id="resultsCSVMonth"
+                    type="month"
+                    value={resultMonthCSV}
+                    onChange={(e) => setResultMonthCSV(e.target.value)}
+                    min="2020-01"
+                    className="w-36 bg-secondary h-9 text-sm"
+                    title="Mês que será usado quando a coluna mes_ano estiver vazia no CSV"
+                  />
+                </div>
+                <Button 
+                  type="button" 
+                  onClick={generateResultsCSVTemplate} 
+                  variant="outline" 
+                  className="gap-2"
+                  title="Baixar template CSV para importação de resultados em massa"
+                >
+                  <Download className="w-4 h-4" /> Template Resultados
+                </Button>
+                <Button 
+                  type="button" 
+                  onClick={() => resultsFileInputRef.current?.click()} 
+                  variant="outline" 
+                  className="gap-2"
+                  disabled={isUploadingResults}
+                  title="Fazer upload de CSV com múltiplos resultados"
+                >
+                  <Upload className="w-4 h-4" /> {isUploadingResults ? 'Processando...' : 'Importar Resultados'}
+                </Button>
+                <input
+                  ref={resultsFileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCSVUploadResults}
+                  style={{ display: 'none' }}
+                />
+                <Button onClick={() => setModalState({ type: 'editStore', data: null })} className="gap-2 bg-gradient-to-r from-primary to-blue-500 text-primary-foreground hover:opacity-90">
+                  <Plus className="w-4 h-4" /> Nova Loja
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -821,9 +1123,6 @@ const StoresManagement = () => {
                       <p className="text-sm text-muted-foreground">{store.code}</p>
                   </div>
                   <div className="flex items-center">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setModalState({ type: 'editResults', data: store })}>
-                        <TrendingUp className="w-4 h-4 text-muted-foreground hover:text-primary" />
-                    </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button></DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -836,7 +1135,7 @@ const StoresManagement = () => {
                     </DropdownMenu>
                   </div>
                 </div>
-                {pendingEvaluationsByStore[store.id] > 0 && (user.role === 'admin' || user.role === 'supervisor') && (
+                {pendingEvaluationsByStore[store.id] > 0 && (user.role === 'admin' || user.role === 'supervisor' || user.role === 'comunicação') && (
                   <div className="mb-3">
                     <Button 
                       variant="outline" 
@@ -887,7 +1186,6 @@ const StoresManagement = () => {
             users={users}
           />
         )}
-        {modalState.type === 'editResults' && <ResultsFormModal store={modalState.data} onSave={handleSaveResults} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
         {modalState.type === 'headcount' && <HeadcountModal store={modalState.data} collaborators={collaborators} jobRoles={jobRoles} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
       </Dialog>
     </>

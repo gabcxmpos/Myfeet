@@ -98,7 +98,7 @@ const ReturnsManagement = () => {
   const { toast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const isStore = user?.role === 'loja';
+  const isStore = user?.role === 'loja' || user?.role === 'admin_loja';
   const isDevolucoes = user?.role === 'devoluções';
   
   // Debug: Verificar se returnsPlanner está sendo carregado
@@ -563,7 +563,7 @@ const ReturnsManagement = () => {
         'coleta_infrutifera': { count: 0, value: 0 }
       },
       missingByStatus: {
-        'movimentado': { count: 0, value: 0 },
+        'estoque_falta_fisica': { count: 0, value: 0 },
         'processo_aberto': { count: 0, value: 0 },
         'nota_finalizada': { count: 0, value: 0 }
       }
@@ -638,7 +638,7 @@ const ReturnsManagement = () => {
       }, 0);
 
     // Análises de falta física: SKU, tamanho, cor e marca mais faltantes
-    // Separar por status: em aberto/movimentado vs finalizado
+    // Separar por status: em aberto/estoque falta física vs finalizado
     const skuCountsOpen = {};
     const sizeCountsOpen = {};
     const colorCountsOpen = {};
@@ -939,7 +939,7 @@ const ReturnsManagement = () => {
         nf_number: missingFormData.nf_number.trim(),
         moved_to_defect: missingFormData.moved_to_defect,
         store_id: user.storeId,
-        status: missingFormData.moved_to_defect ? 'movimentado' : 'processo_aberto',
+        status: missingFormData.moved_to_defect ? 'estoque_falta_fisica' : 'processo_aberto',
         missing_type: missingFormData.missing_type, // Array de tipos
       };
 
@@ -1044,7 +1044,7 @@ const ReturnsManagement = () => {
       await updatePhysicalMissing(missingId, { status });
       
       const statusLabels = {
-        'movimentado': 'Movimentado',
+        'estoque_falta_fisica': 'Estoque Falta Física',
         'processo_aberto': 'Processo Aberto',
         'nota_finalizada': 'Nota Finalizada'
       };
@@ -1079,7 +1079,7 @@ const ReturnsManagement = () => {
       );
     } else {
       const statusConfig = {
-        'movimentado': { label: 'Movimentado', class: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
+        'estoque_falta_fisica': { label: 'Estoque Falta Física', class: 'bg-blue-500/10 text-blue-500 border-blue-500/20' },
         'processo_aberto': { label: 'Processo Aberto', class: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20' },
         'nota_finalizada': { label: 'Nota Finalizada', class: 'bg-green-500/10 text-green-500 border-green-500/20' }
       };
@@ -1121,7 +1121,8 @@ const ReturnsManagement = () => {
           </div>
         </div>
 
-        {/* Dashboard */}
+        {/* Dashboard - Sempre visível para lojas e admin */}
+        {(isStore || isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
         <div className="space-y-6 mb-6">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -1413,7 +1414,7 @@ const ReturnsManagement = () => {
                 whileHover={{ y: -5, boxShadow: '0 10px 20px rgba(0,0,0,0.2)' }}
               >
                 <div className="flex items-center justify-between text-muted-foreground mb-2">
-                  <span className="text-sm font-medium">Em Aberto/Movimentado</span>
+                  <span className="text-sm font-medium">Em Aberto/Estoque Falta Física</span>
                   <AlertCircle className="w-5 h-5 text-yellow-400" />
                 </div>
                 <span className="font-bold text-3xl text-foreground">{dashboardStats.totalMissing}</span>
@@ -1505,7 +1506,7 @@ const ReturnsManagement = () => {
             <Card className="p-4">
               <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-yellow-400" />
-                Análises de Falta Física - Em Aberto/Movimentado
+                Análises de Falta Física - Em Aberto/Estoque Falta Física
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {dashboardStats.topMissingBrandOpen && (
@@ -1581,15 +1582,16 @@ const ReturnsManagement = () => {
             </div>
           </Card>
         </div>
+        )}
 
         <Tabs defaultValue="pending" className="w-full">
-          <TabsList className={`grid w-full ${finishedMissing.length > 0 ? 'grid-cols-4' : 'grid-cols-3'}`}>
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="pending">Pendentes</TabsTrigger>
             <TabsTrigger value="collected">Coletados</TabsTrigger>
             <TabsTrigger value="missing">Falta Física</TabsTrigger>
-            {finishedMissing.length > 0 && (
-              <TabsTrigger value="finished">Finalizados ({finishedMissing.length})</TabsTrigger>
-            )}
+            <TabsTrigger value="finished">
+              Finalizados {finishedMissing.length > 0 && `(${finishedMissing.length})`}
+            </TabsTrigger>
           </TabsList>
 
           {/* ABA PENDENTES */}
@@ -2548,8 +2550,8 @@ const ReturnsManagement = () => {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleUpdateMissingStatus(item.id, 'movimentado')}>
-                                  Movimentado
+                                <DropdownMenuItem onClick={() => handleUpdateMissingStatus(item.id, 'estoque_falta_fisica')}>
+                                  Estoque Falta Física
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleUpdateMissingStatus(item.id, 'processo_aberto')}>
                                   Processo Aberto

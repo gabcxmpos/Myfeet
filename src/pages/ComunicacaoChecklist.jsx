@@ -135,7 +135,7 @@ const ComunicacaoChecklist = () => {
               Marque as tarefas conforme você as completa
             </p>
           </div>
-          <Button onClick={() => navigate('/comunicacao-checklist-management')} variant="outline">
+          <Button onClick={() => navigate('/checklists?tab=gerenciar-comunicacao')} variant="outline">
             Gerenciar Tarefas
           </Button>
         </div>
@@ -177,7 +177,7 @@ const ComunicacaoChecklist = () => {
             {tasks.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <p className="mb-4">Nenhuma tarefa cadastrada ainda.</p>
-                <Button onClick={() => navigate('/comunicacao-checklist-management')}>
+                <Button onClick={() => navigate('/checklists?tab=gerenciar-comunicacao')}>
                   Criar Primeira Tarefa
                 </Button>
               </div>
@@ -232,5 +232,6 @@ const ComunicacaoChecklist = () => {
 };
 
 export default ComunicacaoChecklist;
+
 
 

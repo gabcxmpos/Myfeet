@@ -15,16 +15,20 @@ const MainLayout = () => {
     return window.innerWidth >= 1024;
   });
 
-  // Estado da sidebar: null = fechada em mobile por padrão, true/false = preferência do usuário
+  // Estado da sidebar: fechada em mobile por padrão, aberta em desktop
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
-    // Carregar preferência do localStorage
-    const saved = localStorage.getItem('sidebarOpen');
-    if (saved !== null) return saved === 'true';
-    // Em mobile, começar fechada; em desktop, começar aberta
-    if (typeof window !== 'undefined') {
-      return window.innerWidth >= 1024; // lg breakpoint
+    if (typeof window === 'undefined') return false;
+    const isDesktopInitial = window.innerWidth >= 1024;
+    // Em mobile, SEMPRE começar fechada (não usar localStorage)
+    if (!isDesktopInitial) {
+      return false;
     }
-    return true;
+    // Em desktop, carregar preferência do localStorage ou padrão (aberta)
+    const saved = localStorage.getItem('sidebarOpen');
+    if (saved !== null) {
+      return saved === 'true';
+    }
+    return true; // Desktop padrão: aberta
   });
 
   // Estado para sidebar minimizada/maximizada (apenas desktop)
@@ -38,16 +42,18 @@ const MainLayout = () => {
   useEffect(() => {
     const handleResize = () => {
       const desktop = window.innerWidth >= 1024;
+      const wasDesktop = isDesktop;
       setIsDesktop(desktop);
       
-      // Em desktop, manter aberta por padrão se não houver preferência salva
-      if (desktop && localStorage.getItem('sidebarOpen') === null) {
-        setIsSidebarOpen(true);
+      // Se mudou de desktop para mobile, não fechar automaticamente
+      // Deixar o usuário controlar manualmente
+      if (desktop && !wasDesktop) {
+        // Mudou de mobile para desktop - abrir se não houver preferência salva
+        if (localStorage.getItem('sidebarOpen') === null) {
+          setIsSidebarOpen(true);
+        }
       }
-      // Em mobile, fechar automaticamente se estiver aberta
-      if (!desktop && isSidebarOpen) {
-        setIsSidebarOpen(false);
-      }
+      // Não fechar automaticamente ao mudar para mobile - deixar o usuário controlar
     };
 
     // Verificar tamanho inicial
@@ -55,19 +61,32 @@ const MainLayout = () => {
     
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isSidebarOpen]);
+  }, [isDesktop]);
 
-  // Salvar preferência no localStorage
+  // Salvar preferência no localStorage apenas para desktop
   useEffect(() => {
-    localStorage.setItem('sidebarOpen', String(isSidebarOpen));
-  }, [isSidebarOpen]);
+    // Só salvar preferência se for desktop
+    // Em mobile, sempre começar fechada, então não salvar
+    if (isDesktop) {
+      localStorage.setItem('sidebarOpen', String(isSidebarOpen));
+    }
+  }, [isSidebarOpen, isDesktop]);
 
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', String(isSidebarCollapsed));
   }, [isSidebarCollapsed]);
 
   const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔄 [MainLayout] toggleSidebar chamado. Estado atual:', isSidebarOpen, 'isDesktop:', isDesktop);
+    }
+    setIsSidebarOpen(prev => {
+      const newState = !prev;
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔄 [MainLayout] Novo estado da sidebar:', newState);
+      }
+      return newState;
+    });
   };
 
   const toggleSidebarCollapse = () => {
@@ -98,10 +117,11 @@ const MainLayout = () => {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-black/50 z-40"
+          className="fixed inset-0 bg-black/50 z-[50]"
+          style={{ zIndex: 50 }}
           onClick={(e) => {
             // Só fechar se clicar diretamente no overlay (não em elementos filhos)
-            // A sidebar está em z-50, então cliques nela não chegam aqui
+            // A sidebar está em z-60, então cliques nela não chegam aqui
             if (e.target === e.currentTarget) {
               closeSidebar();
             }
@@ -120,8 +140,8 @@ const MainLayout = () => {
       />
       
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${isSidebarOpen && isDesktop ? (isSidebarCollapsed ? 'lg:ml-[80px]' : 'lg:ml-[256px]') : 'lg:ml-0'}`}>
-        <Header onToggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} />
-        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+        <Header onToggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} isDesktop={isDesktop} />
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 overscroll-contain">
           <Outlet />
         </main>
         <footer className="bg-card border-t border-border py-4 px-6 text-center text-xs text-muted-foreground">

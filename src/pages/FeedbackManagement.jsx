@@ -23,8 +23,13 @@ const satisfactionIcons = {
 };
 
 const FeedbackCard = ({ feedback, store, collaborator, onDelete, canDelete }) => {
-  const SatisfactionIcon = satisfactionIcons[feedback.satisfaction]?.icon || Meh;
-  const satisfactionColor = satisfactionIcons[feedback.satisfaction]?.color || 'text-muted-foreground';
+  const managerSatValue = feedback.managerSatisfaction ?? feedback.manager_satisfaction ?? null;
+  const ManagerSatisfactionIcon = managerSatValue ? (satisfactionIcons[managerSatValue]?.icon || Meh) : Meh;
+  const managerSatisfactionColor = managerSatValue ? (satisfactionIcons[managerSatValue]?.color || 'text-muted-foreground') : 'text-muted-foreground';
+  
+  const collaboratorSatValue = feedback.collaboratorSatisfaction ?? feedback.collaborator_satisfaction ?? null;
+  const CollaboratorSatisfactionIcon = collaboratorSatValue ? (satisfactionIcons[collaboratorSatValue]?.icon || Meh) : Meh;
+  const collaboratorSatisfactionColor = collaboratorSatValue ? (satisfactionIcons[collaboratorSatValue]?.color || 'text-muted-foreground') : 'text-muted-foreground';
 
   return (
     <motion.div
@@ -32,58 +37,78 @@ const FeedbackCard = ({ feedback, store, collaborator, onDelete, canDelete }) =>
       animate={{ opacity: 1, y: 0 }}
       className="bg-card p-5 rounded-xl border border-border shadow-sm relative"
     >
-      {canDelete && (
-        <div className="absolute top-4 right-4">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Excluir Feedback</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Tem certeza que deseja excluir este feedback? Esta ação não pode ser desfeita.
-                  <br />
-                  <br />
-                  <strong>Colaborador:</strong> {collaborator?.name || 'N/A'}
-                  <br />
-                  <strong>Loja:</strong> {store?.name || 'N/A'}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(feedback.id);
-                  }}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Excluir
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      )}
-      <div className="flex justify-between items-start">
-        <div>
-          <h3 className="font-bold text-foreground">{collaborator?.name || 'Colaborador não encontrado'}</h3>
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-bold text-foreground">{collaborator?.name || 'Colaborador não encontrado'}</h3>
+            {/* Satisfação do Colaborador ao lado do nome */}
+            {collaboratorSatValue !== null && collaboratorSatValue !== undefined && (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 bg-purple-500/10 border border-purple-500/20 rounded-md">
+                <CollaboratorSatisfactionIcon className={cn("w-4 h-4", collaboratorSatisfactionColor)} />
+                <span className="text-xs font-medium text-foreground">
+                  {satisfactionIcons[collaboratorSatValue]?.label || 'N/A'}
+                </span>
+              </div>
+            )}
+          </div>
           <p className="text-sm text-muted-foreground">{store?.name || 'Loja não encontrada'}</p>
           <p className="text-xs text-muted-foreground">{new Date(feedback.date).toLocaleString()}</p>
         </div>
         <div className="flex items-center gap-2">
           {feedback.isPromotionCandidate && <Diamond className="w-5 h-5 text-yellow-400" />}
-          <SatisfactionIcon className={cn("w-7 h-7", satisfactionColor)} />
+          {canDelete && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10 ml-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Excluir Feedback</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Tem certeza que deseja excluir este feedback? Esta ação não pode ser desfeita.
+                    <br />
+                    <br />
+                    <strong>Colaborador:</strong> {collaborator?.name || 'N/A'}
+                    <br />
+                    <strong>Loja:</strong> {store?.name || 'N/A'}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(feedback.id);
+                    }}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Excluir
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </div>
+      
+      {/* Satisfação do Gerente embaixo */}
+      {managerSatValue !== null && managerSatValue !== undefined && (
+        <div className="mt-3 mb-4 flex items-center gap-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+          <span className="text-xs font-medium text-muted-foreground">Satisfação do gerente:</span>
+          <ManagerSatisfactionIcon className={cn("w-5 h-5", managerSatisfactionColor)} />
+          <span className="text-sm font-semibold text-foreground">
+            {satisfactionIcons[managerSatValue]?.label || 'N/A'}
+          </span>
+        </div>
+      )}
+      
       <div className="mt-4 space-y-3 text-sm">
         <div>
           <p className="font-semibold text-foreground">Pontos Positivos:</p>
@@ -106,8 +131,13 @@ const FeedbackManagement = () => {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [showHighlights, setShowHighlights] = useState(false);
-  const [satisfactionFilter, setSatisfactionFilter] = useState([]);
+  const [managerSatisfactionFilter, setManagerSatisfactionFilter] = useState([]);
+  const [collaboratorSatisfactionFilter, setCollaboratorSatisfactionFilter] = useState([]);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [periodFilter, setPeriodFilter] = useState({
+    startDate: '',
+    endDate: ''
+  });
 
   // Refresh automático otimizado para mobile
   useOptimizedRefresh(fetchData);
@@ -121,7 +151,49 @@ const FeedbackManagement = () => {
       }))
       .filter(fb => {
         if (showHighlights && !fb.isPromotionCandidate) return false;
-        if (satisfactionFilter.length > 0 && !satisfactionFilter.includes(String(fb.satisfaction))) return false;
+        
+        // Filtro por data
+        if (periodFilter.startDate) {
+          const start = new Date(periodFilter.startDate);
+          start.setHours(0, 0, 0, 0);
+          const fbDate = new Date(fb.date || fb.created_at);
+          fbDate.setHours(0, 0, 0, 0);
+          if (fbDate < start) return false;
+        }
+        
+        if (periodFilter.endDate) {
+          const end = new Date(periodFilter.endDate);
+          end.setHours(23, 59, 59, 999);
+          const fbDate = new Date(fb.date || fb.created_at);
+          fbDate.setHours(23, 59, 59, 999);
+          if (fbDate > end) return false;
+        }
+        
+        // Filtro por satisfação do gerente
+        if (managerSatisfactionFilter.length > 0) {
+          const managerSat = fb.managerSatisfaction ?? fb.manager_satisfaction ?? null;
+          // Se o filtro está ativo mas o feedback não tem essa satisfação, filtrar
+          if (managerSat === null || managerSat === undefined) {
+            return false; // Feedback sem satisfação do gerente não passa no filtro
+          }
+          // Verificar se a satisfação do gerente está nos filtros selecionados
+          if (!managerSatisfactionFilter.includes(String(managerSat))) {
+            return false;
+          }
+        }
+        
+        // Filtro por satisfação do colaborador
+        if (collaboratorSatisfactionFilter.length > 0) {
+          const collaboratorSat = fb.collaboratorSatisfaction ?? fb.collaborator_satisfaction ?? null;
+          // Se o filtro está ativo mas o feedback não tem essa satisfação, filtrar
+          if (collaboratorSat === null || collaboratorSat === undefined) {
+            return false; // Feedback sem satisfação do colaborador não passa no filtro
+          }
+          // Verificar se a satisfação do colaborador está nos filtros selecionados
+          if (!collaboratorSatisfactionFilter.includes(String(collaboratorSat))) {
+            return false;
+          }
+        }
         
         const search = searchTerm.toLowerCase();
         if (!search) return true;
@@ -142,7 +214,7 @@ const FeedbackManagement = () => {
         acc[fb.storeId].feedbacks.push(fb);
         return acc;
     }, {});
-  }, [feedbacks, collaborators, stores, searchTerm, showHighlights, satisfactionFilter]);
+  }, [feedbacks, collaborators, stores, searchTerm, showHighlights, managerSatisfactionFilter, collaboratorSatisfactionFilter, periodFilter]);
 
   const handleExport = () => {
     toast({
@@ -160,7 +232,7 @@ const FeedbackManagement = () => {
   };
 
   const handleDeleteAllBySatisfaction = async () => {
-    if (satisfactionFilter.length === 0) {
+    if (managerSatisfactionFilter.length === 0 && collaboratorSatisfactionFilter.length === 0) {
       toast({
         variant: 'destructive',
         title: 'Erro',
@@ -184,9 +256,12 @@ const FeedbackManagement = () => {
 
     setIsDeleting(true);
     try {
-      await deleteFeedbacksBySatisfaction(satisfactionFilter);
-      // Limpar filtro após exclusão bem-sucedida
-      setSatisfactionFilter([]);
+      // Combinar ambos os filtros para exclusão
+      const combinedFilters = [...managerSatisfactionFilter, ...collaboratorSatisfactionFilter];
+      await deleteFeedbacksBySatisfaction(combinedFilters);
+      // Limpar filtros após exclusão bem-sucedida
+      setManagerSatisfactionFilter([]);
+      setCollaboratorSatisfactionFilter([]);
     } catch (error) {
       console.error('Erro ao excluir feedbacks:', error);
     } finally {
@@ -238,10 +313,32 @@ const FeedbackManagement = () => {
                         </Label>
                     </div>
                 </div>
-                 <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm font-medium">Filtrar por satisfação:</Label>
-                        {canDelete && satisfactionFilter.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="startDate">Data Inicial</Label>
+                    <Input
+                      id="startDate"
+                      type="date"
+                      value={periodFilter.startDate}
+                      onChange={(e) => setPeriodFilter({ ...periodFilter, startDate: e.target.value })}
+                      className="bg-secondary"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="endDate">Data Final</Label>
+                    <Input
+                      id="endDate"
+                      type="date"
+                      value={periodFilter.endDate}
+                      onChange={(e) => setPeriodFilter({ ...periodFilter, endDate: e.target.value })}
+                      className="bg-secondary"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-sm font-semibold">Filtros de Satisfação</Label>
+                        {canDelete && (managerSatisfactionFilter.length > 0 || collaboratorSatisfactionFilter.length > 0) && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button
@@ -258,15 +355,7 @@ const FeedbackManagement = () => {
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Confirmar Exclusão em Lote</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Você está prestes a excluir <strong>{filteredCount} feedback(s)</strong> com os seguintes níveis de satisfação:
-                                  <br />
-                                  <br />
-                                  <strong>
-                                    {satisfactionFilter
-                                      .map(level => satisfactionIcons[parseInt(level)]?.label)
-                                      .filter(Boolean)
-                                      .join(', ')}
-                                  </strong>
+                                  Você está prestes a excluir <strong>{filteredCount} feedback(s)</strong> com os filtros selecionados.
                                   <br />
                                   <br />
                                   <span className="text-destructive font-bold">
@@ -287,18 +376,60 @@ const FeedbackManagement = () => {
                           </AlertDialog>
                         )}
                     </div>
-                    <ToggleGroup 
-                        type="multiple" 
-                        variant="outline" 
-                        value={satisfactionFilter} 
-                        onValueChange={setSatisfactionFilter}
-                    >
-                        {Object.entries(satisfactionIcons).map(([level, {icon: Icon, label, color}]) => (
-                            <ToggleGroupItem key={level} value={level} aria-label={`Filtrar por ${label}`} className="flex gap-1.5">
-                                <Icon className={cn("w-4 h-4", color)} /> {label}
-                            </ToggleGroupItem>
-                        ))}
-                    </ToggleGroup>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Filtro Satisfação do Gerente */}
+                        <div className="space-y-2">
+                            <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                Satisfação do Gerente com o Colaborador
+                            </Label>
+                            <ToggleGroup 
+                                type="multiple" 
+                                variant="outline" 
+                                value={managerSatisfactionFilter} 
+                                onValueChange={setManagerSatisfactionFilter}
+                                className="flex-wrap"
+                            >
+                                {Object.entries(satisfactionIcons).map(([level, {icon: Icon, label, color}]) => (
+                                    <ToggleGroupItem 
+                                        key={level} 
+                                        value={level} 
+                                        aria-label={`Filtrar por ${label}`} 
+                                        className="flex gap-1.5 text-xs"
+                                    >
+                                        <Icon className={cn("w-4 h-4", color)} /> {label}
+                                    </ToggleGroupItem>
+                                ))}
+                            </ToggleGroup>
+                        </div>
+                        
+                        {/* Filtro Satisfação do Colaborador */}
+                        <div className="space-y-2">
+                            <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                Satisfação do Colaborador
+                            </Label>
+                            <ToggleGroup 
+                                type="multiple" 
+                                variant="outline" 
+                                value={collaboratorSatisfactionFilter} 
+                                onValueChange={setCollaboratorSatisfactionFilter}
+                                className="flex-wrap"
+                            >
+                                {Object.entries(satisfactionIcons).map(([level, {icon: Icon, label, color}]) => (
+                                    <ToggleGroupItem 
+                                        key={level} 
+                                        value={level} 
+                                        aria-label={`Filtrar por ${label}`} 
+                                        className="flex gap-1.5 text-xs"
+                                    >
+                                        <Icon className={cn("w-4 h-4", color)} /> {label}
+                                    </ToggleGroupItem>
+                                ))}
+                            </ToggleGroup>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
