@@ -1,4 +1,4 @@
-﻿import { supabase } from '@/lib/customSupabaseClient';// ============ STORES ============
+import { supabase } from '@/lib/customSupabaseClient';// ============ STORES ============
 export const fetchStores = async () => {
   console.log('🔍 [fetchStores] Buscando lojas do servidor...');
   const { data, error } = await supabase
@@ -2200,7 +2200,10 @@ export const fetchChecklistByDate = async (storeId, date) => {
 };// Buscar checklist gerencial de uma data específica para histórico
 export const fetchGerencialChecklistByDate = async (storeId, date) => {
   return await fetchDailyChecklist(storeId, date, 'gerencial');
-};// ======== CHECKLIST AUDIT ========const normalizeChecklistType = (checklistType) => checklistType || 'operacional';
+};
+
+// ======== CHECKLIST AUDIT ========
+export const normalizeChecklistType = (checklistType) => checklistType || 'operacional';
 export const fetchChecklistAudit = async (storeId, date, checklistType = 'operacional') => {
   if (!storeId || !date) return null;
   const { data, error } = await supabase    .from('checklist_audits')    .select('*')    .eq('store_id', storeId)    .eq('date', date)    .eq('checklist_type', normalizeChecklistType(checklistType))    .maybeSingle();
