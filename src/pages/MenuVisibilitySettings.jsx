@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, CheckSquare, Eye, GraduationCap, RotateCcw, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, CheckSquare, Eye, GraduationCap, RotateCcw, AlertCircle, Smartphone } from 'lucide-react';
 
 const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação', 'digital'] },
@@ -18,6 +18,7 @@ const allMenuItems = [
     { path: '/evaluation', icon: ClipboardCheck, label: 'Nova Avaliação', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação', 'digital'] },
     { path: '/stores', icon: Store, label: 'Lojas', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação'] },
     { path: '/painel-excelencia', icon: Trophy, label: 'Painel Excelência', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital'] },
+    { path: '/digital-evaluations', icon: Smartphone, label: 'Avaliações Digital', roles: ['digital', 'admin', 'supervisor', 'supervisor_franquia'] },
     { path: '/acionamentos', icon: AlertCircle, label: 'Acionamentos', roles: ['comunicação'] },
     { path: '/forms', icon: FileText, label: 'Criar Formulário', roles: ['admin'] },
     { path: '/collaborators', icon: Users2, label: 'Colaboradores', roles: ['loja', 'loja_franquia'] },
