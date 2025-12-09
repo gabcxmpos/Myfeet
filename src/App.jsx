@@ -38,6 +38,7 @@ import BrandsSettings from '@/pages/BrandsSettings';
 import StoresCTO from '@/pages/StoresCTO';
 import StoresCTOAnalytics from '@/pages/StoresCTOAnalytics';
 import StoresCTORegister from '@/pages/StoresCTORegister';
+import DigitalEvaluations from '@/pages/DigitalEvaluations';
 
 function App() {
   return (
@@ -65,6 +66,7 @@ function App() {
                 <Route path="stores-cto-analytics" element={<ProtectedRoute allowedRoles={['admin', 'financeiro']}><StoresCTOAnalytics /></ProtectedRoute>} />
                 <Route path="stores-cto-register" element={<ProtectedRoute allowedRoles={['admin', 'financeiro']}><StoresCTORegister /></ProtectedRoute>} />
                 <Route path="painel-excelencia" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital']}><PainelExcelencia /></ProtectedRoute>} />
+                <Route path="digital-evaluations" element={<ProtectedRoute allowedRoles={['digital', 'admin', 'supervisor', 'supervisor_franquia']}><DigitalEvaluations /></ProtectedRoute>} />
                 <Route path="acionamentos" element={<ProtectedRoute allowedRoles={['comunicação']}><Acionamentos /></ProtectedRoute>} />
                 <Route path="alertas-comunicados" element={<ProtectedRoute allowedRoles={['comunicação']}><AlertasComunicados /></ProtectedRoute>} />
                 <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
