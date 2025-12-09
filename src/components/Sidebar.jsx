@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useData } from '@/contexts/DataContext';
-import { LayoutDashboard, Trophy, Award, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, CheckSquare, GraduationCap, RotateCcw, X, Menu, FileCheck, Calendar, Route, Settings, MessageCircle, AlertCircle, TrendingUp, FileBarChart, Calculator, FileSpreadsheet } from 'lucide-react';
+import { LayoutDashboard, Trophy, Award, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, CheckSquare, GraduationCap, RotateCcw, X, Menu, FileCheck, Calendar, Route, Settings, MessageCircle, AlertCircle, TrendingUp, FileBarChart, Calculator, FileSpreadsheet, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const allMenuItems = [
@@ -11,6 +11,7 @@ const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'admin_loja', 'comunicação', 'digital'] },
     { path: '/ranking', icon: Trophy, label: 'Ranking PPAD', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'admin_loja', 'digital'] },
     { path: '/painel-excelencia', icon: Award, label: 'Painel Excelência', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital'] },
+    { path: '/digital-evaluations', icon: Smartphone, label: 'Avaliações Digital', roles: ['digital', 'admin', 'supervisor', 'supervisor_franquia'] },
     // Demais itens
     { path: '/checklist', icon: CheckSquare, label: 'Checklist Diário', roles: ['supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'admin_loja'] },
     { path: '/checklist-audit-analytics', icon: FileCheck, label: 'Análise de Auditorias', roles: ['admin'] },
