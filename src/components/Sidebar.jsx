@@ -3,35 +3,30 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useData } from '@/contexts/DataContext';
-import { LayoutDashboard, Trophy, Award, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, CheckSquare, GraduationCap, RotateCcw, X, Menu, FileCheck, Calendar, Route, Settings, MessageCircle, AlertCircle, TrendingUp, FileBarChart, Calculator, FileSpreadsheet, Smartphone } from 'lucide-react';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, GraduationCap, RotateCcw, X, Menu, FileCheck, Calendar, Route, Settings, MessageCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const allMenuItems = [
     // Dashboard e Ranking primeiro
-    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'admin_loja', 'comunicação', 'digital'] },
-    { path: '/ranking', icon: Trophy, label: 'Ranking PPAD', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'admin_loja', 'digital'] },
-    { path: '/painel-excelencia', icon: Award, label: 'Painel Excelência', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital'] },
-    { path: '/digital-evaluations', icon: Smartphone, label: 'Avaliações Digital', roles: ['digital', 'admin', 'supervisor', 'supervisor_franquia'] },
+    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação'] },
+    { path: '/ranking', icon: Trophy, label: 'Ranking PPAD', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia'] },
+    { path: '/painel-excelencia', icon: Trophy, label: 'Painel Excelência', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação'] },
     // Demais itens
-    { path: '/checklist', icon: CheckSquare, label: 'Checklist Diário', roles: ['supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'admin_loja'] },
+    { path: '/chave', icon: KeyRound, label: 'CHAVE', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação'] },
+    { path: '/checklist', icon: CheckSquare, label: 'Checklist Diário', roles: ['supervisor', 'supervisor_franquia', 'loja', 'loja_franquia'] },
     { path: '/checklist-audit-analytics', icon: FileCheck, label: 'Análise de Auditorias', roles: ['admin'] },
     { path: '/analytics', icon: BarChart3, label: 'Analytics', roles: ['admin', 'supervisor', 'supervisor_franquia'] },
     { path: '/goals', icon: Target, label: 'Definir Metas', roles: ['admin', 'supervisor', 'supervisor_franquia'] },
-    { path: '/results-management', icon: FileBarChart, label: 'Gestão de Resultados', roles: ['admin', 'supervisor', 'supervisor_franquia'] },
-    { path: '/evaluation', icon: ClipboardCheck, label: 'Nova Avaliação', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'admin_loja', 'comunicação', 'digital'] },
+    { path: '/evaluation', icon: ClipboardCheck, label: 'Nova Avaliação', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação'] },
     { path: '/stores', icon: Store, label: 'Lojas', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação'] },
-    { path: '/stores-cto', icon: Calculator, label: 'Lojas para CTO', roles: ['admin', 'financeiro'] },
-    { path: '/stores-cto-register', icon: FileSpreadsheet, label: 'Livro Registro CTO', roles: ['admin', 'financeiro'] },
     { path: '/acionamentos', icon: AlertCircle, label: 'Acionamentos', roles: ['comunicação'] },
-    { path: '/alertas-comunicados', icon: MessageCircle, label: 'Alertas e Comunicados', roles: ['comunicação'] },
     { path: '/forms', icon: FileText, label: 'Criar Formulário', roles: ['admin'] },
-    { path: '/collaborators', icon: Users2, label: 'Colaboradores', roles: ['loja', 'loja_franquia', 'admin_loja'] },
-    { path: '/store-results', icon: TrendingUp, label: 'Resultados', roles: ['loja', 'loja_franquia', 'admin_loja'] },
-    { path: '/feedback', icon: MessageSquareQuote, label: 'Dar Feedback', roles: ['loja', 'loja_franquia', 'admin_loja'] },
+    { path: '/collaborators', icon: Users2, label: 'Colaboradores', roles: ['loja', 'loja_franquia'] },
+    { path: '/feedback', icon: MessageSquareQuote, label: 'Dar Feedback', roles: ['loja', 'loja_franquia'] },
     { path: '/feedback-management', icon: BookUser, label: 'Gestão de Feedbacks', roles: ['admin', 'supervisor'] },
     { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin', 'supervisor', 'comunicação'] },
-    { path: '/training', icon: GraduationCap, label: 'Treinamentos', roles: ['loja', 'admin_loja'] },
-    { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja', 'admin_loja', 'devoluções'] }, // SEM loja_franquia e supervisor_franquia
+    { path: '/training', icon: GraduationCap, label: 'Treinamentos', roles: ['loja'] },
+    { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja', 'devoluções'] }, // SEM loja_franquia e supervisor_franquia
     // Planner de Devoluções ainda aparece separado para perfil devoluções (não admin)
     { path: '/returns-planner', icon: Calendar, label: 'Planner de Devoluções', roles: ['devoluções'] },
     // Checklists Consolidados (inclui Checklist Diário para admin)

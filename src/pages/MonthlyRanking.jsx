@@ -3,13 +3,9 @@ import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { Trophy, Filter } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
-import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { filterStoresByUserType } from '@/lib/storeTypeHelper';
 
 const patentIcons = {
   'Platina': { icon: Trophy, color: 'text-cyan-400' },
@@ -37,20 +33,10 @@ const PatentSummaryCard = ({ summary, className }) => (
 
 const MonthlyRanking = () => {
   const { stores, patentSettings, evaluations } = useData();
-  const { user } = useAuth();
   const [nameFilter, setNameFilter] = useState('');
   const [franquiaFilter, setFranquiaFilter] = useState('all');
-  const [periodFilter, setPeriodFilter] = useState({
-    startDate: '',
-    endDate: ''
-  });
 
-  // Filtrar lojas por tipo (própria vs franquia)
-  const filteredStores = useMemo(() => {
-    return filterStoresByUserType(stores, user?.role, user?.storeId);
-  }, [stores, user?.role, user?.storeId]);
-
-  const franqueados = useMemo(() => ['Loja Própria', ...new Set(filteredStores.map(s => s.franqueado).filter(f => f !== 'Loja Própria'))], [filteredStores]);
+  const franqueados = useMemo(() => ['Loja Própria', ...new Set(stores.map(s => s.franqueado).filter(f => f !== 'Loja Própria'))], [stores]);
 
   const getPatent = (score) => {
     if (score >= patentSettings.platina) return { name: 'Platina', color: patentIcons['Platina'].color, icon: <Trophy /> };
@@ -59,125 +45,39 @@ const MonthlyRanking = () => {
     return { name: 'Bronze', color: patentIcons['Bronze'].color, icon: <Trophy /> };
   };
 
-  // Calcular ranking baseado em avaliações aprovadas reais com filtro de período
-  const approvedEvaluations = useMemo(() => {
-    let filtered = evaluations.filter(e => e.status === 'approved');
-    
-    if (periodFilter.startDate) {
-      const start = new Date(periodFilter.startDate);
-      start.setHours(0, 0, 0, 0);
-      filtered = filtered.filter(e => {
-        const evalDate = new Date(e.date || e.created_at);
-        evalDate.setHours(0, 0, 0, 0);
-        return evalDate >= start;
-      });
-    }
-    
-    if (periodFilter.endDate) {
-      const end = new Date(periodFilter.endDate);
-      end.setHours(23, 59, 59, 999);
-      filtered = filtered.filter(e => {
-        const evalDate = new Date(e.date || e.created_at);
-        evalDate.setHours(23, 59, 59, 999);
-        return evalDate <= end;
-      });
-    }
-    
-    return filtered;
-  }, [evaluations, periodFilter]);
+  // Calcular ranking baseado em avaliações aprovadas reais
+  const approvedEvaluations = useMemo(() => 
+    evaluations.filter(e => e.status === 'approved'), 
+    [evaluations]
+  );
 
   const realRanking = useMemo(() => {
     const pillars = ['Pessoas', 'Performance', 'Ambientação', 'Digital'];
     
-    return filteredStores.map((store) => {
+    return stores.map((store) => {
       // Buscar avaliações aprovadas desta loja
       const storeEvaluations = approvedEvaluations.filter(e => e.storeId === store.id);
       
       // Calcular pontuação por pilar
       const pillarScores = {};
       pillars.forEach(pillar => {
-        if (pillar === 'Performance') {
-          // Para o pilar Performance, calcular baseado em resultados vs metas
-          const performanceKPIs = ['faturamento', 'pa', 'ticketMedio', 'prateleiraInfinita', 'conversao'];
-          let totalWeightedScore = 0;
-          let totalWeight = 0;
-          
-          // Determinar o mês baseado no filtro de data (usar o início do período ou mês atual)
-          const getMonthFromFilter = () => {
-            if (periodFilter.startDate) {
-              const date = new Date(periodFilter.startDate);
-              return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-            }
-            const now = new Date();
-            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-          };
-          const targetMonth = getMonthFromFilter();
-          
-          // Buscar metas usando JSONB (goals[targetMonth])
-          const storeGoals = store.goals || {};
-          const goals = typeof storeGoals === 'object' && !Array.isArray(storeGoals)
-            ? (storeGoals[targetMonth] || {})
-            : (storeGoals || {});
-          
-          // Buscar resultados usando JSONB (store_results[targetMonth])
-          const storeResults = store.store_results || {};
-          const results = typeof storeResults === 'object' && !Array.isArray(storeResults)
-            ? (storeResults[targetMonth] || {})
-            : {};
-          
-          // Buscar pesos usando JSONB (weights[targetMonth])
-          const storeWeights = store.weights || {};
-          const weights = typeof storeWeights === 'object' && !Array.isArray(storeWeights)
-            ? (storeWeights[targetMonth] || {})
-            : (storeWeights || {});
-          
-          performanceKPIs.forEach(kpi => {
-            const goal = goals[kpi] || 0;
-            const result = results[kpi] || 0;
-            const weight = weights[kpi] || 0;
-            
-            if (goal > 0) {
-              // Calcular % de atingimento (limitado a 100% se ultrapassar)
-              const achievement = Math.min((result / goal) * 100, 100);
-              // Multiplicar achievement pelo peso (em decimal) e somar
-              totalWeightedScore += achievement * (weight / 100);
-              totalWeight += weight / 100;
-            }
-          });
-          
-          // Calcular score final (normalizado se os pesos não somarem 100%)
-          pillarScores[pillar] = totalWeight > 0 
-            ? Math.round(totalWeightedScore / totalWeight)
-            : 0;
+        const pillarEvals = storeEvaluations.filter(e => e.pillar === pillar);
+        if (pillarEvals.length > 0) {
+          pillarScores[pillar] = Math.round(
+            pillarEvals.reduce((acc, curr) => acc + curr.score, 0) / pillarEvals.length
+          );
         } else {
-          // Para outros pilares, usar média de avaliações aprovadas
-          const pillarEvals = storeEvaluations.filter(e => e.pillar === pillar);
-          if (pillarEvals.length > 0) {
-            // Validar scores antes de calcular média
-            const validScores = pillarEvals
-              .map(e => e.score)
-              .filter(score => score !== null && score !== undefined && !isNaN(score) && score >= 0 && score <= 100);
-            
-            if (validScores.length > 0) {
-              pillarScores[pillar] = Math.round(
-                validScores.reduce((acc, curr) => acc + curr, 0) / validScores.length
-              );
-            } else {
-              pillarScores[pillar] = 0;
-            }
-          } else {
-            pillarScores[pillar] = 0;
-          }
+          pillarScores[pillar] = 0;
         }
       });
       
-      // Calcular pontuação final (média dos 4 pilares)
-      const finalScore = pillars.length > 0
-        ? Math.round(pillars.reduce((sum, pillar) => sum + (pillarScores[pillar] || 0), 0) / pillars.length)
-        : 0;
-      
-      // Considerar que a loja tem dados se tiver pelo menos um pilar com score > 0
-      const hasData = pillars.some(pillar => (pillarScores[pillar] || 0) > 0);
+      // Calcular pontuação final (média de todas as avaliações aprovadas desta loja)
+      let finalScore = 0;
+      if (storeEvaluations.length > 0) {
+        finalScore = Math.round(
+          storeEvaluations.reduce((acc, curr) => acc + curr.score, 0) / storeEvaluations.length
+        );
+      }
       
       return {
         id: store.id,
@@ -189,19 +89,19 @@ const MonthlyRanking = () => {
         p_ambientacao: pillarScores['Ambientação'] || 0,
         p_digital: pillarScores['Digital'] || 0,
         finalScore: finalScore,
-        hasEvaluations: hasData, // Para filtrar lojas sem dados
+        hasEvaluations: storeEvaluations.length > 0, // Para filtrar lojas sem avaliações
       };
     }).sort((a, b) => {
-      // Ordenar: primeiro por pontuação final, depois por lojas sem dados por último
+      // Ordenar: primeiro por pontuação final, depois por lojas sem avaliações por último
       if (a.hasEvaluations && !b.hasEvaluations) return -1;
       if (!a.hasEvaluations && b.hasEvaluations) return 1;
       return b.finalScore - a.finalScore;
     });
-  }, [filteredStores, approvedEvaluations]);
+  }, [stores, approvedEvaluations]);
 
-  // Filtrar apenas lojas com dados e aplicar filtros
+  // Filtrar apenas lojas com avaliações aprovadas e aplicar filtros
   const filteredRanking = realRanking.filter(item => {
-    // Mostrar apenas lojas que têm dados (avaliações ou resultados de performance)
+    // Mostrar apenas lojas que têm avaliações aprovadas
     if (!item.hasEvaluations) return false;
     
     const nameMatch = item.store.toLowerCase().includes(nameFilter.toLowerCase()) ||
@@ -232,7 +132,7 @@ const MonthlyRanking = () => {
             <h1 className="text-3xl font-bold text-foreground">Ranking PPAD</h1>
             <p className="text-muted-foreground mt-1">Classificação geral de desempenho das lojas.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
@@ -251,32 +151,6 @@ const MonthlyRanking = () => {
             </Select>
           </div>
         </div>
-        
-        {/* Filtro de Período */}
-        <Card className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="startDate">Data Inicial</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={periodFilter.startDate}
-                onChange={(e) => setPeriodFilter({ ...periodFilter, startDate: e.target.value })}
-                className="bg-secondary"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="endDate">Data Final</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={periodFilter.endDate}
-                onChange={(e) => setPeriodFilter({ ...periodFilter, endDate: e.target.value })}
-                className="bg-secondary"
-              />
-            </div>
-          </div>
-        </Card>
 
         <PatentSummaryCard summary={patentSummary} />
 
@@ -300,7 +174,13 @@ const MonthlyRanking = () => {
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5 }}
               >
-                {filteredRanking.length === 0 ? (
+                {approvedEvaluations.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="px-6 py-8 text-center text-muted-foreground">
+                      Nenhuma avaliação aprovada ainda. As lojas só aparecerão aqui após avaliações serem feitas e aprovadas por um supervisor ou admin.
+                    </td>
+                  </tr>
+                ) : filteredRanking.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="px-6 py-8 text-center text-muted-foreground">
                       Nenhuma loja encontrada com os filtros aplicados.

@@ -9,9 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar, MapPin, Users, Plus, Trash2, Edit, GraduationCap, Building2, Clock, Link as LinkIcon, X, TrendingUp, Award, Download, MoreVertical, Lock, Unlock } from 'lucide-react';
+import { Calendar, MapPin, Users, Plus, Trash2, Edit, GraduationCap, Building2, Clock, Link as LinkIcon, X, TrendingUp, Award, Download } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import StoreMultiSelect from '@/components/StoreMultiSelect';
 import { motion } from 'framer-motion';
@@ -37,9 +36,9 @@ const Tabs = ({ defaultValue, children, className }) => {
   );
 };
 
-const TabsList = ({ children, activeTab, setActiveTab, className }) => {
+const TabsList = ({ activeTab, setActiveTab, children, className }) => {
   return (
-    <div className={cn("inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground", className)}>
+    <div className={cn("flex border-b border-border", className)}>
       {React.Children.map(children, child => {
         if (child.type === TabsTrigger) {
           return React.cloneElement(child, { activeTab, setActiveTab });
@@ -50,15 +49,17 @@ const TabsList = ({ children, activeTab, setActiveTab, className }) => {
   );
 };
 
-const TabsTrigger = ({ value, children, activeTab, setActiveTab, className }) => {
+const TabsTrigger = ({ value, activeTab, setActiveTab, children, className }) => {
   const isActive = activeTab === value;
   return (
     <button
       type="button"
       onClick={() => setActiveTab(value)}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-        isActive ? "bg-background text-foreground shadow-sm" : "",
+        "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+        isActive
+          ? "border-primary text-primary"
+          : "border-transparent text-muted-foreground hover:text-foreground",
         className
       )}
     >
@@ -67,45 +68,31 @@ const TabsTrigger = ({ value, children, activeTab, setActiveTab, className }) =>
   );
 };
 
-const TabsContent = ({ value, children, activeTab, className }) => {
+const TabsContent = ({ value, activeTab, children, className }) => {
   if (activeTab !== value) return null;
-  return <div className={cn("mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", className)}>{children}</div>;
+  return <div className={className}>{children}</div>;
 };
 
 const TrainingManagement = () => {
-  const { trainings, trainingRegistrations, stores, collaborators, addTraining, updateTraining, deleteTraining, updateTrainingRegistration, deleteTrainingRegistration, fetchData } = useData();
+  const { trainings, trainingRegistrations, collaborators, stores, addTraining, updateTraining, deleteTraining, addTrainingRegistration, updateTrainingRegistration, deleteTrainingRegistration, fetchData } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
-  const isAdmin = user?.role === 'admin';
-  const canManageTrainings = user?.role === 'admin' || user?.role === 'comunicação';
-  
-  // Para criação de treinamento, mostrar todas as lojas (próprias e franquias) para admin e comunicação
-  const availableStoresForTraining = useMemo(() => {
-    if (user?.role === 'admin' || user?.role === 'comunicação') {
-      return stores; // Admin e comunicação veem todas as lojas
-    }
-    return stores; // Por padrão, retornar todas (pode ser ajustado se necessário)
-  }, [stores, user?.role]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTraining, setEditingTraining] = useState(null);
-  const [updatingPresence, setUpdatingPresence] = useState({});
-  const [viewingRegistrations, setViewingRegistrations] = useState(null);
-  const [filters, setFilters] = useState({
-    store: [],
-    franqueado: [],
-    bandeira: [],
-    supervisor: []
-  });
+  const [selectedTrainingForRegistrations, setSelectedTrainingForRegistrations] = useState(null);
+  const [isRegistrationsDialogOpen, setIsRegistrationsDialogOpen] = useState(false);
+  const [filters, setFilters] = useState({ store: [], franqueado: [], bandeira: [], supervisor: [] });
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
     trainingDate: '',
     time: '',
     format: 'presencial',
+    link: '',
     brand: '',
     storeIds: [],
     location: '',
-    link: '',
     maxParticipants: '',
   });
 
@@ -115,11 +102,10 @@ const TrainingManagement = () => {
     { value: 'hibrido', label: 'Híbrido' },
   ];
 
-
   const handleOpenDialog = (training = null) => {
     if (training) {
       setEditingTraining(training);
-      // Parse store_ids se for string ou array
+      // Parse store_ids se for string
       let storeIdsArray = [];
       if (training.store_ids) {
         if (typeof training.store_ids === 'string') {
@@ -132,7 +118,6 @@ const TrainingManagement = () => {
           storeIdsArray = training.store_ids;
         }
       }
-      // Se não tem store_ids mas tem bandeira (formato antigo), manter vazio por enquanto
       
       setFormData({
         title: training.title || '',
@@ -140,11 +125,11 @@ const TrainingManagement = () => {
         trainingDate: training.training_date ? format(new Date(training.training_date), 'yyyy-MM-dd') : '',
         time: training.time || '',
         format: training.format || 'presencial',
+        link: training.link || '',
         brand: training.brand || '',
         storeIds: storeIdsArray,
         location: training.location || '',
-        link: training.link || '',
-        maxParticipants: training.max_participants?.toString() || '',
+        maxParticipants: training.max_participants || '',
       });
     } else {
       setEditingTraining(null);
@@ -154,14 +139,31 @@ const TrainingManagement = () => {
         trainingDate: '',
         time: '',
         format: 'presencial',
+        link: '',
         brand: '',
         storeIds: [],
         location: '',
-        link: '',
         maxParticipants: '',
       });
     }
     setIsDialogOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+    setIsDialogOpen(false);
+    setEditingTraining(null);
+    setFormData({
+      title: '',
+      description: '',
+      trainingDate: '',
+      time: '',
+      format: 'presencial',
+      link: '',
+      brand: '',
+      storeIds: [],
+      location: '',
+      maxParticipants: '',
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -176,6 +178,26 @@ const TrainingManagement = () => {
       return;
     }
 
+    // Validar link se for online
+    if (formData.format === 'online' && !formData.link) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Link é obrigatório para treinamentos online.',
+      });
+      return;
+    }
+
+    // Validar localização se for presencial
+    if (formData.format === 'presencial' && !formData.location) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Localização é obrigatória para treinamentos presenciais.',
+      });
+      return;
+    }
+
     try {
       const trainingData = {
         title: formData.title,
@@ -183,111 +205,66 @@ const TrainingManagement = () => {
         trainingDate: formData.trainingDate,
         time: formData.time || null,
         format: formData.format,
+        link: formData.format === 'online' ? formData.link : null,
         brand: formData.brand || null,
-        storeIds: formData.storeIds && formData.storeIds.length > 0 
-          ? formData.storeIds  // Enviar array diretamente, Supabase JSONB aceita
-          : null,
-        // Se for online, location deve ser null; se não for online, location pode ter valor
-        location: formData.format === 'online' ? null : (formData.location || null),
-        // Se for online, link pode ter valor; se não for online, link deve ser null
-        link: formData.format === 'online' ? (formData.link || null) : null,
+        storeIds: formData.storeIds && formData.storeIds.length > 0 ? formData.storeIds : null,
+        location: formData.format === 'presencial' ? formData.location : null,
         maxParticipants: formData.maxParticipants ? parseInt(formData.maxParticipants) : null,
       };
 
       if (editingTraining) {
         await updateTraining(editingTraining.id, trainingData);
-        // Aguardar um pouco para garantir que os dados foram atualizados
-        await new Promise(resolve => setTimeout(resolve, 300));
       } else {
         await addTraining(trainingData);
       }
       
-      setIsDialogOpen(false);
-      setFormData({
-        title: '',
-        description: '',
-        trainingDate: '',
-        format: 'presencial',
-        brand: '',
-        location: '',
-        maxParticipants: '',
-      });
-      setEditingTraining(null);
+      handleCloseDialog();
+      fetchData();
     } catch (error) {
       console.error('Erro ao salvar treinamento:', error);
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Tem certeza que deseja excluir este treinamento? Todas as inscrições serão canceladas.')) {
-      try {
-        await deleteTraining(id);
-      } catch (error) {
-        console.error('Erro ao excluir treinamento:', error);
-      }
+    if (!window.confirm('Tem certeza que deseja excluir este treinamento?')) {
+      return;
+    }
+
+    try {
+      await deleteTraining(id);
+      fetchData();
+    } catch (error) {
+      console.error('Erro ao excluir treinamento:', error);
     }
   };
 
+  const handleOpenRegistrationsDialog = (training) => {
+    setSelectedTrainingForRegistrations(training);
+    setIsRegistrationsDialogOpen(true);
+  };
+
   const handleTogglePresence = async (registrationId, currentPresence) => {
-    setUpdatingPresence(prev => ({ ...prev, [registrationId]: true }));
     try {
-      const newPresence = !currentPresence;
-      // Quando marcar presença, mudar status para "confirmed"
-      // Quando desmarcar presença, mudar status para "pending"
       await updateTrainingRegistration(registrationId, {
-        presence: newPresence,
-        status: newPresence ? 'confirmed' : 'pending'
+        presence: !currentPresence,
+        status: !currentPresence ? 'confirmed' : 'pending',
       });
+      fetchData();
     } catch (error) {
       console.error('Erro ao atualizar presença:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erro',
-        description: 'Não foi possível atualizar a presença.',
-      });
-    } finally {
-      setUpdatingPresence(prev => {
-        const newState = { ...prev };
-        delete newState[registrationId];
-        return newState;
-      });
     }
   };
 
   const handleDeleteRegistration = async (registrationId) => {
-    if (window.confirm('Tem certeza que deseja excluir esta inscrição?')) {
-      try {
-        await deleteTrainingRegistration(registrationId);
-        toast({
-          title: 'Sucesso!',
-          description: 'Inscrição excluída com sucesso.',
-        });
-      } catch (error) {
-        console.error('Erro ao excluir inscrição:', error);
-        toast({
-          variant: 'destructive',
-          title: 'Erro',
-          description: 'Não foi possível excluir a inscrição.',
-        });
-      }
+    if (!window.confirm('Tem certeza que deseja excluir esta inscrição?')) {
+      return;
     }
-  };
 
-  const handleToggleBlockRegistrations = async (trainingId, currentBlocked) => {
     try {
-      const newBlocked = !currentBlocked;
-      await updateTraining(trainingId, { registrationsBlocked: newBlocked });
-      toast({
-        title: 'Sucesso!',
-        description: newBlocked ? 'Inscrições bloqueadas com sucesso.' : 'Inscrições desbloqueadas com sucesso.',
-      });
+      await deleteTrainingRegistration(registrationId);
+      fetchData();
     } catch (error) {
-      console.error('Erro ao alterar bloqueio de inscrições:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erro',
-        description: 'Não foi possível alterar o bloqueio de inscrições.',
-      });
+      console.error('Erro ao excluir inscrição:', error);
     }
   };
 
@@ -364,95 +341,77 @@ const TrainingManagement = () => {
     }
   };
 
-  // Agrupar inscrições por treinamento
-  const registrationsByTraining = useMemo(() => {
-    const grouped = {};
-    trainingRegistrations.forEach(reg => {
-      const trainingId = reg.training_id || reg.trainingId;
-      if (!grouped[trainingId]) {
-        grouped[trainingId] = [];
-      }
-      grouped[trainingId].push(reg);
-    });
-    return grouped;
-  }, [trainingRegistrations]);
-
-  // Opções de filtros
+  // Filtros para registros
   const filterOptions = useMemo(() => {
     return {
       stores: stores.map(s => ({ value: s.id, label: s.name })),
       franqueados: [...new Set(stores.map(s => s.franqueado).filter(Boolean))].map(f => ({ value: f, label: f })),
       bandeiras: [...new Set(stores.map(s => s.bandeira).filter(Boolean))].map(b => ({ value: b, label: b })),
-      supervisors: [...new Set(stores.map(s => s.supervisor).filter(Boolean))].map(s => ({ value: s, label: s }))
+      supervisors: [...new Set(stores.map(s => s.supervisor).filter(Boolean))].map(s => ({ value: s, label: s })),
     };
   }, [stores]);
 
-  // Filtrar registrações baseado nos filtros
   const filteredRegistrations = useMemo(() => {
-    return trainingRegistrations.filter(reg => {
-      const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
-      if (!store) return false;
+    let filtered = trainingRegistrations;
 
-      const matchStore = filters.store.length === 0 || filters.store.includes(store.id);
-      const matchFranqueado = filters.franqueado.length === 0 || (store.franqueado && filters.franqueado.includes(store.franqueado));
-      const matchBandeira = filters.bandeira.length === 0 || (store.bandeira && filters.bandeira.includes(store.bandeira));
-      const matchSupervisor = filters.supervisor.length === 0 || (store.supervisor && filters.supervisor.includes(store.supervisor));
+    if (filters.store.length > 0) {
+      filtered = filtered.filter(reg => filters.store.includes(reg.store_id || reg.storeId));
+    }
 
-      return matchStore && matchFranqueado && matchBandeira && matchSupervisor;
-    });
-  }, [trainingRegistrations, stores, filters]);
+    if (filters.franqueado.length > 0) {
+      filtered = filtered.filter(reg => {
+        const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
+        return store && filters.franqueado.includes(store.franqueado);
+      });
+    }
 
-  // Top 5 lojas por participação (aderência baseada em headcount)
+    if (filters.bandeira.length > 0) {
+      filtered = filtered.filter(reg => {
+        const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
+        return store && filters.bandeira.includes(store.bandeira);
+      });
+    }
+
+    if (filters.supervisor.length > 0) {
+      filtered = filtered.filter(reg => {
+        const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
+        return store && filters.supervisor.includes(store.supervisor);
+      });
+    }
+
+    return filtered;
+  }, [trainingRegistrations, filters, stores]);
+
+  // Top 5 lojas por participação
   const top5Stores = useMemo(() => {
     const storeStats = {};
-    filteredRegistrations.forEach(reg => {
+    
+    trainingRegistrations.forEach(reg => {
       const storeId = reg.store_id || reg.storeId;
-      const store = stores.find(s => s.id === storeId);
-      if (!store) return;
-
       if (!storeStats[storeId]) {
-        // Calcular headcount da loja (colaboradores ativos)
-        const storeCollaborators = (collaborators || []).filter(c => 
-          (c.storeId === storeId || c.store_id === storeId) && 
-          (c.status || 'ativo') === 'ativo'
-        );
-        const headcount = storeCollaborators.length;
-
-        storeStats[storeId] = {
-          storeId,
-          storeName: store.name,
-          storeCode: store.code,
-          franqueado: store.franqueado,
-          bandeira: store.bandeira,
-          total: 0, // Inscrições
-          present: 0, // Presenças
-          headcount: headcount // Headcount da loja
-        };
+        storeStats[storeId] = { registrations: 0, presences: 0 };
       }
-      storeStats[storeId].total++;
+      storeStats[storeId].registrations++;
       if (reg.presence) {
-        storeStats[storeId].present++;
+        storeStats[storeId].presences++;
       }
     });
 
-    return Object.values(storeStats)
-      .map(stat => ({
-        ...stat,
-        // Aderência = (presenças / headcount) * 100
-        adherence: stat.headcount > 0 ? Math.round((stat.present / stat.headcount) * 100) : 0
-      }))
-      .sort((a, b) => b.adherence - a.adherence) // Ordenar por aderência
+    return Object.entries(storeStats)
+      .map(([storeId, stats]) => {
+        const store = stores.find(s => s.id === storeId);
+        return {
+          storeId,
+          storeName: store?.name || 'Loja não encontrada',
+          storeCode: store?.code || '',
+          registrations: stats.registrations,
+          presences: stats.presences,
+          adherence: stats.registrations > 0 ? Math.round((stats.presences / stats.registrations) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.registrations - a.registrations)
       .slice(0, 5);
-  }, [filteredRegistrations, stores, collaborators]);
-
-  // Treinamentos ordenados por data
-  const sortedTrainings = useMemo(() => {
-    return [...trainings].sort((a, b) => {
-      const dateA = new Date(a.training_date);
-      const dateB = new Date(b.training_date);
-      return dateA - dateB;
-    });
-  }, [trainings]);
+  }, [trainingRegistrations, stores]);
 
   return (
     <>
@@ -465,158 +424,14 @@ const TrainingManagement = () => {
             <h1 className="text-3xl font-bold text-foreground">Agenda de Treinamentos</h1>
             <p className="text-muted-foreground mt-1">Gerencie treinamentos e visualize inscrições.</p>
           </div>
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={() => handleOpenDialog()} className="gap-2">
-                <Plus className="w-4 h-4" /> Novo Treinamento
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>{editingTraining ? 'Editar Treinamento' : 'Novo Treinamento'}</DialogTitle>
-                <DialogDescription>
-                  {editingTraining ? 'Atualize as informações do treinamento.' : 'Preencha os dados para criar um novo treinamento.'}
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Título *</Label>
-                    <Input
-                      id="title"
-                      value={formData.title || ''}
-                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      required
-                      className="bg-secondary"
-                    />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Descrição</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description || ''}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    className="bg-secondary min-h-[100px]"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="trainingDate">Data *</Label>
-                    <Input
-                      id="trainingDate"
-                      type="date"
-                      value={formData.trainingDate || ''}
-                      onChange={(e) => setFormData({ ...formData, trainingDate: e.target.value })}
-                      required
-                      className="bg-secondary"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="time">Horário *</Label>
-                    <Input
-                      id="time"
-                      type="time"
-                      value={formData.time || ''}
-                      onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                      required
-                      className="bg-secondary"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="format">Formato *</Label>
-                    <Select
-                      value={formData.format}
-                      onValueChange={(value) => setFormData({ ...formData, format: value })}
-                    >
-                      <SelectTrigger className="bg-secondary">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {formatOptions.map(opt => (
-                          <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="maxParticipants">Máx. Participantes</Label>
-                    <Input
-                      id="maxParticipants"
-                      type="number"
-                      value={formData.maxParticipants || ''}
-                      onChange={(e) => setFormData({ ...formData, maxParticipants: e.target.value })}
-                      className="bg-secondary"
-                      min="1"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="brand">Marca</Label>
-                    <Input
-                      id="brand"
-                      value={formData.brand || ''}
-                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
-                      className="bg-secondary"
-                      placeholder="Ex: ARTWALK, AUTHENTIC FEET, MAGICFEET"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="storeIds">Lojas Destinatárias</Label>
-                    <StoreMultiSelect
-                      stores={availableStoresForTraining}
-                      selected={formData.storeIds}
-                      onChange={(selected) => setFormData({ ...formData, storeIds: selected })}
-                      placeholder="Selecione as lojas (ou deixe vazio para todas)"
-                      className="bg-secondary"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Deixe vazio para disponibilizar para todas as lojas, ou selecione lojas específicas (próprias e franquias).
-                    </p>
-                  </div>
-                </div>
-                {formData.format === 'online' ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="link">Link da Reunião *</Label>
-                    <Input
-                      id="link"
-                      type="url"
-                      value={formData.link || ''}
-                      onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                      required
-                      className="bg-secondary"
-                      placeholder="https://meet.google.com/xxx-xxxx-xxx"
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor="location">Local {formData.format === 'presencial' || formData.format === 'hibrido' ? '*' : ''}</Label>
-                    <Input
-                      id="location"
-                      value={formData.location || ''}
-                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                      required={formData.format === 'presencial' || formData.format === 'hibrido'}
-                      className="bg-secondary"
-                      placeholder="Endereço do treinamento"
-                    />
-                  </div>
-                )}
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button type="submit">
-                    {editingTraining ? 'Salvar Alterações' : 'Criar Treinamento'}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button onClick={() => handleOpenDialog()} className="gap-2">
+            <Plus className="w-4 h-4" />
+            Criar Treinamento
+          </Button>
         </div>
 
-        <Tabs defaultValue="trainings" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="trainings">
+          <TabsList>
             <TabsTrigger value="trainings">Treinamentos</TabsTrigger>
             <TabsTrigger value="registrations">Inscritos</TabsTrigger>
           </TabsList>
@@ -627,19 +442,7 @@ const TrainingManagement = () => {
               const totalTrainings = trainings.length;
               const totalRegistrations = trainingRegistrations.length;
               const totalPresent = trainingRegistrations.filter(r => r.presence).length;
-              
-              // Calcular headcount total de todas as lojas
-              const allStoreIds = [...new Set(trainingRegistrations.map(r => r.store_id || r.storeId))];
-              const totalHeadcount = allStoreIds.reduce((sum, storeId) => {
-                const storeCollaborators = (collaborators || []).filter(c => 
-                  (c.storeId === storeId || c.store_id === storeId) && 
-                  (c.status || 'ativo') === 'ativo'
-                );
-                return sum + storeCollaborators.length;
-              }, 0);
-              
-              // Aderência geral = (total de presenças / headcount total) * 100
-              const adherenceRate = totalHeadcount > 0 ? Math.round((totalPresent / totalHeadcount) * 100) : 0;
+              const adherenceRate = totalRegistrations > 0 ? Math.round((totalPresent / totalRegistrations) * 100) : 0;
               
               // Agrupar inscrições por franqueado
               const registrationsByFranchisee = {};
@@ -665,7 +468,7 @@ const TrainingManagement = () => {
                   adherence: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0
                 }))
                 .sort((a, b) => b.total - a.total)[0];
-
+      
               return (
                 <div className="space-y-4 mb-6">
                   <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -745,137 +548,17 @@ const TrainingManagement = () => {
                 </div>
               );
             })()}
-            {/* Análise Individual por Treinamento */}
-            <div className="space-y-4 mb-6">
-              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <TrendingUp className="w-6 h-6" />
-                Análise Individual por Treinamento
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {sortedTrainings.map(training => {
-                  const registrations = registrationsByTraining[training.id] || [];
-                  const presentCount = registrations.filter(r => r.presence).length;
-                  const totalCount = registrations.length;
-                  
-                  // Calcular headcount total das lojas inscritas neste treinamento
-                  const storeIds = [...new Set(registrations.map(r => r.store_id || r.storeId))];
-                  const totalHeadcount = storeIds.reduce((sum, storeId) => {
-                    const storeCollaborators = (collaborators || []).filter(c => 
-                      (c.storeId === storeId || c.store_id === storeId) && 
-                      (c.status || 'ativo') === 'ativo'
-                    );
-                    return sum + storeCollaborators.length;
-                  }, 0);
-                  
-                  // Aderência = (presenças / headcount total) * 100
-                  const adherence = totalHeadcount > 0 ? Math.round((presentCount / totalHeadcount) * 100) : 0;
-                  
-                  return (
-                    <motion.div
-                      key={`analysis-${training.id}`}
-                      className="bg-card p-4 rounded-xl border border-border"
-                      whileHover={{ y: -5, boxShadow: '0 10px 20px rgba(0,0,0,0.2)' }}
-                    >
-                      <h3 className="font-bold text-lg text-foreground mb-3 line-clamp-1">{training.title}</h3>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Headcount:</span>
-                          <span className="font-semibold text-foreground">{totalHeadcount}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Inscrições:</span>
-                          <span className="font-semibold text-foreground">{totalCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Presenças:</span>
-                          <span className="font-semibold text-foreground">{presentCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Aderência:</span>
-                          <span className={cn(
-                            "font-semibold",
-                            adherence >= 80 ? "text-green-500" :
-                            adherence >= 60 ? "text-yellow-500" :
-                            "text-red-500"
-                          )}>{adherence}%</span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Top 5 Lojas */}
-            {top5Stores.length > 0 && (
-              <div className="space-y-4 mb-6">
-                <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                  <Award className="w-6 h-6" />
-                  Top 5 Lojas em Participação
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                  {top5Stores.map((store, index) => (
-                    <motion.div
-                      key={store.storeId}
-                      className="bg-card p-4 rounded-xl border border-border"
-                      whileHover={{ y: -5, boxShadow: '0 10px 20px rgba(0,0,0,0.2)' }}
-                    >
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm",
-                          index === 0 ? "bg-yellow-500 text-white" :
-                          index === 1 ? "bg-gray-400 text-white" :
-                          index === 2 ? "bg-orange-500 text-white" :
-                          "bg-secondary text-foreground"
-                        )}>
-                          {index + 1}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-foreground truncate">{store.storeName}</p>
-                          <p className="text-xs text-muted-foreground truncate">{store.storeCode}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Headcount:</span>
-                          <span className="font-semibold">{store.headcount}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Inscrições:</span>
-                          <span className="font-semibold">{store.total}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Presenças:</span>
-                          <span className="font-semibold">{store.present}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Aderência:</span>
-                          <span className={cn(
-                            "font-semibold",
-                            store.adherence >= 80 ? "text-green-500" :
-                            store.adherence >= 60 ? "text-yellow-500" :
-                            "text-red-500"
-                          )}>{store.adherence}%</span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Lista de Treinamentos */}
-            <div className="space-y-4">
-              <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <GraduationCap className="w-6 h-6" />
-                Treinamentos Criados
-              </h2>
-            {sortedTrainings.length > 0 ? (
+            {trainings.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {sortedTrainings.map(training => {
-                  const registrations = registrationsByTraining[training.id] || [];
-                  const formatLabel = formatOptions.find(f => f.value === training.format)?.label || training.format;
-                  
+                {trainings.map(training => {
+                  const registrations = trainingRegistrations.filter(reg => 
+                    (reg.training_id || reg.trainingId) === training.id
+                  );
+                  const presentCount = registrations.filter(r => r.presence).length;
+                  const adherence = registrations.length > 0 ? Math.round((presentCount / registrations.length) * 100) : 0;
+
                   return (
                     <motion.div
                       key={training.id}
@@ -883,119 +566,24 @@ const TrainingManagement = () => {
                       animate={{ opacity: 1, y: 0 }}
                       className="bg-card p-5 rounded-xl border border-border shadow-sm"
                     >
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1">
-                          <h3 className="font-bold text-lg text-foreground mb-2">{training.title}</h3>
-                          {training.description && (
-                            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{training.description}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              const regs = registrationsByTraining[training.id] || [];
-                              if (regs.length > 0) {
-                                handleExportToExcel(training, regs);
-                              } else {
-                                toast({
-                                  variant: 'destructive',
-                                  title: 'Aviso',
-                                  description: 'Não há inscritos para exportar.',
-                                });
-                              }
-                            }}
-                            className="h-8 w-8"
-                            title="Exportar para Excel"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setViewingRegistrations(training)}
-                            className="h-8 w-8"
-                            title="Ver Inscritos"
-                          >
-                            <Users className="w-4 h-4" />
-                          </Button>
-                          {canManageTrainings && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleOpenDialog(training)}>
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Editar
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => handleToggleBlockRegistrations(training.id, training.registrations_blocked || false)}
-                                >
-                                  {training.registrations_blocked ? (
-                                    <>
-                                      <Unlock className="mr-2 h-4 w-4" />
-                                      Desbloquear Inscrições
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Lock className="mr-2 h-4 w-4" />
-                                      Bloquear Inscrições
-                                    </>
-                                  )}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  onClick={() => handleDelete(training.id)} 
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Trash2 className="mr-2 h-4 w-4" />
-                                  Excluir
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                          {!canManageTrainings && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleOpenDialog(training)}
-                                className="h-8 w-8"
-                                title="Editar"
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDelete(training.id)}
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                title="Excluir"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
+                      <div className="mb-4">
+                        <h3 className="font-bold text-lg text-foreground mb-2">{training.title}</h3>
+                        {training.description && (
+                          <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{training.description}</p>
+                        )}
                       </div>
-                      <div className="space-y-2 text-sm">
+                      <div className="space-y-2 text-sm mb-4">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Calendar className="w-4 h-4" />
-                          <span>{format(new Date(training.training_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}</span>
+                          <span>
+                            {format(new Date(training.training_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                            {training.time && ` às ${training.time}`}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <GraduationCap className="w-4 h-4" />
-                          <span>{formatLabel}</span>
+                          <span>{formatOptions.find(f => f.value === training.format)?.label || training.format}</span>
                         </div>
-                        {training.time && (
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <Calendar className="w-4 h-4" />
-                            <span>{training.time}</span>
-                          </div>
-                        )}
                         {training.location && (
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <MapPin className="w-4 h-4" />
@@ -1014,6 +602,12 @@ const TrainingManagement = () => {
                             >
                               Acessar Link da Reunião
                             </a>
+                          </div>
+                        )}
+                        {training.brand && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Building2 className="w-4 h-4" />
+                            <span>Marca: {training.brand}</span>
                           </div>
                         )}
                         {training.store_ids && (() => {
@@ -1039,25 +633,46 @@ const TrainingManagement = () => {
                           }
                           return null;
                         })()}
-                        {training.brand && (
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <Building2 className="w-4 h-4" />
-                            <span>{training.brand}</span>
-                          </div>
-                        )}
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Users className="w-4 h-4" />
                           <span>
-                            {registrations.length} inscrito(s)
+                            {registrations.length} inscrito(s) / {presentCount} presente(s)
                             {training.max_participants && ` / ${training.max_participants} máximo`}
                           </span>
                         </div>
-                        {training.registrations_blocked && (
-                          <div className="flex items-center gap-2 text-orange-500 font-medium">
-                            <Lock className="w-4 h-4" />
-                            <span>Inscrições bloqueadas</span>
+                        {registrations.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <TrendingUp className="w-4 h-4 text-primary" />
+                            <span className="text-sm font-medium text-primary">Aderência: {adherence}%</span>
                           </div>
                         )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenRegistrationsDialog(training)}
+                          className="flex-1 gap-2"
+                        >
+                          <Users className="w-4 h-4" />
+                          Ver Inscritos ({registrations.length})
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenDialog(training)}
+                          className="gap-2"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDelete(training.id)}
+                          className="gap-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </motion.div>
                   );
@@ -1066,25 +681,23 @@ const TrainingManagement = () => {
             ) : (
               <div className="text-center py-16 text-muted-foreground bg-card rounded-lg border border-dashed">
                 <p className="text-lg">Nenhum treinamento cadastrado.</p>
-                <p className="text-sm">Clique em "Novo Treinamento" para criar o primeiro.</p>
+                <p className="text-sm">Clique em "Criar Treinamento" para começar.</p>
               </div>
             )}
-            </div>
           </TabsContent>
 
           <TabsContent value="registrations" className="space-y-4 mt-4">
             {/* Filtros */}
-            <div className="bg-card p-4 rounded-xl border border-border">
-              <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
+            <div className="bg-card p-4 rounded-lg border border-border">
+              <h3 className="text-lg font-semibold mb-4">Filtros</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <Label>Loja</Label>
                   <MultiSelectFilter
                     options={filterOptions.stores}
                     selected={filters.store}
-                    onChange={(selected) => setFilters({ ...filters, store: selected })}
-                    placeholder="Todas as lojas"
-                    className="bg-secondary"
+                    onChange={(value) => setFilters(prev => ({ ...prev, store: value }))}
+                    placeholder="Selecione lojas"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1092,9 +705,8 @@ const TrainingManagement = () => {
                   <MultiSelectFilter
                     options={filterOptions.franqueados}
                     selected={filters.franqueado}
-                    onChange={(selected) => setFilters({ ...filters, franqueado: selected })}
-                    placeholder="Todos os franqueados"
-                    className="bg-secondary"
+                    onChange={(value) => setFilters(prev => ({ ...prev, franqueado: value }))}
+                    placeholder="Selecione franqueados"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1102,9 +714,8 @@ const TrainingManagement = () => {
                   <MultiSelectFilter
                     options={filterOptions.bandeiras}
                     selected={filters.bandeira}
-                    onChange={(selected) => setFilters({ ...filters, bandeira: selected })}
-                    placeholder="Todas as bandeiras"
-                    className="bg-secondary"
+                    onChange={(value) => setFilters(prev => ({ ...prev, bandeira: value }))}
+                    placeholder="Selecione bandeiras"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1112,9 +723,8 @@ const TrainingManagement = () => {
                   <MultiSelectFilter
                     options={filterOptions.supervisors}
                     selected={filters.supervisor}
-                    onChange={(selected) => setFilters({ ...filters, supervisor: selected })}
-                    placeholder="Todos os supervisores"
-                    className="bg-secondary"
+                    onChange={(value) => setFilters(prev => ({ ...prev, supervisor: value }))}
+                    placeholder="Selecione supervisores"
                   />
                 </div>
               </div>
@@ -1122,240 +732,314 @@ const TrainingManagement = () => {
 
             {/* Top 5 Lojas */}
             {top5Stores.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  <Award className="w-5 h-5" />
+              <div className="bg-card p-5 rounded-xl border border-border">
+                <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
+                  <Award className="w-5 h-5 text-yellow-500" />
                   Top 5 Lojas em Participação
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="space-y-2">
                   {top5Stores.map((store, index) => (
-                    <motion.div
-                      key={store.storeId}
-                      className="bg-card p-4 rounded-xl border border-border"
-                      whileHover={{ y: -5, boxShadow: '0 10px 20px rgba(0,0,0,0.2)' }}
-                    >
-                      <div className="flex items-center gap-2 mb-3">
+                    <div key={store.storeId} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                      <div className="flex items-center gap-3">
                         <div className={cn(
                           "w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm",
                           index === 0 ? "bg-yellow-500 text-white" :
                           index === 1 ? "bg-gray-400 text-white" :
-                          index === 2 ? "bg-orange-500 text-white" :
-                          "bg-secondary text-foreground"
+                          index === 2 ? "bg-orange-600 text-white" :
+                          "bg-muted text-muted-foreground"
                         )}>
                           {index + 1}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-sm text-foreground truncate">{store.storeName}</p>
-                          <p className="text-xs text-muted-foreground truncate">{store.storeCode}</p>
+                        <div>
+                          <p className="font-medium text-foreground">{store.storeName}</p>
+                          <p className="text-xs text-muted-foreground">{store.storeCode}</p>
                         </div>
                       </div>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Headcount:</span>
-                          <span className="font-semibold">{store.headcount}</span>
+                      <div className="flex items-center gap-4 text-sm">
+                        <div className="text-center">
+                          <p className="text-muted-foreground">Inscrições</p>
+                          <p className="font-bold text-foreground">{store.registrations}</p>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Inscrições:</span>
-                          <span className="font-semibold">{store.total}</span>
+                        <div className="text-center">
+                          <p className="text-muted-foreground">Presenças</p>
+                          <p className="font-bold text-foreground">{store.presences}</p>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Presenças:</span>
-                          <span className="font-semibold">{store.present}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Aderência:</span>
-                          <span className={cn(
-                            "font-semibold",
-                            store.adherence >= 80 ? "text-green-500" :
-                            store.adherence >= 60 ? "text-yellow-500" :
-                            "text-red-500"
-                          )}>{store.adherence}%</span>
+                        <div className="text-center">
+                          <p className="text-muted-foreground">Aderência</p>
+                          <p className="font-bold text-primary">{store.adherence}%</p>
                         </div>
                       </div>
-                    </motion.div>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {(() => {
-              // Filtrar treinamentos que têm inscrições após aplicar os filtros
-              const trainingsWithFilteredRegistrations = sortedTrainings
-                .map(training => {
-                  const allRegistrations = registrationsByTraining[training.id] || [];
-                  const registrations = allRegistrations.filter(reg => {
-                    const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
-                    if (!store) return false;
-
-                    const matchStore = filters.store.length === 0 || filters.store.includes(store.id);
-                    const matchFranqueado = filters.franqueado.length === 0 || (store.franqueado && filters.franqueado.includes(store.franqueado));
-                    const matchBandeira = filters.bandeira.length === 0 || (store.bandeira && filters.bandeira.includes(store.bandeira));
-                    const matchSupervisor = filters.supervisor.length === 0 || (store.supervisor && filters.supervisor.includes(store.supervisor));
-
-                    return matchStore && matchFranqueado && matchBandeira && matchSupervisor;
-                  });
-                  
-                  return registrations.length > 0 ? { training, registrations } : null;
-                })
-                .filter(Boolean);
-
-              if (trainingsWithFilteredRegistrations.length === 0) {
-                return (
-                  <div className="text-center py-16 text-muted-foreground bg-card rounded-lg border border-dashed">
-                    <p className="text-lg">Nenhuma inscrição encontrada.</p>
-                    {Object.values(filters).some(f => f.length > 0) && (
-                      <p className="text-sm mt-2">Tente ajustar os filtros.</p>
-                    )}
-                  </div>
-                );
-              }
-
-              return (
-                <div className="space-y-6">
-                  {trainingsWithFilteredRegistrations.map(({ training, registrations }) => {
-
-                  const presentCount = registrations.filter(r => r.presence).length;
-                  const totalCount = registrations.length;
+            {/* Lista de Inscrições */}
+            <div className="space-y-4">
+              {filteredRegistrations.length > 0 ? (
+                filteredRegistrations.map(reg => {
+                  const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
+                  const collaborator = reg.collaborator || {};
+                  const training = trainings.find(t => t.id === (reg.training_id || reg.trainingId));
 
                   return (
-                    <motion.div
-                      key={training.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-card p-5 rounded-xl border border-border"
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <div>
-                          <h3 className="font-bold text-lg text-foreground">
-                            {training.title}
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {format(new Date(training.training_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                            {training.time && ` às ${training.time}`}
-                          </p>
+                    <div key={reg.id} className="bg-card p-4 rounded-lg border border-border">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="font-semibold text-foreground">{collaborator.name || 'Colaborador não encontrado'}</h4>
+                            <span className={cn(
+                              "px-2 py-1 rounded-full text-xs font-semibold",
+                              reg.presence || reg.status === 'confirmed' 
+                                ? "bg-green-500/20 text-green-500"
+                                : reg.status === 'cancelled'
+                                ? "bg-red-500/20 text-red-500"
+                                : "bg-yellow-500/20 text-yellow-500"
+                            )}>
+                              {reg.presence || reg.status === 'confirmed' ? 'Confirmado' : reg.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-sm text-muted-foreground">
+                            <p><strong>Cargo:</strong> {collaborator.role || 'Não informado'}</p>
+                            {collaborator.cpf && <p><strong>CPF:</strong> {collaborator.cpf}</p>}
+                            {collaborator.email && <p><strong>Email:</strong> {collaborator.email}</p>}
+                            <p><strong>Loja:</strong> {store?.name || 'Não encontrada'}</p>
+                            {store?.code && <p><strong>Código:</strong> {store.code}</p>}
+                            {store?.franqueado && <p><strong>Franqueado:</strong> {store.franqueado}</p>}
+                            {store?.bandeira && <p><strong>Bandeira:</strong> {store.bandeira}</p>}
+                            {store?.supervisor && <p><strong>Supervisor:</strong> {store.supervisor}</p>}
+                            {training && (
+                              <p><strong>Treinamento:</strong> {training.title} - {format(new Date(training.training_date), "dd/MM/yyyy", { locale: ptBR })}</p>
+                            )}
+                            {reg.registered_at && (
+                              <p><strong>Inscrito em:</strong> {format(new Date(reg.registered_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-right">
-                            <p className="text-sm font-medium text-foreground">
-                              {presentCount} / {totalCount} presentes
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0}% de aderência
-                            </p>
+                        <div className="flex items-center gap-2 ml-4">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`presence-${reg.id}`}
+                              checked={reg.presence || false}
+                              onCheckedChange={() => handleTogglePresence(reg.id, reg.presence || false)}
+                            />
+                            <Label htmlFor={`presence-${reg.id}`} className="text-sm cursor-pointer">
+                              Presença
+                            </Label>
                           </div>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            onClick={() => handleExportToExcel(training, registrations)}
-                            className="gap-2"
-                            title="Exportar para Excel"
+                            onClick={() => handleDeleteRegistration(reg.id)}
+                            className="text-destructive hover:text-destructive"
                           >
-                            <Download className="w-4 h-4" />
-                            Excel
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        {registrations.map(reg => {
-                          const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
-                          const collaborator = reg.collaborator || {};
-                          const isUpdating = updatingPresence[reg.id];
-                          
-                          return (
-                            <div
-                              key={reg.id}
-                              className="flex items-center justify-between p-3 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors"
-                            >
-                              <div className="flex items-center gap-3 flex-1">
-                                <Checkbox
-                                  checked={reg.presence || false}
-                                  onCheckedChange={() => handleTogglePresence(reg.id, reg.presence)}
-                                  disabled={isUpdating}
-                                />
-                                <div className="flex-1">
-                                  <p className="font-medium text-foreground">{collaborator.name || 'Colaborador não encontrado'}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    <span className="font-semibold">{store?.name || 'Loja não encontrada'}</span>
-                                    {store?.franqueado && ` - Franqueado: ${store.franqueado}`}
-                                    {' - '}
-                                    {collaborator.role || 'Cargo não informado'}
-                                    {collaborator.cpf && ` - CPF: ${collaborator.cpf}`}
-                                    {collaborator.email && ` - Email: ${collaborator.email}`}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className={cn(
-                                  "text-xs px-2 py-1 rounded-full whitespace-nowrap",
-                                  reg.presence || reg.status === 'confirmed' ? "bg-green-500/20 text-green-500" :
-                                  reg.status === 'cancelled' ? "bg-red-500/20 text-red-500" :
-                                  "bg-yellow-500/20 text-yellow-500"
-                                )}>
-                                  {reg.presence || reg.status === 'confirmed' ? 'Confirmado' :
-                                   reg.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDeleteRegistration(reg.id)}
-                                  className="h-8 w-8 text-destructive hover:text-destructive"
-                                  title="Excluir Inscrição"
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </motion.div>
+                    </div>
                   );
-                  })}
+                })
+              ) : (
+                <div className="text-center py-16 text-muted-foreground bg-card rounded-lg border border-dashed">
+                  <p className="text-lg">Nenhuma inscrição encontrada.</p>
+                  <p className="text-sm">Os registros aparecerão aqui quando houver inscrições.</p>
                 </div>
-              );
-            })()}
+              )}
+            </div>
           </TabsContent>
         </Tabs>
 
-        {/* Dialog para visualizar inscritos de um treinamento específico */}
-        {viewingRegistrations && (
-          <Dialog open={!!viewingRegistrations} onOpenChange={(open) => !open && setViewingRegistrations(null)}>
-            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        {/* Dialog de Criar/Editar Treinamento */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingTraining ? 'Editar Treinamento' : 'Criar Novo Treinamento'}</DialogTitle>
+              <DialogDescription>
+                Preencha os dados do treinamento. Campos marcados com * são obrigatórios.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Título *</Label>
+                <Input
+                  id="title"
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  className="bg-secondary"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Descrição</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="bg-secondary"
+                  rows={3}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="trainingDate">Data *</Label>
+                  <Input
+                    id="trainingDate"
+                    type="date"
+                    value={formData.trainingDate}
+                    onChange={(e) => setFormData({ ...formData, trainingDate: e.target.value })}
+                    className="bg-secondary"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="time">Horário</Label>
+                  <Input
+                    id="time"
+                    type="time"
+                    value={formData.time}
+                    onChange={(e) => setFormData({ ...formData, time: e.target.value })}
+                    className="bg-secondary"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="format">Formato *</Label>
+                <Select
+                  value={formData.format}
+                  onValueChange={(value) => setFormData({ ...formData, format: value, link: value === 'online' ? formData.link : '', location: value === 'presencial' ? formData.location : '' })}
+                >
+                  <SelectTrigger className="bg-secondary">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formatOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {formData.format === 'online' && (
+                <div className="space-y-2">
+                  <Label htmlFor="link">Link da Reunião *</Label>
+                  <Input
+                    id="link"
+                    type="url"
+                    value={formData.link}
+                    onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+                    className="bg-secondary"
+                    placeholder="https://meet.google.com/..."
+                    required={formData.format === 'online'}
+                  />
+                </div>
+              )}
+
+              {formData.format === 'presencial' && (
+                <div className="space-y-2">
+                  <Label htmlFor="location">Localização *</Label>
+                  <Input
+                    id="location"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    className="bg-secondary"
+                    placeholder="Endereço completo"
+                    required={formData.format === 'presencial'}
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="brand">Marca</Label>
+                  <Input
+                    id="brand"
+                    value={formData.brand || ''}
+                    onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                    className="bg-secondary"
+                    placeholder="Ex: ARTWALK, AUTHENTIC FEET, MAGICFEET"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="storeIds">Lojas Destinatárias</Label>
+                  <StoreMultiSelect
+                    stores={stores}
+                    selected={formData.storeIds}
+                    onChange={(selected) => setFormData({ ...formData, storeIds: selected })}
+                    placeholder="Selecione as lojas (ou deixe vazio para todas)"
+                    className="bg-secondary"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Deixe vazio para disponibilizar para todas as lojas, ou selecione lojas específicas.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="maxParticipants">Máximo de Participantes</Label>
+                <Input
+                  id="maxParticipants"
+                  type="number"
+                  value={formData.maxParticipants}
+                  onChange={(e) => setFormData({ ...formData, maxParticipants: e.target.value })}
+                  className="bg-secondary"
+                  min="1"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                  Cancelar
+                </Button>
+                <Button type="submit">
+                  {editingTraining ? 'Salvar Alterações' : 'Criar Treinamento'}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog de Inscritos Individuais */}
+        {selectedTrainingForRegistrations && (
+          <Dialog open={isRegistrationsDialogOpen} onOpenChange={setIsRegistrationsDialogOpen}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle className="flex items-center justify-between">
-                  <span>Inscritos - {viewingRegistrations.title}</span>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <DialogTitle>Inscritos - {selectedTrainingForRegistrations.title}</DialogTitle>
+                    <DialogDescription className="mt-1">
+                      {format(new Date(selectedTrainingForRegistrations.training_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                      {selectedTrainingForRegistrations.time && ` às ${selectedTrainingForRegistrations.time}`}
+                    </DialogDescription>
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const regs = registrationsByTraining[viewingRegistrations.id] || [];
-                      if (regs.length > 0) {
-                        handleExportToExcel(viewingRegistrations, regs);
-                      } else {
-                        toast({
-                          variant: 'destructive',
-                          title: 'Aviso',
-                          description: 'Não há inscritos para exportar.',
-                        });
-                      }
+                      const registrations = trainingRegistrations.filter(reg => 
+                        (reg.training_id || reg.trainingId) === selectedTrainingForRegistrations.id
+                      );
+                      handleExportToExcel(selectedTrainingForRegistrations, registrations);
                     }}
                     className="gap-2"
                   >
                     <Download className="w-4 h-4" />
                     Exportar Excel
                   </Button>
-                </DialogTitle>
-                <DialogDescription>
-                  {format(new Date(viewingRegistrations.training_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                  {viewingRegistrations.time && ` às ${viewingRegistrations.time}`}
-                </DialogDescription>
+                </div>
               </DialogHeader>
               <div className="space-y-4 mt-4">
                 {(() => {
-                  const registrations = registrationsByTraining[viewingRegistrations.id] || [];
-                  const presentCount = registrations.filter(r => r.presence).length;
-                  const totalCount = registrations.length;
-                  
+                  const registrations = trainingRegistrations.filter(reg => 
+                    (reg.training_id || reg.trainingId) === selectedTrainingForRegistrations.id
+                  );
+
                   if (registrations.length === 0) {
                     return (
                       <div className="text-center py-8 text-muted-foreground">
@@ -1363,72 +1047,74 @@ const TrainingManagement = () => {
                       </div>
                     );
                   }
-                  
+
                   return (
                     <>
-                      <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                        <div>
-                          <p className="font-semibold text-foreground">
-                            {presentCount} / {totalCount} presentes
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0}% de aderência
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        <div className="bg-secondary p-3 rounded-lg">
+                          <p className="text-sm text-muted-foreground">Total de Inscrições</p>
+                          <p className="text-2xl font-bold text-foreground">{registrations.length}</p>
+                        </div>
+                        <div className="bg-secondary p-3 rounded-lg">
+                          <p className="text-sm text-muted-foreground">Presenças Confirmadas</p>
+                          <p className="text-2xl font-bold text-green-500">{registrations.filter(r => r.presence).length}</p>
+                        </div>
+                        <div className="bg-secondary p-3 rounded-lg">
+                          <p className="text-sm text-muted-foreground">Aderência</p>
+                          <p className="text-2xl font-bold text-primary">
+                            {registrations.length > 0 ? Math.round((registrations.filter(r => r.presence).length / registrations.length) * 100) : 0}%
                           </p>
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        {registrations.map(reg => {
-                          const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
-                          const collaborator = reg.collaborator || {};
-                          const isUpdating = updatingPresence[reg.id];
-                          
-                          return (
-                            <div
-                              key={reg.id}
-                              className="flex items-center justify-between p-3 bg-secondary rounded-lg hover:bg-secondary/80 transition-colors"
-                            >
-                              <div className="flex items-center gap-3 flex-1">
-                                <Checkbox
-                                  checked={reg.presence || false}
-                                  onCheckedChange={() => handleTogglePresence(reg.id, reg.presence)}
-                                  disabled={isUpdating}
-                                />
-                                <div className="flex-1">
-                                  <p className="font-medium text-foreground">{collaborator.name || 'Colaborador não encontrado'}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    <span className="font-semibold">{store?.name || 'Loja não encontrada'}</span>
-                                    {store?.franqueado && ` - Franqueado: ${store.franqueado}`}
-                                    {' - '}
-                                    {collaborator.role || 'Cargo não informado'}
-                                    {collaborator.cpf && ` - CPF: ${collaborator.cpf}`}
-                                    {collaborator.email && ` - Email: ${collaborator.email}`}
-                                  </p>
+                      {registrations.map(reg => {
+                        const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
+                        const collaborator = reg.collaborator || {};
+
+                        return (
+                          <div key={reg.id} className="bg-secondary p-4 rounded-lg border border-border">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <h4 className="font-semibold text-foreground">{collaborator.name || 'Colaborador não encontrado'}</h4>
+                                  <span className={cn(
+                                    "px-2 py-1 rounded-full text-xs font-semibold",
+                                    reg.presence || reg.status === 'confirmed' 
+                                      ? "bg-green-500/20 text-green-500"
+                                      : reg.status === 'cancelled'
+                                      ? "bg-red-500/20 text-red-500"
+                                      : "bg-yellow-500/20 text-yellow-500"
+                                  )}>
+                                    {reg.presence || reg.status === 'confirmed' ? 'Confirmado' : reg.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
+                                  </span>
+                                </div>
+                                <div className="space-y-1 text-sm text-muted-foreground">
+                                  <p><strong>Cargo:</strong> {collaborator.role || 'Não informado'}</p>
+                                  {collaborator.cpf && <p><strong>CPF:</strong> {collaborator.cpf}</p>}
+                                  {collaborator.email && <p><strong>Email:</strong> {collaborator.email}</p>}
+                                  <p><strong>Loja:</strong> {store?.name || 'Não encontrada'}</p>
+                                  {store?.code && <p><strong>Código:</strong> {store.code}</p>}
+                                  {store?.franqueado && <p><strong>Franqueado:</strong> {store.franqueado}</p>}
+                                  {store?.bandeira && <p><strong>Bandeira:</strong> {store.bandeira}</p>}
+                                  {store?.supervisor && <p><strong>Supervisor:</strong> {store.supervisor}</p>}
+                                  {reg.registered_at && (
+                                    <p><strong>Inscrito em:</strong> {format(new Date(reg.registered_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
+                                  )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <span className={cn(
-                                  "text-xs px-2 py-1 rounded-full whitespace-nowrap",
-                                  reg.presence || reg.status === 'confirmed' ? "bg-green-500/20 text-green-500" :
-                                  reg.status === 'cancelled' ? "bg-red-500/20 text-red-500" :
-                                  "bg-yellow-500/20 text-yellow-500"
-                                )}>
-                                  {reg.presence || reg.status === 'confirmed' ? 'Confirmado' :
-                                   reg.status === 'cancelled' ? 'Cancelado' : 'Pendente'}
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => handleDeleteRegistration(reg.id)}
-                                  className="h-8 w-8 text-destructive hover:text-destructive"
-                                  title="Excluir Inscrição"
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
+                              <div className="flex items-center space-x-2 ml-4">
+                                <Checkbox
+                                  id={`presence-dialog-${reg.id}`}
+                                  checked={reg.presence || false}
+                                  onCheckedChange={() => handleTogglePresence(reg.id, reg.presence || false)}
+                                />
+                                <Label htmlFor={`presence-dialog-${reg.id}`} className="text-sm cursor-pointer">
+                                  Presença
+                                </Label>
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
+                          </div>
+                        );
+                      })}
                     </>
                   );
                 })()}
@@ -1442,4 +1128,10 @@ const TrainingManagement = () => {
 };
 
 export default TrainingManagement;
+
+
+
+
+
+
 

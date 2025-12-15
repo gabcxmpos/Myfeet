@@ -20,6 +20,7 @@ import FormBuilder from '@/pages/FormBuilder';
 import Collaborators from '@/pages/Collaborators';
 import Feedback from '@/pages/Feedback';
 import FeedbackManagement from '@/pages/FeedbackManagement';
+import Chave from '@/pages/Chave';
 import DailyChecklist from '@/pages/DailyChecklist';
 import MenuVisibilitySettings from '@/pages/MenuVisibilitySettings';
 import TrainingManagement from '@/pages/TrainingManagement';
@@ -31,14 +32,6 @@ import ChecklistAuditAnalytics from '@/pages/ChecklistAuditAnalytics';
 import ChecklistsManagement from '@/pages/ChecklistsManagement';
 import Acionamentos from '@/pages/Acionamentos';
 import PainelExcelencia from '@/pages/PainelExcelencia';
-import AlertasComunicados from '@/pages/AlertasComunicados';
-import StoreResults from '@/pages/StoreResults';
-import ResultsManagement from '@/pages/ResultsManagement';
-import BrandsSettings from '@/pages/BrandsSettings';
-import StoresCTO from '@/pages/StoresCTO';
-import StoresCTOAnalytics from '@/pages/StoresCTOAnalytics';
-import StoresCTORegister from '@/pages/StoresCTORegister';
-import DigitalEvaluations from '@/pages/DigitalEvaluations';
 
 function App() {
   return (
@@ -59,31 +52,24 @@ function App() {
                 <Route path="ranking" element={<MonthlyRanking />} />
                 <Route path="analytics" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia']}><Analytics /></ProtectedRoute>} />
                 <Route path="goals" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia']}><GoalsPanel /></ProtectedRoute>} />
-                <Route path="results-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia']}><ResultsManagement /></ProtectedRoute>} />
                 <Route path="evaluation" element={<StartEvaluation />} />
                 <Route path="stores" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'comunicação']}><StoresManagement /></ProtectedRoute>} />
-                <Route path="stores-cto" element={<ProtectedRoute allowedRoles={['admin', 'financeiro']}><StoresCTO /></ProtectedRoute>} />
-                <Route path="stores-cto-analytics" element={<ProtectedRoute allowedRoles={['admin', 'financeiro']}><StoresCTOAnalytics /></ProtectedRoute>} />
-                <Route path="stores-cto-register" element={<ProtectedRoute allowedRoles={['admin', 'financeiro']}><StoresCTORegister /></ProtectedRoute>} />
-                <Route path="painel-excelencia" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital']}><PainelExcelencia /></ProtectedRoute>} />
-                <Route path="digital-evaluations" element={<ProtectedRoute allowedRoles={['digital', 'admin', 'supervisor', 'supervisor_franquia']}><DigitalEvaluations /></ProtectedRoute>} />
+                <Route path="painel-excelencia" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'comunicação']}><PainelExcelencia /></ProtectedRoute>} />
                 <Route path="acionamentos" element={<ProtectedRoute allowedRoles={['comunicação']}><Acionamentos /></ProtectedRoute>} />
-                <Route path="alertas-comunicados" element={<ProtectedRoute allowedRoles={['comunicação']}><AlertasComunicados /></ProtectedRoute>} />
                 <Route path="users" element={<ProtectedRoute allowedRoles={['admin']}><UserManagement /></ProtectedRoute>} />
                 <Route path="forms" element={<ProtectedRoute allowedRoles={['admin']}><FormBuilder /></ProtectedRoute>} />
                 <Route path="settings" element={<ProtectedRoute allowedRoles={['admin']}><Settings /></ProtectedRoute>} />
                 <Route path="settings/visibility" element={<ProtectedRoute allowedRoles={['admin']}><MenuVisibilitySettings /></ProtectedRoute>} />
-                <Route path="brands-settings" element={<ProtectedRoute allowedRoles={['devoluções', 'admin']}><BrandsSettings /></ProtectedRoute>} />
-                <Route path="collaborators" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia', 'admin_loja']}><Collaborators /></ProtectedRoute>} />
-                <Route path="store-results" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia', 'admin_loja']}><StoreResults /></ProtectedRoute>} />
-                <Route path="feedback" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia', 'admin_loja']}><Feedback /></ProtectedRoute>} />
+                <Route path="collaborators" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><Collaborators /></ProtectedRoute>} />
+                <Route path="feedback" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><Feedback /></ProtectedRoute>} />
                 <Route path="feedback-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia']}><FeedbackManagement /></ProtectedRoute>} />
                 <Route path="training-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'comunicação']}><TrainingManagement /></ProtectedRoute>} />
-                <Route path="training" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia', 'admin_loja']}><Training /></ProtectedRoute>} />
-                {/* Devoluções Consolidada (admin, supervisor, loja, admin_loja, devoluções) - SEM franquia */}
-                <Route path="returns" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'loja', 'admin_loja', 'devoluções']}><ReturnsConsolidated /></ProtectedRoute>} />
+                <Route path="training" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><Training /></ProtectedRoute>} />
+                {/* Devoluções Consolidada (admin, supervisor, loja, devoluções) - SEM franquia */}
+                <Route path="returns" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'loja', 'devoluções']}><ReturnsConsolidated /></ProtectedRoute>} />
                 {/* Rota alternativa para planner (compatibilidade) */}
                 <Route path="returns-planner" element={<ProtectedRoute allowedRoles={['devoluções', 'admin']}><ReturnsConsolidated /></ProtectedRoute>} />
+                <Route path="chave" element={<Chave />} />
                 <Route path="checklist" element={<DailyChecklist />} />
                 <Route path="checklist-audit-analytics" element={<ProtectedRoute allowedRoles={['admin']}><ChecklistAuditAnalytics /></ProtectedRoute>} />
                 {/* Checklists Consolidados */}
