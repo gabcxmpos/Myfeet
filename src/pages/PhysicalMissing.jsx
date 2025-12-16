@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, AlertCircle, MoreVertical, Trash2, Search, BarChart3, Package, TrendingUp, CheckCircle, Eye } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -476,8 +477,9 @@ const PhysicalMissing = () => {
           sku_info: sku_info,
           cost_value: firstItem.cost_value,
           quantity: totalQuantity,
-          total_value: totalValue,
-          items: items // Array com todos os itens
+          total_value: totalValue
+          // Nota: Campo 'items' removido pois não existe na tabela physical_missing
+          // Os dados dos itens estão sendo salvos nos campos principais acima
         };
 
         await addPhysicalMissing(missingData);
@@ -776,14 +778,22 @@ const PhysicalMissing = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor={`missing_brand_${item.id}`}>Marca do Item que Faltou *</Label>
-                        <Input
-                          id={`missing_brand_${item.id}`}
+                        <Select
                           value={item.brand}
-                          onChange={(e) => handleUpdateItem(item.id, 'brand', e.target.value)}
+                          onValueChange={(value) => handleUpdateItem(item.id, 'brand', value)}
                           required
-                          className="bg-secondary"
-                          placeholder="Ex: NIKE"
-                        />
+                        >
+                          <SelectTrigger id={`missing_brand_${item.id}`} className="bg-secondary">
+                            <SelectValue placeholder="Selecione a marca" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableBrands.map((brand) => (
+                              <SelectItem key={brand} value={brand}>
+                                {brand}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor={`missing_sku_${item.id}`}>SKU do Item que Faltou *</Label>
@@ -897,14 +907,22 @@ const PhysicalMissing = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor={`surplus_brand_${item.id}`}>Marca do Item que Sobrou *</Label>
-                        <Input
-                          id={`surplus_brand_${item.id}`}
+                        <Select
                           value={item.brand}
-                          onChange={(e) => handleUpdateItem(item.id, 'brand', e.target.value)}
+                          onValueChange={(value) => handleUpdateItem(item.id, 'brand', value)}
                           required
-                          className="bg-secondary"
-                          placeholder="Ex: NIKE"
-                        />
+                        >
+                          <SelectTrigger id={`surplus_brand_${item.id}`} className="bg-secondary">
+                            <SelectValue placeholder="Selecione a marca" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableBrands.map((brand) => (
+                              <SelectItem key={brand} value={brand}>
+                                {brand}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor={`surplus_sku_${item.id}`}>SKU do Item que Sobrou *</Label>
@@ -1003,14 +1021,22 @@ const PhysicalMissing = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="div_missing_brand">Marca do Item que Faltou *</Label>
-                  <Input
-                    id="div_missing_brand"
+                  <Select
                     value={missingFormData.divergence_missing_brand}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_brand: e.target.value })}
+                    onValueChange={(value) => setMissingFormData({ ...missingFormData, divergence_missing_brand: value })}
                     required
-                    className="bg-secondary"
-                    placeholder="Ex: NIKE"
-                  />
+                  >
+                    <SelectTrigger id="div_missing_brand" className="bg-secondary">
+                      <SelectValue placeholder="Selecione a marca" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableBrands.map((brand) => (
+                        <SelectItem key={brand} value={brand}>
+                          {brand}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="div_missing_sku">SKU do Item que Faltou *</Label>
@@ -1078,14 +1104,22 @@ const PhysicalMissing = () => {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="div_surplus_brand">Marca do Item que Sobrou *</Label>
-                  <Input
-                    id="div_surplus_brand"
+                  <Select
                     value={missingFormData.divergence_surplus_brand}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_brand: e.target.value })}
+                    onValueChange={(value) => setMissingFormData({ ...missingFormData, divergence_surplus_brand: value })}
                     required
-                    className="bg-secondary"
-                    placeholder="Ex: ADIDAS"
-                  />
+                  >
+                    <SelectTrigger id="div_surplus_brand" className="bg-secondary">
+                      <SelectValue placeholder="Selecione a marca" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableBrands.map((brand) => (
+                        <SelectItem key={brand} value={brand}>
+                          {brand}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="div_surplus_sku">SKU do Item que Sobrou *</Label>
