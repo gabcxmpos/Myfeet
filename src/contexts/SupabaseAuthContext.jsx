@@ -75,10 +75,11 @@ export const AuthProvider = ({ children }) => {
       const userStatus = profile?.status || 'active';
       
       // IMPORTANTE: Admin e supervisor NÃO devem ter storeId
-      // Apenas usuários com role 'loja' devem ter storeId
+      // Apenas usuários com role 'loja' ou 'loja_franquia' devem ter storeId
       const userRole = profile?.role || 'loja';
-      const userStoreId = (userRole === 'loja') ? (profile?.store_id || profile?.store?.id) : null;
-      const userStoreName = (userRole === 'loja') ? (profile?.store?.name) : null;
+      const isLojaRole = userRole === 'loja' || userRole === 'loja_franquia';
+      const userStoreId = isLojaRole ? (profile?.store_id || profile?.store?.id) : null;
+      const userStoreName = isLojaRole ? (profile?.store?.name) : null;
       
       setUser({
         id: authUser.id,

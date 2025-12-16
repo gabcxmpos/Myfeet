@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
-import { Plus, AlertCircle, MoreVertical, Trash2, Search, BarChart3, Package, TrendingUp, CheckCircle } from 'lucide-react';
+import { Plus, AlertCircle, MoreVertical, Trash2, Search, BarChart3, Package, TrendingUp, CheckCircle, Eye } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -42,6 +43,7 @@ const PhysicalMissing = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('open');
   const [availableBrands, setAvailableBrands] = useState(DEFAULT_BRANDS);
+  const [selectedMissingForView, setSelectedMissingForView] = useState(null);
   const [filters, setFilters] = useState({
     store: [],
     franqueado: [],
@@ -57,15 +59,18 @@ const PhysicalMissing = () => {
   
   const [missingFormData, setMissingFormData] = useState({
     missing_type: [],
-    brand: '',
     nf_number: '',
-    sku: '',
-    color: '',
-    size: '',
-    cost_value: '',
-    quantity: '',
     moved_to_defect: false,
     store_id: user?.storeId || '',
+    items: [{
+      id: Date.now(),
+      brand: '',
+      sku: '',
+      color: '',
+      size: '',
+      cost_value: '',
+      quantity: ''
+    }],
     divergence_missing_brand: '',
     divergence_missing_sku: '',
     divergence_missing_color: '',
@@ -82,7 +87,19 @@ const PhysicalMissing = () => {
 
   useEffect(() => {
     if (user?.storeId) {
-      setMissingFormData(prev => ({ ...prev, store_id: user.storeId }));
+      setMissingFormData(prev => ({ 
+        ...prev, 
+        store_id: user.storeId,
+        items: prev.items || [{
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          cost_value: '',
+          quantity: ''
+        }]
+      }));
     }
   }, [user?.storeId]);
 
@@ -232,20 +249,23 @@ const PhysicalMissing = () => {
   }, [physicalMissing, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, filters]);
 
   const filteredMissing = useMemo(() => {
-    return (physicalMissing || []).filter(item => {
+    // Agrupar por NF para mostrar apenas um card por NF
+    const groupedByNF = {};
+    
+    (physicalMissing || []).forEach(item => {
       if (item.status === 'nota_finalizada') {
-        return false;
+        return;
       }
       
       // Loja só vê suas próprias faltas físicas (exceto se for perfil devoluções)
       if (isStore && user?.storeId && !isDevolucoes) {
         if (item.store_id !== user.storeId) {
-          return false;
+          return;
         }
       }
       
       const store = (stores || []).find(s => s.id === item.store_id);
-      if (!store) return false;
+      if (!store) return;
       
       // Para admin, supervisor e devoluções: aplicar filtros se existirem
       if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
@@ -262,17 +282,16 @@ const PhysicalMissing = () => {
           const matchSupervisor = activeFilters.supervisor.length === 0 || (store.supervisor && activeFilters.supervisor.includes(store.supervisor));
           
           if (!matchStore || !matchFranqueado || !matchBandeira || !matchSupervisor) {
-            return false;
+            return;
           }
         }
-        // Se não há filtros, mostrar todas as faltas físicas (para devoluções, admin e supervisor)
 
         // Filtro por data (sempre aplicar se existir)
         if (activeFilters.startDate || activeFilters.endDate) {
-          if (!item.created_at) return false;
+          if (!item.created_at) return;
           const itemDate = new Date(item.created_at);
-          if (activeFilters.startDate && itemDate < new Date(activeFilters.startDate)) return false;
-          if (activeFilters.endDate && itemDate > new Date(activeFilters.endDate + 'T23:59:59')) return false;
+          if (activeFilters.startDate && itemDate < new Date(activeFilters.startDate)) return;
+          if (activeFilters.endDate && itemDate > new Date(activeFilters.endDate + 'T23:59:59')) return;
         }
       }
       
@@ -288,10 +307,18 @@ const PhysicalMissing = () => {
         item.product_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         store.name?.toLowerCase().includes(searchTerm.toLowerCase());
       
-      if (!matchesSearch) return false;
+      if (!matchesSearch) return;
       
-      return true;
+      // Agrupar por NF e store_id
+      const key = `${item.nf_number}_${item.store_id}`;
+      if (!groupedByNF[key]) {
+        groupedByNF[key] = [];
+      }
+      groupedByNF[key].push(item);
     });
+    
+    // Retornar array com um item representativo por grupo (o primeiro)
+    return Object.values(groupedByNF).map(group => group[0]);
   }, [physicalMissing, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, activeFilters]);
 
   const getStatusBadge = (status) => {
@@ -306,6 +333,48 @@ const PhysicalMissing = () => {
         {config.label}
       </span>
     );
+  };
+
+  const handleAddItem = () => {
+    setMissingFormData({
+      ...missingFormData,
+      items: [
+        ...missingFormData.items,
+        {
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          cost_value: '',
+          quantity: ''
+        }
+      ]
+    });
+  };
+
+  const handleRemoveItem = (itemId) => {
+    if (missingFormData.items.length === 1) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'É necessário ter pelo menos um item.',
+      });
+      return;
+    }
+    setMissingFormData({
+      ...missingFormData,
+      items: missingFormData.items.filter(item => item.id !== itemId)
+    });
+  };
+
+  const handleUpdateItem = (itemId, field, value) => {
+    setMissingFormData({
+      ...missingFormData,
+      items: missingFormData.items.map(item =>
+        item.id === itemId ? { ...item, [field]: value } : item
+      )
+    });
   };
 
   const handleCreateMissing = async (e) => {
@@ -351,89 +420,120 @@ const PhysicalMissing = () => {
     }
 
     if (missingFormData.missing_type.includes('FALTA FISICA') || missingFormData.missing_type.includes('SOBRA')) {
-      if (!missingFormData.brand || !missingFormData.sku || !missingFormData.color || 
-          !missingFormData.size || !missingFormData.cost_value || !missingFormData.quantity) {
+      // Validar todos os itens
+      const invalidItems = missingFormData.items.filter(item => 
+        !item.brand || !item.sku || !item.color || !item.size || !item.cost_value || !item.quantity
+      );
+
+      if (invalidItems.length > 0) {
         toast({
           variant: 'destructive',
           title: 'Erro',
-          description: 'Preencha todos os campos obrigatórios (Marca, SKU, Cor, Tamanho, Custo e Quantidade).',
+          description: 'Preencha todos os campos obrigatórios (Marca, SKU, Cor, Tamanho, Custo e Quantidade) para todos os itens.',
         });
         return;
       }
     }
 
     try {
-      const missingData = {
-        nf_number: missingFormData.nf_number.trim(),
-        moved_to_defect: missingFormData.moved_to_defect,
-        store_id: user.storeId,
-        status: missingFormData.moved_to_defect ? 'estoque_falta_fisica' : 'processo_aberto',
-        missing_type: missingFormData.missing_type,
-      };
+      // Para FALTA FISICA e SOBRA, salvar todos os itens em um único registro
+      if (missingFormData.missing_type.includes('FALTA FISICA') || missingFormData.missing_type.includes('SOBRA')) {
+        // Preparar array de itens
+        const items = missingFormData.items.map((item) => {
+          const costValue = parseFloat(item.cost_value) || 0;
+          const quantity = parseInt(item.quantity) || 0;
+          return {
+            brand: item.brand.trim(),
+            sku: item.sku.trim(),
+            color: item.color.trim(),
+            size: item.size.trim(),
+            cost_value: costValue,
+            quantity: quantity,
+            total_value: costValue * quantity
+          };
+        });
 
-      if (missingFormData.missing_type.includes('FALTA FISICA')) {
-        const costValue = parseFloat(missingFormData.cost_value) || 0;
-        const quantity = parseInt(missingFormData.quantity) || 0;
-        const sku_info = `${missingFormData.sku} - ${missingFormData.color} - ${missingFormData.size}`;
-        
-        missingData.brand = missingFormData.brand.trim();
-        missingData.sku = missingFormData.sku.trim();
-        missingData.color = missingFormData.color.trim();
-        missingData.size = missingFormData.size.trim();
-        missingData.sku_info = sku_info;
-        missingData.cost_value = costValue;
-        missingData.quantity = quantity;
-        missingData.total_value = costValue * quantity;
+        // Calcular valores totais
+        const totalValue = items.reduce((sum, item) => sum + item.total_value, 0);
+        const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+
+        // Usar o primeiro item para campos principais (compatibilidade)
+        const firstItem = items[0];
+        const sku_info = items.length === 1 
+          ? `${firstItem.sku} - ${firstItem.color} - ${firstItem.size}`
+          : `${items.length} itens diferentes`;
+
+        const missingData = {
+          nf_number: missingFormData.nf_number.trim(),
+          moved_to_defect: missingFormData.moved_to_defect,
+          store_id: user.storeId,
+          status: missingFormData.moved_to_defect ? 'estoque_falta_fisica' : 'processo_aberto',
+          missing_type: missingFormData.missing_type,
+          brand: firstItem.brand,
+          sku: firstItem.sku,
+          color: firstItem.color,
+          size: firstItem.size,
+          sku_info: sku_info,
+          cost_value: firstItem.cost_value,
+          quantity: totalQuantity,
+          total_value: totalValue,
+          items: items // Array com todos os itens
+        };
+
+        await addPhysicalMissing(missingData);
+
+        toast({
+          title: 'Sucesso!',
+          description: `${missingFormData.items.length} item(ns) registrado(s) com sucesso na NF ${missingFormData.nf_number}.`,
+        });
+      } else if (missingFormData.missing_type.includes('DIVERGENCIA NF X FISICO')) {
+        // Para divergência, manter o comportamento original (um único registro)
+        const missingData = {
+          nf_number: missingFormData.nf_number.trim(),
+          moved_to_defect: missingFormData.moved_to_defect,
+          store_id: user.storeId,
+          status: missingFormData.moved_to_defect ? 'estoque_falta_fisica' : 'processo_aberto',
+          missing_type: missingFormData.missing_type,
+          divergence_missing_brand: missingFormData.divergence_missing_brand.trim(),
+          divergence_missing_sku: missingFormData.divergence_missing_sku.trim(),
+          divergence_missing_color: missingFormData.divergence_missing_color.trim(),
+          divergence_missing_size: missingFormData.divergence_missing_size.trim(),
+          divergence_missing_quantity: parseInt(missingFormData.divergence_missing_quantity) || 0,
+          divergence_missing_cost_value: parseFloat(missingFormData.divergence_missing_cost_value) || 0,
+          divergence_surplus_brand: missingFormData.divergence_surplus_brand.trim(),
+          divergence_surplus_sku: missingFormData.divergence_surplus_sku.trim(),
+          divergence_surplus_color: missingFormData.divergence_surplus_color.trim(),
+          divergence_surplus_size: missingFormData.divergence_surplus_size.trim(),
+          divergence_surplus_quantity: parseInt(missingFormData.divergence_surplus_quantity) || 0,
+          divergence_surplus_cost_value: parseFloat(missingFormData.divergence_surplus_cost_value) || 0,
+          cost_value: parseFloat(missingFormData.divergence_missing_cost_value) || 0,
+          quantity: parseInt(missingFormData.divergence_missing_quantity) || 0,
+          total_value: (parseFloat(missingFormData.divergence_missing_cost_value) || 0) * (parseInt(missingFormData.divergence_missing_quantity) || 0)
+        };
+
+        await addPhysicalMissing(missingData);
+
+        toast({
+          title: 'Sucesso!',
+          description: 'Divergência registrada com sucesso.',
+        });
       }
 
-      if (missingFormData.missing_type.includes('SOBRA')) {
-        const costValue = parseFloat(missingFormData.cost_value) || 0;
-        const quantity = parseInt(missingFormData.quantity) || 0;
-        const sku_info = `${missingFormData.sku} - ${missingFormData.color} - ${missingFormData.size}`;
-        
-        missingData.brand = missingFormData.brand.trim();
-        missingData.sku = missingFormData.sku.trim();
-        missingData.color = missingFormData.color.trim();
-        missingData.size = missingFormData.size.trim();
-        missingData.sku_info = sku_info;
-        missingData.cost_value = costValue;
-        missingData.quantity = quantity;
-        missingData.total_value = costValue * quantity;
-      }
-
-      if (missingFormData.missing_type.includes('DIVERGENCIA NF X FISICO')) {
-        missingData.divergence_missing_brand = missingFormData.divergence_missing_brand.trim();
-        missingData.divergence_missing_sku = missingFormData.divergence_missing_sku.trim();
-        missingData.divergence_missing_color = missingFormData.divergence_missing_color.trim();
-        missingData.divergence_missing_size = missingFormData.divergence_missing_size.trim();
-        missingData.divergence_missing_quantity = parseInt(missingFormData.divergence_missing_quantity) || 0;
-        missingData.divergence_missing_cost_value = parseFloat(missingFormData.divergence_missing_cost_value) || 0;
-
-        missingData.divergence_surplus_brand = missingFormData.divergence_surplus_brand.trim();
-        missingData.divergence_surplus_sku = missingFormData.divergence_surplus_sku.trim();
-        missingData.divergence_surplus_color = missingFormData.divergence_surplus_color.trim();
-        missingData.divergence_surplus_size = missingFormData.divergence_surplus_size.trim();
-        missingData.divergence_surplus_quantity = parseInt(missingFormData.divergence_surplus_quantity) || 0;
-        missingData.divergence_surplus_cost_value = parseFloat(missingFormData.divergence_surplus_cost_value) || 0;
-
-        missingData.cost_value = missingData.divergence_missing_cost_value;
-        missingData.quantity = missingData.divergence_missing_quantity;
-        missingData.total_value = missingData.divergence_missing_cost_value * missingData.divergence_missing_quantity;
-      }
-
-      await addPhysicalMissing(missingData);
-
+      // Limpar formulário
       setMissingFormData({
         missing_type: [],
-        brand: '',
         nf_number: '',
-        sku: '',
-        color: '',
-        size: '',
-        cost_value: '',
-        quantity: '',
         moved_to_defect: false,
         store_id: user.storeId,
+        items: [{
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          cost_value: '',
+          quantity: ''
+        }],
         divergence_missing_brand: '',
         divergence_missing_sku: '',
         divergence_missing_color: '',
@@ -446,11 +546,6 @@ const PhysicalMissing = () => {
         divergence_surplus_size: '',
         divergence_surplus_quantity: '',
         divergence_surplus_cost_value: ''
-      });
-
-      toast({
-        title: 'Sucesso!',
-        description: 'Falta física registrada com sucesso.',
       });
     } catch (error) {
       console.error('Erro ao registrar falta física:', error);
@@ -661,152 +756,242 @@ const PhysicalMissing = () => {
             
             {missingFormData.missing_type?.includes('FALTA FISICA') && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="missing_brand">Marca do Item que Faltou *</Label>
-                  <Input
-                    id="missing_brand"
-                    value={missingFormData.brand}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, brand: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: NIKE"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="missing_sku">SKU do Item que Faltou *</Label>
-                  <Input
-                    id="missing_sku"
-                    value={missingFormData.sku}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, sku: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: SKU123"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="missing_color">Cor do Item que Faltou *</Label>
-                  <Input
-                    id="missing_color"
-                    value={missingFormData.color}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, color: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: PRETO"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="missing_size">Tamanho do Item que Faltou *</Label>
-                  <Input
-                    id="missing_size"
-                    value={missingFormData.size}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, size: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 42"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="missing_quantity">Quantidade que Faltou *</Label>
-                  <Input
-                    id="missing_quantity"
-                    type="number"
-                    min="1"
-                    value={missingFormData.quantity}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, quantity: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 3"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="missing_cost_value">Valor de Custo do Item que Faltou *</Label>
-                  <Input
-                    id="missing_cost_value"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={missingFormData.cost_value}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, cost_value: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 200.00"
-                  />
+                {missingFormData.items.map((item, index) => (
+                  <div key={item.id} className="md:col-span-2 border border-border rounded-lg p-4 space-y-4 bg-secondary/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-foreground">Item {index + 1}</h4>
+                      {missingFormData.items.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Remover
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`missing_brand_${item.id}`}>Marca do Item que Faltou *</Label>
+                        <Input
+                          id={`missing_brand_${item.id}`}
+                          value={item.brand}
+                          onChange={(e) => handleUpdateItem(item.id, 'brand', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: NIKE"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`missing_sku_${item.id}`}>SKU do Item que Faltou *</Label>
+                        <Input
+                          id={`missing_sku_${item.id}`}
+                          value={item.sku}
+                          onChange={(e) => handleUpdateItem(item.id, 'sku', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: SKU123"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`missing_color_${item.id}`}>Cor do Item que Faltou *</Label>
+                        <Input
+                          id={`missing_color_${item.id}`}
+                          value={item.color}
+                          onChange={(e) => handleUpdateItem(item.id, 'color', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: PRETO"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`missing_size_${item.id}`}>Tamanho do Item que Faltou *</Label>
+                        <Input
+                          id={`missing_size_${item.id}`}
+                          value={item.size}
+                          onChange={(e) => handleUpdateItem(item.id, 'size', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 42"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`missing_quantity_${item.id}`}>Quantidade que Faltou *</Label>
+                        <Input
+                          id={`missing_quantity_${item.id}`}
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => handleUpdateItem(item.id, 'quantity', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 3"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`missing_cost_value_${item.id}`}>Valor de Custo do Item que Faltou *</Label>
+                        <Input
+                          id={`missing_cost_value_${item.id}`}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.cost_value}
+                          onChange={(e) => handleUpdateItem(item.id, 'cost_value', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 200.00"
+                        />
+                      </div>
+                    </div>
+                    {item.cost_value && item.quantity && (
+                      <div className="space-y-2">
+                        <Label>Valor Total do Item {index + 1}</Label>
+                        <div className="bg-background p-3 rounded-lg border border-border">
+                          <span className="font-semibold text-foreground text-lg">
+                            R$ {(parseFloat(item.cost_value || 0) * parseInt(item.quantity || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div className="md:col-span-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddItem}
+                    className="w-full gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar Mais um Item
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    Use este botão para adicionar mais itens na mesma nota fiscal (produtos de cor ou tamanho diferentes)
+                  </p>
                 </div>
               </>
             )}
 
             {missingFormData.missing_type?.includes('SOBRA') && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="surplus_brand">Marca do Item que Sobrou *</Label>
-                  <Input
-                    id="surplus_brand"
-                    value={missingFormData.brand}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, brand: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: NIKE"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="surplus_sku">SKU do Item que Sobrou *</Label>
-                  <Input
-                    id="surplus_sku"
-                    value={missingFormData.sku}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, sku: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: SKU123"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="surplus_color">Cor do Item que Sobrou *</Label>
-                  <Input
-                    id="surplus_color"
-                    value={missingFormData.color}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, color: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: PRETO"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="surplus_size">Tamanho do Item que Sobrou *</Label>
-                  <Input
-                    id="surplus_size"
-                    value={missingFormData.size}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, size: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 42"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="surplus_quantity">Quantidade que Sobrou *</Label>
-                  <Input
-                    id="surplus_quantity"
-                    type="number"
-                    min="1"
-                    value={missingFormData.quantity}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, quantity: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 3"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="surplus_cost_value">Valor de Custo do Item que Sobrou *</Label>
-                  <Input
-                    id="surplus_cost_value"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={missingFormData.cost_value}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, cost_value: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 200.00"
-                  />
+                {missingFormData.items.map((item, index) => (
+                  <div key={item.id} className="md:col-span-2 border border-border rounded-lg p-4 space-y-4 bg-secondary/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-foreground">Item {index + 1}</h4>
+                      {missingFormData.items.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Remover
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`surplus_brand_${item.id}`}>Marca do Item que Sobrou *</Label>
+                        <Input
+                          id={`surplus_brand_${item.id}`}
+                          value={item.brand}
+                          onChange={(e) => handleUpdateItem(item.id, 'brand', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: NIKE"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`surplus_sku_${item.id}`}>SKU do Item que Sobrou *</Label>
+                        <Input
+                          id={`surplus_sku_${item.id}`}
+                          value={item.sku}
+                          onChange={(e) => handleUpdateItem(item.id, 'sku', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: SKU123"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`surplus_color_${item.id}`}>Cor do Item que Sobrou *</Label>
+                        <Input
+                          id={`surplus_color_${item.id}`}
+                          value={item.color}
+                          onChange={(e) => handleUpdateItem(item.id, 'color', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: PRETO"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`surplus_size_${item.id}`}>Tamanho do Item que Sobrou *</Label>
+                        <Input
+                          id={`surplus_size_${item.id}`}
+                          value={item.size}
+                          onChange={(e) => handleUpdateItem(item.id, 'size', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 42"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`surplus_quantity_${item.id}`}>Quantidade que Sobrou *</Label>
+                        <Input
+                          id={`surplus_quantity_${item.id}`}
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => handleUpdateItem(item.id, 'quantity', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 3"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`surplus_cost_value_${item.id}`}>Valor de Custo do Item que Sobrou *</Label>
+                        <Input
+                          id={`surplus_cost_value_${item.id}`}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.cost_value}
+                          onChange={(e) => handleUpdateItem(item.id, 'cost_value', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 200.00"
+                        />
+                      </div>
+                    </div>
+                    {item.cost_value && item.quantity && (
+                      <div className="space-y-2">
+                        <Label>Valor Total do Item {index + 1}</Label>
+                        <div className="bg-background p-3 rounded-lg border border-border">
+                          <span className="font-semibold text-foreground text-lg">
+                            R$ {(parseFloat(item.cost_value || 0) * parseInt(item.quantity || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div className="md:col-span-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddItem}
+                    className="w-full gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Adicionar Mais um Item
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    Use este botão para adicionar mais itens na mesma nota fiscal (produtos de cor ou tamanho diferentes)
+                  </p>
                 </div>
               </>
             )}
@@ -966,12 +1151,16 @@ const PhysicalMissing = () => {
             )}
 
             {(missingFormData.missing_type?.includes('FALTA FISICA') || missingFormData.missing_type?.includes('SOBRA')) && 
-             missingFormData.cost_value && missingFormData.quantity && (
+             missingFormData.items.length > 0 && (
               <div className="space-y-2 md:col-span-2">
-                <Label>Valor Total Calculado</Label>
+                <Label>Valor Total de Todos os Itens</Label>
                 <div className="bg-secondary p-3 rounded-lg border border-border">
                   <span className="font-semibold text-foreground text-lg">
-                    R$ {(parseFloat(missingFormData.cost_value || 0) * parseInt(missingFormData.quantity || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    R$ {missingFormData.items.reduce((total, item) => {
+                      const costValue = parseFloat(item.cost_value || 0);
+                      const quantity = parseInt(item.quantity || 0);
+                      return total + (costValue * quantity);
+                    }, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -1036,6 +1225,24 @@ const PhysicalMissing = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredMissing.map((item, index) => {
             const store = (stores || []).find(s => s.id === item.store_id);
+            // Buscar todos os itens da mesma NF
+            const allItemsForNF = (physicalMissing || []).filter(pm => 
+              pm.nf_number === item.nf_number && pm.store_id === item.store_id && pm.status !== 'nota_finalizada'
+            );
+            const items = allItemsForNF.length > 0 && allItemsForNF[0].items 
+              ? allItemsForNF[0].items 
+              : allItemsForNF.map(pm => ({
+                  brand: pm.brand,
+                  sku: pm.sku,
+                  color: pm.color,
+                  size: pm.size,
+                  cost_value: pm.cost_value,
+                  quantity: pm.quantity,
+                  total_value: (parseFloat(pm.cost_value || 0) * parseInt(pm.quantity || 0))
+                }));
+            const totalValue = items.reduce((sum, it) => sum + (it.total_value || 0), 0);
+            const totalQuantity = items.reduce((sum, it) => sum + (parseInt(it.quantity) || 0), 0);
+            
             return (
               <motion.div
                 key={item.id}
@@ -1051,7 +1258,12 @@ const PhysicalMissing = () => {
                       {item.nf_number && (
                         <p className="text-sm text-muted-foreground">NF: {item.nf_number}</p>
                       )}
-                      {(item.sku || item.color || item.size) ? (
+                      {items.length > 1 && (
+                        <p className="text-sm text-primary font-medium mt-1">
+                          {items.length} itens diferentes
+                        </p>
+                      )}
+                      {(item.sku || item.color || item.size) && items.length === 1 ? (
                         <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
                           {item.sku && <p>SKU: {item.sku}</p>}
                           {item.color && <p>Cor: {item.color}</p>}
@@ -1092,7 +1304,8 @@ const PhysicalMissing = () => {
                             onClick={() => {
                               const itemDescription = `${item.brand || item.product_name || 'Item'} - ${item.nf_number || 'Sem NF'}`;
                               if (window.confirm(`Tem certeza que deseja excluir esta falta física (${itemDescription})? Esta ação não pode ser desfeita.`)) {
-                                deletePhysicalMissing(item.id);
+                                // Deletar todos os registros com a mesma NF e store_id para garantir que o grupo completo seja removido
+                                deletePhysicalMissing(item.id, item.nf_number, item.store_id);
                               }
                             }}
                             className="text-destructive focus:text-destructive"
@@ -1106,32 +1319,43 @@ const PhysicalMissing = () => {
                   </div>
 
                   <div className="space-y-2 text-sm mb-4">
-                    {item.cost_value && item.quantity && (
+                    {items.length > 1 ? (
                       <>
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Custo Unitário:</span>
-                          <span className="font-medium text-foreground">
-                            R$ {parseFloat(item.cost_value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
+                          <span className="text-muted-foreground">Total de Itens:</span>
+                          <span className="font-medium text-foreground">{items.length}</span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span className="text-muted-foreground">Quantidade:</span>
-                          <span className="font-medium text-foreground">{item.quantity}</span>
+                          <span className="text-muted-foreground">Quantidade Total:</span>
+                          <span className="font-medium text-foreground">{totalQuantity}</span>
                         </div>
                         <div className="flex items-center justify-between border-t border-border pt-2">
                           <span className="text-muted-foreground font-semibold">Valor Total:</span>
                           <span className="font-bold text-foreground text-base">
-                            R$ {(parseFloat(item.cost_value || 0) * parseInt(item.quantity || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            R$ {totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                       </>
-                    )}
-                    {item.quantity && !item.cost_value && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Quantidade:</span>
-                        <span className="font-medium text-foreground">{item.quantity}</span>
-                      </div>
-                    )}
+                    ) : items.length === 1 ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Custo Unitário:</span>
+                          <span className="font-medium text-foreground">
+                            R$ {parseFloat(items[0].cost_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Quantidade:</span>
+                          <span className="font-medium text-foreground">{items[0].quantity}</span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-border pt-2">
+                          <span className="text-muted-foreground font-semibold">Valor Total:</span>
+                          <span className="font-bold text-foreground text-base">
+                            R$ {(items[0].total_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </>
+                    ) : null}
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Registrado em:</span>
                       <span className="font-medium text-foreground">
@@ -1141,6 +1365,34 @@ const PhysicalMissing = () => {
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Status:</span>
                       {getStatusBadge(item.status || 'processo_aberto')}
+                    </div>
+                    <div className="pt-2 border-t border-border">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          // Buscar todos os registros da mesma NF para garantir que temos todos os dados
+                          const allNFItems = (physicalMissing || []).filter(pm => 
+                            pm.nf_number === item.nf_number && pm.store_id === item.store_id && pm.status !== 'nota_finalizada'
+                          );
+                          const viewItems = allNFItems.length > 0 && allNFItems[0].items 
+                            ? allNFItems[0].items 
+                            : allNFItems.map(pm => ({
+                                brand: pm.brand,
+                                sku: pm.sku,
+                                color: pm.color,
+                                size: pm.size,
+                                cost_value: pm.cost_value,
+                                quantity: pm.quantity,
+                                total_value: (parseFloat(pm.cost_value || 0) * parseInt(pm.quantity || 0))
+                              }));
+                          setSelectedMissingForView({ ...item, items: viewItems });
+                        }}
+                        className="w-full gap-2"
+                      >
+                        <Eye className="w-4 h-4" />
+                        Visualizar Falta Física
+                      </Button>
                     </div>
                     {item.notes && (
                       <div className="mt-2 pt-2 border-t border-border">
@@ -1304,6 +1556,148 @@ const PhysicalMissing = () => {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Modal de Visualização de Falta Física */}
+      <Dialog open={!!selectedMissingForView} onOpenChange={(open) => !open && setSelectedMissingForView(null)}>
+        <DialogContent className="max-w-4xl bg-card border-border max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Detalhes da Falta Física - NF {selectedMissingForView?.nf_number}
+            </DialogTitle>
+            <DialogDescription>
+              Visualize todos os itens registrados nesta nota fiscal
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedMissingForView && (
+            <div className="space-y-4 mt-4">
+              {/* Informações Gerais */}
+              <div className="bg-secondary/50 p-4 rounded-lg space-y-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">NF:</span>
+                    <p className="font-semibold">{selectedMissingForView.nf_number}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Loja:</span>
+                    <p className="font-semibold">
+                      {(stores || []).find(s => s.id === selectedMissingForView.store_id)?.name || 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Registrado em:</span>
+                    <p className="font-semibold">
+                      {selectedMissingForView.created_at 
+                        ? format(new Date(selectedMissingForView.created_at), 'dd/MM/yyyy', { locale: ptBR })
+                        : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Status:</span>
+                    <div className="mt-1">
+                      {getStatusBadge(selectedMissingForView.status || 'processo_aberto')}
+                    </div>
+                  </div>
+                </div>
+                {selectedMissingForView.moved_to_defect && (
+                  <div className="pt-2 border-t border-border">
+                    <p className="text-sm text-orange-500 font-medium">
+                      ✓ Movimentado para defeito
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Tabela de Itens */}
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-4">Itens da Falta Física</h3>
+                <div className="border border-border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-secondary">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider border-r border-border">
+                          Marca
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider border-r border-border">
+                          SKU
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider border-r border-border">
+                          Cor
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-foreground uppercase tracking-wider border-r border-border">
+                          Tamanho
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-foreground uppercase tracking-wider border-r border-border">
+                          Quantidade
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-foreground uppercase tracking-wider border-r border-border">
+                          Custo Unitário
+                        </th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-foreground uppercase tracking-wider">
+                          Valor Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-card divide-y divide-border">
+                      {selectedMissingForView.items && selectedMissingForView.items.length > 0 ? (
+                        selectedMissingForView.items.map((item, index) => (
+                          <tr key={index} className="hover:bg-secondary/50">
+                            <td className="px-4 py-3 text-sm text-foreground border-r border-border">
+                              {item.brand || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-foreground border-r border-border">
+                              {item.sku || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-foreground border-r border-border">
+                              {item.color || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-foreground border-r border-border">
+                              {item.size || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-center text-foreground border-r border-border">
+                              {item.quantity || 0}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right text-foreground border-r border-border">
+                              R$ {parseFloat(item.cost_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-semibold text-foreground">
+                              R$ {(item.total_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan="7" className="px-4 py-8 text-center text-muted-foreground">
+                            Nenhum item encontrado
+                          </td>
+                        </tr>
+                      )}
+                      {/* Linha de Total */}
+                      {selectedMissingForView.items && selectedMissingForView.items.length > 0 && (
+                        <tr className="bg-secondary/50 font-semibold">
+                          <td colSpan="4" className="px-4 py-3 text-sm text-foreground border-r border-border">
+                            TOTAL
+                          </td>
+                          <td className="px-4 py-3 text-sm text-center text-foreground border-r border-border">
+                            {selectedMissingForView.items.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-foreground border-r border-border">
+                            -
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-primary text-lg">
+                            R$ {selectedMissingForView.items.reduce((sum, item) => sum + (item.total_value || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

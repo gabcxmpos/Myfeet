@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Trophy, Filter } from 'lucide-react';
 import { useData } from '@/contexts/DataContext';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +36,15 @@ const MonthlyRanking = () => {
   const { stores, patentSettings, evaluations } = useData();
   const [nameFilter, setNameFilter] = useState('');
   const [franquiaFilter, setFranquiaFilter] = useState('all');
+  const [dateStart, setDateStart] = useState(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    return firstDay.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
+  const [dateEnd, setDateEnd] = useState(() => {
+    const now = new Date();
+    return now.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
 
   const franqueados = useMemo(() => ['Loja Própria', ...new Set(stores.map(s => s.franqueado).filter(f => f !== 'Loja Própria'))], [stores]);
 
@@ -45,18 +55,32 @@ const MonthlyRanking = () => {
     return { name: 'Bronze', color: patentIcons['Bronze'].color, icon: <Trophy /> };
   };
 
-  // Calcular ranking baseado em avaliações aprovadas reais
-  const approvedEvaluations = useMemo(() => 
-    evaluations.filter(e => e.status === 'approved'), 
-    [evaluations]
-  );
+  // Calcular ranking baseado em avaliações aprovadas reais, filtradas por período (data início e data fim)
+  const approvedEvaluations = useMemo(() => {
+    const approved = evaluations.filter(e => {
+      if (e.status !== 'approved') return false;
+      
+      // Filtrar por intervalo de datas se tiver data
+      if (e.created_at || e.date) {
+        const evalDate = e.created_at || e.date;
+        const evalDateStr = evalDate.split('T')[0]; // YYYY-MM-DD
+        return evalDateStr >= dateStart && evalDateStr <= dateEnd;
+      }
+      return true; // Se não tiver data, incluir
+    });
+    console.log('📊 [MonthlyRanking] Avaliações aprovadas:', approved.length, 'de', evaluations.length, 'total', 'para período', dateStart, 'até', dateEnd);
+    return approved;
+  }, [evaluations, dateStart, dateEnd]);
 
   const realRanking = useMemo(() => {
     const pillars = ['Pessoas', 'Performance', 'Ambientação', 'Digital'];
     
     return stores.map((store) => {
-      // Buscar avaliações aprovadas desta loja
-      const storeEvaluations = approvedEvaluations.filter(e => e.storeId === store.id);
+      // Buscar avaliações aprovadas desta loja - aceitar tanto camelCase quanto snake_case
+      const storeEvaluations = approvedEvaluations.filter(e => {
+        const evalStoreId = e.storeId || e.store_id;
+        return evalStoreId === store.id;
+      });
       
       // Calcular pontuação por pilar
       const pillarScores = {};
@@ -99,15 +123,18 @@ const MonthlyRanking = () => {
     });
   }, [stores, approvedEvaluations]);
 
-  // Filtrar apenas lojas com avaliações aprovadas e aplicar filtros
+  // Filtrar e aplicar filtros (mostrar TODAS as lojas, mesmo sem avaliações)
   const filteredRanking = realRanking.filter(item => {
-    // Mostrar apenas lojas que têm avaliações aprovadas
-    if (!item.hasEvaluations) return false;
-    
     const nameMatch = item.store.toLowerCase().includes(nameFilter.toLowerCase()) ||
                       (item.manager && item.manager.toLowerCase().includes(nameFilter.toLowerCase()));
     const franquiaMatch = franquiaFilter === 'all' || item.franqueado === franquiaFilter;
     return nameMatch && franquiaMatch;
+  });
+  
+  console.log('📊 [MonthlyRanking] Ranking filtrado:', {
+    total: filteredRanking.length,
+    comAvaliacoes: filteredRanking.filter(r => r.hasEvaluations).length,
+    semAvaliacoes: filteredRanking.filter(r => !r.hasEvaluations).length
   });
 
   const patentSummary = useMemo(() => {
@@ -132,7 +159,29 @@ const MonthlyRanking = () => {
             <h1 className="text-3xl font-bold text-foreground">Ranking PPAD</h1>
             <p className="text-muted-foreground mt-1">Classificação geral de desempenho das lojas.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="space-y-1">
+              <Label htmlFor="dateStart" className="text-xs text-muted-foreground">Data Início</Label>
+              <Input
+                id="dateStart"
+                type="date"
+                value={dateStart}
+                onChange={(e) => setDateStart(e.target.value)}
+                max={dateEnd}
+                className="w-36 bg-secondary h-9 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="dateEnd" className="text-xs text-muted-foreground">Data Fim</Label>
+              <Input
+                id="dateEnd"
+                type="date"
+                value={dateEnd}
+                onChange={(e) => setDateEnd(e.target.value)}
+                min={dateStart}
+                className="w-36 bg-secondary h-9 text-sm"
+              />
+            </div>
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 

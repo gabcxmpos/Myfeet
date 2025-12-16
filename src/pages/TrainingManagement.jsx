@@ -77,6 +77,10 @@ const TrainingManagement = () => {
   const { trainings, trainingRegistrations, collaborators, stores, addTraining, updateTraining, deleteTraining, addTrainingRegistration, updateTrainingRegistration, deleteTrainingRegistration, fetchData } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
+  
+  // Garantir que trainingRegistrations e trainings sejam arrays
+  const safeTrainingRegistrations = Array.isArray(trainingRegistrations) ? trainingRegistrations : [];
+  const safeTrainings = Array.isArray(trainings) ? trainings : [];
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTraining, setEditingTraining] = useState(null);
   const [selectedTrainingForRegistrations, setSelectedTrainingForRegistrations] = useState(null);
@@ -352,7 +356,7 @@ const TrainingManagement = () => {
   }, [stores]);
 
   const filteredRegistrations = useMemo(() => {
-    let filtered = trainingRegistrations;
+    let filtered = safeTrainingRegistrations;
 
     if (filters.store.length > 0) {
       filtered = filtered.filter(reg => filters.store.includes(reg.store_id || reg.storeId));
@@ -380,13 +384,13 @@ const TrainingManagement = () => {
     }
 
     return filtered;
-  }, [trainingRegistrations, filters, stores]);
+  }, [safeTrainingRegistrations, filters, stores]);
 
   // Top 5 lojas por participação
   const top5Stores = useMemo(() => {
     const storeStats = {};
     
-    trainingRegistrations.forEach(reg => {
+    safeTrainingRegistrations.forEach(reg => {
       const storeId = reg.store_id || reg.storeId;
       if (!storeStats[storeId]) {
         storeStats[storeId] = { registrations: 0, presences: 0 };
@@ -411,7 +415,7 @@ const TrainingManagement = () => {
       })
       .sort((a, b) => b.registrations - a.registrations)
       .slice(0, 5);
-  }, [trainingRegistrations, stores]);
+  }, [safeTrainingRegistrations, stores]);
 
   return (
     <>
@@ -439,14 +443,14 @@ const TrainingManagement = () => {
           <TabsContent value="trainings" className="space-y-4 mt-4">
             {/* Dashboard de Treinamentos */}
             {(() => {
-              const totalTrainings = trainings.length;
-              const totalRegistrations = trainingRegistrations.length;
-              const totalPresent = trainingRegistrations.filter(r => r.presence).length;
+              const totalTrainings = safeTrainings.length;
+              const totalRegistrations = safeTrainingRegistrations.length;
+              const totalPresent = safeTrainingRegistrations.filter(r => r.presence).length;
               const adherenceRate = totalRegistrations > 0 ? Math.round((totalPresent / totalRegistrations) * 100) : 0;
               
               // Agrupar inscrições por franqueado
               const registrationsByFranchisee = {};
-              trainingRegistrations.forEach(reg => {
+              safeTrainingRegistrations.forEach(reg => {
                 const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
                 if (store?.franqueado) {
                   if (!registrationsByFranchisee[store.franqueado]) {
@@ -550,10 +554,10 @@ const TrainingManagement = () => {
             })()}
 
             {/* Lista de Treinamentos */}
-            {trainings.length > 0 ? (
+            {safeTrainings.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {trainings.map(training => {
-                  const registrations = trainingRegistrations.filter(reg => 
+                {safeTrainings.map(training => {
+                  const registrations = safeTrainingRegistrations.filter(reg => 
                     (reg.training_id || reg.trainingId) === training.id
                   );
                   const presentCount = registrations.filter(r => r.presence).length;
@@ -781,7 +785,7 @@ const TrainingManagement = () => {
                 filteredRegistrations.map(reg => {
                   const store = stores.find(s => s.id === (reg.store_id || reg.storeId));
                   const collaborator = reg.collaborator || {};
-                  const training = trainings.find(t => t.id === (reg.training_id || reg.trainingId));
+                  const training = safeTrainings.find(t => t.id === (reg.training_id || reg.trainingId));
 
                   return (
                     <div key={reg.id} className="bg-card p-4 rounded-lg border border-border">
@@ -1022,7 +1026,7 @@ const TrainingManagement = () => {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const registrations = trainingRegistrations.filter(reg => 
+                      const registrations = safeTrainingRegistrations.filter(reg => 
                         (reg.training_id || reg.trainingId) === selectedTrainingForRegistrations.id
                       );
                       handleExportToExcel(selectedTrainingForRegistrations, registrations);
@@ -1036,7 +1040,7 @@ const TrainingManagement = () => {
               </DialogHeader>
               <div className="space-y-4 mt-4">
                 {(() => {
-                  const registrations = trainingRegistrations.filter(reg => 
+                  const registrations = safeTrainingRegistrations.filter(reg => 
                     (reg.training_id || reg.trainingId) === selectedTrainingForRegistrations.id
                   );
 

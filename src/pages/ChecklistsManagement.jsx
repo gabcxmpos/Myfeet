@@ -10,7 +10,8 @@ import DevolucoesChecklist from './DevolucoesChecklist';
 import MotoristaChecklist from './MotoristaChecklist';
 import ComunicacaoChecklist from './ComunicacaoChecklist';
 import DailyChecklist from './DailyChecklist';
-import { CheckSquare, Route, MessageCircle, Settings, RotateCcw } from 'lucide-react';
+import GerencialChecklist from './GerencialChecklist';
+import { CheckSquare, Route, MessageCircle, Settings, RotateCcw, Briefcase } from 'lucide-react';
 
 const ChecklistsManagement = () => {
   const { user } = useAuth();
@@ -21,10 +22,12 @@ const ChecklistsManagement = () => {
   const getInitialTab = () => {
     if (tabFromUrl) return tabFromUrl;
     if (!user) return 'devolucoes';
-    if (user?.role === 'admin') return 'diario';
+    if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia') return 'diario';
+    // Para loja, mostrar PPAD GERENCIAL por padrão (mas também pode acessar diário)
+    if (user?.role === 'loja' || user?.role === 'loja_franquia') return 'gerencial';
     if (user?.role === 'devoluções') return 'exec-devolucoes';
     if (user?.role === 'motorista') return 'exec-motorista';
-    if (user?.role === 'comunicação') return 'exec-comunicacao';
+    if (user?.role === 'comunicação' || user?.role === 'digital') return 'exec-comunicacao';
     return 'devolucoes';
   };
 
@@ -41,13 +44,16 @@ const ChecklistsManagement = () => {
   React.useEffect(() => {
     if (!user || tabFromUrl) return;
     
-    if (user?.role === 'admin') {
+    if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia') {
       setActiveTab('diario');
+    } else if (user?.role === 'loja' || user?.role === 'loja_franquia') {
+      // Para loja, mostrar PPAD GERENCIAL por padrão
+      setActiveTab('gerencial');
     } else if (user?.role === 'devoluções') {
       setActiveTab('exec-devolucoes');
     } else if (user?.role === 'motorista') {
       setActiveTab('exec-motorista');
-    } else if (user?.role === 'comunicação') {
+    } else if (user?.role === 'comunicação' || user?.role === 'digital') {
       setActiveTab('exec-comunicacao');
     }
   }, [user, tabFromUrl]);
@@ -63,9 +69,21 @@ const ChecklistsManagement = () => {
   }
 
   const isAdmin = user?.role === 'admin';
+  const isSupervisor = user?.role === 'supervisor' || user?.role === 'supervisor_franquia';
+  const isLoja = user?.role === 'loja' || user?.role === 'loja_franquia';
   const isDevolucoes = user?.role === 'devoluções';
   const isMotorista = user?.role === 'motorista';
   const isComunicacao = user?.role === 'comunicação';
+
+  console.log('🔍 [ChecklistsManagement] Renderizando:', {
+    userRole: user?.role,
+    isAdmin,
+    isSupervisor,
+    isLoja,
+    activeTab,
+    tabFromUrl,
+    storeId: user?.storeId
+  });
 
   return (
     <>
@@ -83,25 +101,33 @@ const ChecklistsManagement = () => {
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="w-full flex flex-wrap gap-2 h-auto">
-            {/* Abas para Admin */}
-            {isAdmin && (
+            {/* Abas para Admin e Supervisor */}
+            {(isAdmin || isSupervisor) && (
               <>
                 <TabsTrigger value="diario" className="flex items-center gap-2">
                   <CheckSquare className="w-4 h-4" />
                   <span>Checklist Diário</span>
                 </TabsTrigger>
-                <TabsTrigger value="devolucoes" className="flex items-center gap-2">
-                  <CheckSquare className="w-4 h-4" />
-                  <span>Gerenciar Devoluções</span>
+                <TabsTrigger value="gerencial" className="flex items-center gap-2">
+                  <Briefcase className="w-4 h-4" />
+                  <span>PPAD GERENCIAL</span>
                 </TabsTrigger>
-                <TabsTrigger value="limpar" className="flex items-center gap-2">
-                  <RotateCcw className="w-4 h-4" />
-                  <span>Limpar Checklists</span>
-                </TabsTrigger>
-                <TabsTrigger value="exec-devolucoes" className="flex items-center gap-2">
-                  <CheckSquare className="w-4 h-4" />
-                  <span>Executar Devoluções</span>
-                </TabsTrigger>
+                {isAdmin && (
+                  <>
+                    <TabsTrigger value="devolucoes" className="flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4" />
+                      <span>Gerenciar Devoluções</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="limpar" className="flex items-center gap-2">
+                      <RotateCcw className="w-4 h-4" />
+                      <span>Limpar Checklists</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="exec-devolucoes" className="flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4" />
+                      <span>Executar Devoluções</span>
+                    </TabsTrigger>
+                  </>
+                )}
               </>
             )}
 
@@ -138,14 +164,37 @@ const ChecklistsManagement = () => {
                 </TabsTrigger>
               </>
             )}
+
+            {/* Abas para Loja */}
+            {isLoja && (
+              <>
+                <TabsTrigger value="diario" className="flex items-center gap-2">
+                  <CheckSquare className="w-4 h-4" />
+                  <span>Checklist Diário</span>
+                </TabsTrigger>
+                <TabsTrigger value="gerencial" className="flex items-center gap-2">
+                  <Briefcase className="w-4 h-4" />
+                  <span>PPAD GERENCIAL</span>
+                </TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           {/* Conteúdo das Abas */}
-          {isAdmin && (
+          {(isAdmin || isSupervisor) && (
             <>
               <TabsContent value="diario" className="mt-6">
                 <DailyChecklist />
               </TabsContent>
+              <TabsContent value="gerencial" className="mt-6">
+                <GerencialChecklist />
+              </TabsContent>
+            </>
+          )}
+
+          {/* Conteúdo das Abas - Apenas Admin */}
+          {isAdmin && (
+            <>
               <TabsContent value="devolucoes" className="mt-6">
                 <DevolucoesChecklistManagement />
               </TabsContent>
@@ -177,6 +226,18 @@ const ChecklistsManagement = () => {
               </TabsContent>
               <TabsContent value="gerenciar-comunicacao" className="mt-6">
                 <ComunicacaoChecklistManagement />
+              </TabsContent>
+            </>
+          )}
+
+          {/* Conteúdo das Abas - Loja */}
+          {isLoja && (
+            <>
+              <TabsContent value="diario" className="mt-6">
+                <DailyChecklist />
+              </TabsContent>
+              <TabsContent value="gerencial" className="mt-6">
+                <GerencialChecklist />
               </TabsContent>
             </>
           )}

@@ -54,7 +54,7 @@ const EvaluationScreen = ({ form, storeId, onComplete }) => {
     const handleNext = () => currentQuestion < form.questions.length - 1 && setCurrentQuestion(currentQuestion + 1);
     const handlePrevious = () => currentQuestion > 0 && setCurrentQuestion(currentQuestion - 1);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         // Validar se todas as questões obrigatórias foram respondidas
         const unansweredQuestions = form.questions.filter(q => {
             if (q.type === 'text') return false; // Text não é obrigatório para score
@@ -117,20 +117,31 @@ const EvaluationScreen = ({ form, storeId, onComplete }) => {
             finalScore = 100;
         }
 
-        addEvaluation({
-            storeId,
-            formId: form.id,
-            score: finalScore,
-            answers,
-            pillar: form.pillar,
-            status: (user.role === 'loja' || user.role === 'admin_loja') ? 'pending' : 'approved',
-        });
+        try {
+            await addEvaluation({
+                storeId,
+                store_id: storeId,
+                form_id: form.id,
+                formId: form.id, // Manter para compatibilidade
+                score: finalScore,
+                answers,
+                pillar: form.pillar,
+                status: (user.role === 'loja' || user.role === 'admin_loja') ? 'pending' : 'approved',
+            });
 
-        toast({
-            title: "Avaliação concluída!",
-            description: `Pontuação: ${finalScore}. ${(user.role === 'loja' || user.role === 'admin_loja') ? 'Enviada para aprovação.' : ''}`,
-        });
-        onComplete();
+            toast({
+                title: "Avaliação concluída!",
+                description: `Pontuação: ${finalScore}. ${(user.role === 'loja' || user.role === 'admin_loja') ? 'Enviada para aprovação.' : ''}`,
+            });
+            onComplete();
+        } catch (error) {
+            console.error('Erro ao salvar avaliação:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Erro ao salvar',
+                description: 'Não foi possível salvar a avaliação. Tente novamente.',
+            });
+        }
     };
 
     const progress = ((currentQuestion + 1) / form.questions.length) * 100;

@@ -66,6 +66,7 @@ const StoresCTOAnalytics = () => {
       const ammFinal = Math.max(0, amm - ammDiscount);
       const fpp = parseFloat(monthBills.fpp || 0);
       const cond = parseFloat(monthBills.cond || 0);
+      const paidValue = parseFloat(monthBills.paidValue || 0);
       
       // PONTO DE EQUILÍBRIO: valor mínimo de vendas para que o aluguel percentual seja maior que o mínimo
       // PE = AMM / (percentual / 100)
@@ -87,9 +88,11 @@ const StoresCTOAnalytics = () => {
           ? aluguelPercentualCalculado  // Se vendas * % >= mínimo, usar percentual
           : aluguelMin);  // Caso contrário, usar mínimo
       
-      // COMPLEMENTO: diferença entre aluguel percentual e AMM (quando vendas > PE)
-      const complemento = faturamento > pe && aluguelPercentualCalculado > ammFinal
-        ? aluguelPercentualCalculado - ammFinal
+      // COMPLEMENTO CALCULADO: diferença entre aluguel percentual e AMM (quando vendas > PE)
+      // Cálculo: (Vendas - PE) × Aluguel Percentual
+      const diferencaVendas = (faturamento && pe && faturamento > pe) ? faturamento - pe : 0;
+      const valorComplementarCalculado = diferencaVendas > 0 && aluguelPercentual > 0 
+        ? diferencaVendas * (aluguelPercentual / 100) 
         : 0;
       
       // Calcular custos adicionais do mês
@@ -113,7 +116,9 @@ const StoresCTOAnalytics = () => {
         faturamento,
         aluguelEfetivo, // Aluguel efetivo (do boleto ou calculado)
         aluguelPercentualCalculado, // Aluguel calculado baseado nas vendas
-        complemento, // Complemento a pagar (quando vendas > PE)
+        valorComplementarCalculado, // Valor complementar calculado (a pagar)
+        paidValue, // Valor complementar pago
+        complemento: valorComplementarCalculado, // Mantido para compatibilidade
         amm: ammFinal, // AMM já com desconto aplicado
         ammOriginal: amm,
         ammDiscount,
@@ -124,6 +129,8 @@ const StoresCTOAnalytics = () => {
         ctoTotal,
         percentualCTO, // Percentual do CTO Mensal
         pe,
+        diferencaPE: faturamento > pe ? faturamento - pe : 0, // Diferença entre vendas e PE
+        percentualPE: pe > 0 ? (faturamento / pe) * 100 : 0, // Percentual do PE
         margem,
         acimaPE,
         lucro: faturamento - ctoTotal
@@ -341,6 +348,7 @@ const StoresCTOAnalytics = () => {
                         <th className="p-3 text-right">CTO Total</th>
                         <th className="p-3 text-right">% CTO Mensal</th>
                         <th className="p-3 text-right">PE</th>
+                        <th className="p-3 text-right">Passou do PE</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -369,12 +377,45 @@ const StoresCTOAnalytics = () => {
                               )}
                             </div>
                           </td>
-                          <td className={`p-3 text-right ${month.complemento > 0 ? 'text-orange-500 font-semibold' : 'text-muted-foreground'}`}>
-                            {month.complemento > 0 ? (
-                              <>
-                                R$ {month.complemento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                <span className="text-xs block">(a pagar)</span>
-                              </>
+                          <td className="p-3 text-right">
+                            {month.valorComplementarCalculado > 0 ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Calculado:</span>
+                                  <span className="ml-1 font-semibold text-foreground">
+                                    R$ {month.valorComplementarCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                {month.paidValue > 0 ? (
+                                  <>
+                                    <div>
+                                      <span className="text-xs text-muted-foreground">Pago:</span>
+                                      <span className="ml-1 font-semibold text-green-500">
+                                        R$ {month.paidValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </span>
+                                    </div>
+                                    {Math.abs(month.valorComplementarCalculado - month.paidValue) >= 100 && (
+                                      <div>
+                                        <span className="text-xs text-muted-foreground">Diferença:</span>
+                                        <span className="ml-1 font-semibold text-orange-500">
+                                          {month.paidValue < month.valorComplementarCalculado 
+                                            ? `-R$ ${(month.valorComplementarCalculado - month.paidValue).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                            : `+R$ ${(month.paidValue - month.valorComplementarCalculado).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                          }
+                                        </span>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Diferença:</span>
+                                    <span className="ml-1 font-semibold text-orange-500">
+                                      R$ {month.valorComplementarCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                    <span className="text-xs text-orange-500 block mt-0.5">(a pagar)</span>
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               '-'
                             )}
@@ -404,10 +445,19 @@ const StoresCTOAnalytics = () => {
                           </td>
                           <td className="p-3 text-right">
                             R$ {month.pe.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            {month.faturamento > 0 && month.pe > 0 && (
-                              <span className="text-xs text-muted-foreground block">
-                                ({((month.faturamento / month.pe) * 100).toFixed(1)}% do PE)
-                              </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            {month.diferencaPE > 0 ? (
+                              <>
+                                <div className="font-semibold">
+                                  R$ {month.diferencaPE.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                                <span className="text-xs text-muted-foreground">
+                                  (+{(month.percentualPE - 100).toFixed(1)}% acima do PE)
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
                             )}
                           </td>
                         </tr>

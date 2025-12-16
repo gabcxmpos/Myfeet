@@ -120,7 +120,7 @@ const ResultsManagement = () => {
         loadStoreData(store);
       }
     }
-  }, [resultMonth]); // Apenas quando resultMonth mudar
+  }, [resultMonth, stores]); // Quando resultMonth ou stores mudarem
 
   // Colaboradores da loja selecionada
   const storeCollaborators = useMemo(() => {
@@ -246,19 +246,17 @@ const ResultsManagement = () => {
 
       console.log('✅ [ResultsManagement] Dados salvos. Store atualizada:', updatedStore);
 
-      // Recarregar dados após salvar (com pequeno delay para garantir que o banco processou)
-      setTimeout(async () => {
-        await fetchData();
-        
-        // Recarregar dados da loja editada
-        const refreshedStores = await api.fetchStores();
-        const refreshedStore = refreshedStores.find(s => s.id === editingStore.id);
-        if (refreshedStore) {
-          setEditingStore(refreshedStore);
-          loadStoreData(refreshedStore);
-        }
-        console.log('🔄 [ResultsManagement] Dados recarregados após salvamento');
-      }, 500);
+      // Recarregar dados após salvar
+      await fetchData();
+      
+      // Recarregar dados da loja editada
+      const refreshedStores = await api.fetchStores();
+      const refreshedStore = refreshedStores.find(s => s.id === editingStore.id);
+      if (refreshedStore) {
+        setEditingStore(refreshedStore);
+        loadStoreData(refreshedStore);
+      }
+      console.log('🔄 [ResultsManagement] Dados recarregados após salvamento');
 
       toast({
         title: 'Sucesso!',

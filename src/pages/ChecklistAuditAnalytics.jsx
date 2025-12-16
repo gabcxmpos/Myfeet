@@ -9,19 +9,76 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BarChart3, CheckSquare, Calendar, Store, TrendingUp, AlertCircle } from 'lucide-react';
+import { BarChart3, CheckSquare, Calendar, Store, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/lib/customSupabaseClient';
 
 const ChecklistAuditAnalytics = () => {
   const { stores, checklistAudits, fetchData } = useData();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [selectedStore, setSelectedStore] = useState('all');
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [checklistType, setChecklistType] = useState('operacional');
+  const [auditingChecklist, setAuditingChecklist] = useState(null);
 
   // Refresh automático otimizado
   useOptimizedRefresh(fetchData);
+
+  const handleMarkAsAudited = async (checklistItem) => {
+    try {
+      setAuditingChecklist(`${checklistItem.store_id}-${checklistItem.date}-${checklistItem.checklist_type || 'operacional'}`);
+      
+      // Preparar dados para atualização
+      const updateData = {
+        is_audited: true,
+        audited_by: user?.id,
+        audited_at: new Date().toISOString()
+      };
+      
+      // Atualizar o checklist como auditado
+      const { error } = await supabase
+        .from('daily_checklists')
+        .update(updateData)
+        .eq('store_id', checklistItem.store_id)
+        .eq('date', checklistItem.date);
+      
+      if (error) {
+        // Se o erro for de coluna não encontrada, tentar sem os campos extras
+        if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
+          console.warn('Campos de auditoria não encontrados, tentando atualização simples...');
+          const { error: simpleError } = await supabase
+            .from('daily_checklists')
+            .update({ is_audited: true })
+            .eq('store_id', checklistItem.store_id)
+            .eq('date', checklistItem.date);
+          
+          if (simpleError) throw simpleError;
+        } else {
+          throw error;
+        }
+      }
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Checklist marcado como auditado.',
+      });
+      
+      // Recarregar dados
+      await fetchData();
+    } catch (error) {
+      console.error('Erro ao marcar como auditado:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error.message || 'Não foi possível marcar o checklist como auditado.',
+      });
+    } finally {
+      setAuditingChecklist(null);
+    }
+  };
 
   // Filtrar checklists baseado nos filtros
   const filteredChecklists = useMemo(() => {
@@ -246,26 +303,47 @@ const ChecklistAuditAnalytics = () => {
                           const totalTasks = hasTasks ? Object.keys(checklistItem.tasks).length : 0;
                           const isCompleted = hasTasks && completedTasks > 0 && completedTasks === totalTasks;
                           const hasProgress = hasTasks && completedTasks > 0 && completedTasks < totalTasks;
+                          const isAudited = checklistItem.is_audited === true;
+                          const checklistKey = `${checklistItem.store_id}-${checklistItem.date}-${checklistItem.checklist_type || 'operacional'}`;
+                          const isAuditing = auditingChecklist === checklistKey;
                           
-                          if (isCompleted) {
-                            return (
-                              <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium">
-                                Concluído ({completedTasks}/{totalTasks})
-                              </span>
-                            );
-                          } else if (hasProgress) {
-                            return (
-                              <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium">
-                                Em Progresso ({completedTasks}/{totalTasks})
-                              </span>
-                            );
-                          } else {
-                            return (
-                              <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-sm font-medium">
-                                Pendente
-                              </span>
-                            );
-                          }
+                          return (
+                            <>
+                              {isCompleted && !isAudited && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleMarkAsAudited(checklistItem)}
+                                  disabled={isAuditing}
+                                  className="flex items-center gap-2"
+                                >
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  {isAuditing ? 'Marcando...' : 'Marcar como Auditado'}
+                                </Button>
+                              )}
+                              {isAudited && (
+                                <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-sm font-medium flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Auditado
+                                </span>
+                              )}
+                              {isCompleted && (
+                                <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium">
+                                  Concluído ({completedTasks}/{totalTasks})
+                                </span>
+                              )}
+                              {hasProgress && !isCompleted && (
+                                <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium">
+                                  Em Progresso ({completedTasks}/{totalTasks})
+                                </span>
+                              )}
+                              {!hasProgress && !isCompleted && (
+                                <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-sm font-medium">
+                                  Pendente
+                                </span>
+                              )}
+                            </>
+                          );
                         })()}
                       </div>
                     </motion.div>

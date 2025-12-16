@@ -8,11 +8,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DollarSign, Percent, Hash, Truck, Target, BarChart, Save, Upload, Download } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DollarSign, Percent, Hash, Truck, Target, BarChart, Save, Upload, Download, Store, Search } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
 import { updateStore as updateStoreAPI } from '@/lib/supabaseService';
+import MultiSelectFilter from '@/components/MultiSelectFilter';
 
 
 const GoalStoreCard = ({ store, onSelect, selected }) => {
@@ -58,7 +60,8 @@ const GoalsPanel = () => {
   const { toast } = useToast();
   const query = useQuery();
   const [selectedStore, setSelectedStore] = useState('');
-  const [filters, setFilters] = useState({ supervisor: 'all', franqueado: 'all', bandeira: 'all' });
+  const [filters, setFilters] = useState({ supervisor: [], franqueado: [], bandeira: [], store: [] });
+  const [searchTerm, setSearchTerm] = useState('');
   const [goals, setGoals] = useState({});
   const [weights, setWeights] = useState({});
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -68,17 +71,30 @@ const GoalsPanel = () => {
   const [isUploadingGoals, setIsUploadingGoals] = useState(false);
   const goalsFileInputRef = useRef(null);
 
-  const supervisors = useMemo(() => [...new Set(stores.map(s => s.supervisor))], [stores]);
-  const franqueados = useMemo(() => [...new Set(stores.map(s => s.franqueado))], [stores]);
-  const bandeiras = useMemo(() => [...new Set(stores.map(s => s.bandeira))], [stores]);
+  const supervisors = useMemo(() => [...new Set(stores.map(s => s.supervisor).filter(Boolean))], [stores]);
+  const franqueados = useMemo(() => [...new Set(stores.map(s => s.franqueado).filter(Boolean))], [stores]);
+  const bandeiras = useMemo(() => [...new Set(stores.map(s => s.bandeira).filter(Boolean))], [stores]);
+
+  const filterOptions = useMemo(() => ({
+    stores: stores.map(s => ({ value: s.id, label: s.name })),
+    bandeiras: bandeiras.map(b => ({ value: b, label: b })),
+    franqueados: franqueados.map(f => ({ value: f, label: f })),
+    supervisors: supervisors.map(s => ({ value: s, label: s })),
+  }), [stores, bandeiras, franqueados, supervisors]);
 
   const filteredStores = useMemo(() => {
-    return stores.filter(store => 
-      (filters.supervisor === 'all' || store.supervisor === filters.supervisor) &&
-      (filters.franqueado === 'all' || store.franqueado === filters.franqueado) &&
-      (filters.bandeira === 'all' || store.bandeira === filters.bandeira)
-    );
-  }, [stores, filters]);
+    return stores.filter(store => {
+      const matchesStore = filters.store.length === 0 || filters.store.includes(store.id);
+      const matchesBandeira = filters.bandeira.length === 0 || filters.bandeira.includes(store.bandeira);
+      const matchesFranqueado = filters.franqueado.length === 0 || filters.franqueado.includes(store.franqueado);
+      const matchesSupervisor = filters.supervisor.length === 0 || filters.supervisor.includes(store.supervisor);
+      const matchesSearch = !searchTerm || 
+        store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        store.code.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      return matchesStore && matchesBandeira && matchesFranqueado && matchesSupervisor && matchesSearch;
+    });
+  }, [stores, filters, searchTerm]);
 
   const handleStoreSelect = useCallback((storeId) => {
     setSelectedStore(storeId);
@@ -118,7 +134,9 @@ const GoalsPanel = () => {
   }, [selectedMonth]);
   
   const handleFilterChange = (filterName, value) => {
-    setFilters(prev => ({...prev, [filterName]: value}));
+    if (filterName === 'store' || filterName === 'bandeira' || filterName === 'franqueado' || filterName === 'supervisor') {
+      setFilters(prev => ({...prev, [filterName]: value}));
+    }
   };
 
   const handleGoalChange = (e) => {
@@ -470,150 +488,276 @@ const GoalsPanel = () => {
 
   const totalWeight = Object.values(weights).reduce((s, w) => s + (w || 0), 0);
 
+  const selectedStoreData = stores.find(s => s.id === selectedStore);
+
   return (
     <>
       <Helmet>
         <title>Definir Metas - MYFEET Painel PPAD</title>
       </Helmet>
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Metas de Performance</h1>
             <p className="text-muted-foreground mt-1">Selecione uma loja e defina suas metas e pesos.</p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="space-y-1">
-              <Label htmlFor="goalsMonth" className="text-xs text-muted-foreground">Mês das Metas</Label>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-secondary/50 px-3 py-2 rounded-lg">
+              <Label htmlFor="goalsMonth" className="text-sm text-muted-foreground whitespace-nowrap">Mês das Metas:</Label>
               <Input
                 id="goalsMonth"
                 type="month"
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                onChange={(e) => {
+                  setSelectedMonth(e.target.value);
+                  if (selectedStore) {
+                    handleStoreSelect(selectedStore);
+                  }
+                }}
                 min="2020-01"
-                className="w-36 bg-secondary h-9 text-sm"
+                className="w-36 bg-background border-0 h-9 text-sm font-medium"
               />
             </div>
-            <Select onValueChange={(val) => handleFilterChange('bandeira', val)} value={filters.bandeira}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="Bandeira" /></SelectTrigger>
-              <SelectContent><SelectItem value="all">Todas</SelectItem>{bandeiras.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-            </Select>
-            <Select onValueChange={(val) => handleFilterChange('supervisor', val)} value={filters.supervisor}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="Supervisor" /></SelectTrigger>
-              <SelectContent><SelectItem value="all">Todos</SelectItem>{supervisors.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-            </Select>
-            <Select onValueChange={(val) => handleFilterChange('franqueado', val)} value={filters.franqueado}>
-              <SelectTrigger className="w-40"><SelectValue placeholder="Franqueado" /></SelectTrigger>
-              <SelectContent><SelectItem value="all">Todos</SelectItem>{franqueados.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
-            </Select>
-            <Button 
-              type="button" 
-              onClick={generateGoalsCSVTemplate} 
-              variant="outline" 
-              className="gap-2"
-              title="Baixar template CSV para importação de metas em massa"
-            >
-              <Download className="w-4 h-4" /> Template Metas
-            </Button>
-            <Button 
-              type="button" 
-              onClick={() => goalsFileInputRef.current?.click()} 
-              variant="outline" 
-              className="gap-2"
-              disabled={isUploadingGoals}
-              title="Fazer upload de CSV com múltiplas metas"
-            >
-              <Upload className="w-4 h-4" /> {isUploadingGoals ? 'Processando...' : 'Importar Metas'}
-            </Button>
-            <input
-              ref={goalsFileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleCSVUploadGoals}
-              style={{ display: 'none' }}
-            />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 max-h-48 overflow-y-auto pr-2">
-            {filteredStores.map(store => (
-              <GoalStoreCard key={store.id} store={store} onSelect={handleStoreSelect} selected={selectedStore === store.id} />
-            ))}
-        </div>
-
-        {selectedStore && (
-          <motion.form
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            onSubmit={handleSaveAll}
-            className="bg-card rounded-xl shadow-lg border border-border p-8 space-y-8 mt-6"
-          >
-            <div>
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground flex items-center gap-2"><Target /> Metas da Loja</h2>
-                  <p className="text-sm text-muted-foreground mt-1">Mês: {new Date(selectedMonth + '-01').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</p>
+        {/* Filtros */}
+        <Card className="bg-card border-border/50">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Buscar</Label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Nome ou código..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8 h-9"
+                  />
                 </div>
-                <Button type="button" onClick={handleSaveGoals} variant="outline" size="sm" className="gap-2">
-                  <Save className="w-4 h-4" /> Salvar Metas
-                </Button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mt-4">
-                {goalFields.map(field => (
-                  <div key={field.name} className="space-y-2">
-                    <Label htmlFor={field.name} className="flex items-center gap-2 text-muted-foreground"><field.icon className="w-4 h-4" />{field.label}</Label>
-                    <Input id={field.name} name={field.name} type="number" step="any" value={goals[field.name] || ''} onChange={handleGoalChange} placeholder={field.placeholder} />
-                  </div>
-                ))}
+              <MultiSelectFilter
+                label="Loja"
+                options={filterOptions.stores}
+                selected={filters.store}
+                onSelectionChange={(selected) => handleFilterChange('store', selected)}
+              />
+              <MultiSelectFilter
+                label="Bandeira"
+                options={filterOptions.bandeiras}
+                selected={filters.bandeira}
+                onSelectionChange={(selected) => handleFilterChange('bandeira', selected)}
+              />
+              <MultiSelectFilter
+                label="Franqueado"
+                options={filterOptions.franqueados}
+                selected={filters.franqueado}
+                onSelectionChange={(selected) => handleFilterChange('franqueado', selected)}
+              />
+              <MultiSelectFilter
+                label="Supervisor"
+                options={filterOptions.supervisors}
+                selected={filters.supervisor}
+                onSelectionChange={(selected) => handleFilterChange('supervisor', selected)}
+              />
+              <div className="flex items-end gap-2">
+                <Button 
+                  type="button" 
+                  onClick={generateGoalsCSVTemplate} 
+                  variant="outline" 
+                  size="sm"
+                  className="gap-2 flex-1"
+                  title="Baixar template CSV para importação de metas em massa"
+                >
+                  <Download className="w-4 h-4" /> Template
+                </Button>
+                <Button 
+                  type="button" 
+                  onClick={() => goalsFileInputRef.current?.click()} 
+                  variant="outline" 
+                  size="sm"
+                  className="gap-2 flex-1"
+                  disabled={isUploadingGoals}
+                  title="Fazer upload de CSV com múltiplas metas"
+                >
+                  <Upload className="w-4 h-4" /> {isUploadingGoals ? 'Processando...' : 'Importar'}
+                </Button>
+                <input
+                  ref={goalsFileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleCSVUploadGoals}
+                  style={{ display: 'none' }}
+                />
               </div>
             </div>
-            
-            <div>
-              <h2 className="text-xl font-semibold text-foreground">Termômetro de Peso Interativo</h2>
-              <p className="text-muted-foreground text-sm">Ajuste o peso de cada indicador. A soma é sempre 100%.</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4 items-center">
-                <div className="space-y-6">
-                  {goalFields.map(field => (
-                    <div key={`weight-${field.name}`} className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor={`weight-${field.name}`} className="col-span-1 text-muted-foreground">{field.label}</Label>
-                      <Slider
-                        id={`weight-${field.name}`}
-                        name={field.name}
-                        min={0}
-                        max={100}
-                        step={1}
-                        value={[weights[field.name] || 0]}
-                        onValueChange={(value) => handleWeightChange(field.name, value[0])}
-                        className="col-span-2"
-                      />
-                      <div className="col-span-1 flex items-center justify-end gap-2">
-                        <Input type="number" value={weights[field.name] || 0} onChange={(e) => handleWeightChange(field.name, parseInt(e.target.value) || 0)} className="w-20 h-8 text-center" />
-                        <span className="font-bold text-primary">%</span>
+          </CardContent>
+        </Card>
+
+        {/* Lista de Lojas e Formulário */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Sidebar: Lista de Lojas */}
+          <div className="lg:col-span-1">
+            <Card className="bg-card border-border/50">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Store className="w-5 h-5 text-primary" />
+                  Lojas ({filteredStores.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="space-y-2 max-h-[calc(100vh-300px)] md:max-h-[calc(100vh-400px)] overflow-y-auto overscroll-contain">
+                  {filteredStores.map(store => {
+                    const storeGoals = store.goals || {};
+                    const goalsForMonth = typeof storeGoals === 'object' && !Array.isArray(storeGoals)
+                      ? (storeGoals[selectedMonth] || {})
+                      : (storeGoals || {});
+                    const hasGoals = Object.values(goalsForMonth).some(v => v > 0);
+                    
+                    return (
+                      <motion.div
+                        key={store.id}
+                        whileHover={{ x: 5 }}
+                        className={cn(
+                          "p-3 rounded-lg border cursor-pointer transition-all",
+                          selectedStore === store.id
+                            ? "bg-primary/10 border-primary"
+                            : "bg-secondary/30 border-border/50 hover:bg-secondary/50"
+                        )}
+                        onClick={() => handleStoreSelect(store.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-foreground truncate">{store.name}</p>
+                            <p className="text-xs text-muted-foreground">{store.code}</p>
+                          </div>
+                          {hasGoals && (
+                            <div className="w-2 h-2 bg-green-400 rounded-full ml-2" />
+                          )}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Conteúdo: Formulário de Metas */}
+          <div className="lg:col-span-2">
+            {selectedStore && selectedStoreData ? (
+              <motion.form
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                onSubmit={handleSaveAll}
+                className="space-y-6"
+              >
+                {/* Metas da Loja */}
+                <Card className="bg-card border-border/50">
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="flex items-center gap-2">
+                        <Target className="w-5 h-5 text-primary" />
+                        Metas da Loja - {selectedStoreData.name}
+                      </CardTitle>
+                      <Button type="button" onClick={handleSaveGoals} variant="outline" size="sm" className="gap-2">
+                        <Save className="w-4 h-4" /> Salvar Metas
+                      </Button>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">Mês: {new Date(selectedMonth + '-01').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}</p>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="flex flex-col gap-4">
+                      {goalFields.map(field => (
+                        <div key={field.name} className="space-y-2">
+                          <Label htmlFor={field.name} className="flex items-center gap-2 text-sm font-medium">
+                            <field.icon className="w-4 h-4 text-primary" />
+                            {field.label}
+                          </Label>
+                          <Input 
+                            id={field.name} 
+                            name={field.name} 
+                            type="number" 
+                            step="any" 
+                            value={goals[field.name] || ''} 
+                            onChange={handleGoalChange} 
+                            placeholder={field.placeholder}
+                            className="h-10 text-sm"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Termômetro de Peso */}
+                <Card className="bg-card border-border/50">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart className="w-5 h-5 text-primary" />
+                      Termômetro de Peso Interativo
+                    </CardTitle>
+                    <p className="text-muted-foreground text-sm mt-1">Ajuste o peso de cada indicador. A soma é sempre 100%.</p>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                      <div className="space-y-6">
+                        {goalFields.map(field => (
+                          <div key={`weight-${field.name}`} className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor={`weight-${field.name}`} className="col-span-1 text-muted-foreground text-sm">{field.label}</Label>
+                            <Slider
+                              id={`weight-${field.name}`}
+                              name={field.name}
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={[weights[field.name] || 0]}
+                              onValueChange={(value) => handleWeightChange(field.name, value[0])}
+                              className="col-span-2"
+                            />
+                            <div className="col-span-1 flex items-center justify-end gap-2">
+                              <Input type="number" value={weights[field.name] || 0} onChange={(e) => handleWeightChange(field.name, parseInt(e.target.value) || 0)} className="w-20 h-8 text-center text-sm" />
+                              <span className="font-bold text-primary">%</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={pieData} cx="50%" cy="50%" labelLine={false} outerRadius={120} fill="#8884d8" dataKey="value" nameKey="name">
+                              {pieData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
                       </div>
                     </div>
-                  ))}
-                </div>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={pieData} cx="50%" cy="50%" labelLine={false} outerRadius={120} fill="#8884d8" dataKey="value" nameKey="name">
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-              <div className="text-right mt-4 font-bold text-lg">Total: <span className={Math.round(totalWeight) === 100 ? 'text-green-400' : 'text-red-400'}>{totalWeight.toFixed(0)}%</span></div>
-            </div>
+                    <div className="text-right mt-4 font-bold text-lg">Total: <span className={Math.round(totalWeight) === 100 ? 'text-green-400' : 'text-red-400'}>{totalWeight.toFixed(0)}%</span></div>
+                  </CardContent>
+                </Card>
 
-            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-blue-500 text-primary-foreground gap-2">
-              <Save className="w-4 h-4" />
-              Salvar Todas as Alterações
-            </Button>
-          </motion.form>
-        )}
+                {/* Botão Salvar */}
+                <Button type="submit" className="w-full gap-2 h-11">
+                  <Save className="w-4 h-4" />
+                  Salvar Todas as Alterações
+                </Button>
+              </motion.form>
+            ) : (
+              <Card className="bg-card border-border/50">
+                <CardContent className="p-10 text-center">
+                  <Store className="w-20 h-20 mx-auto mb-4 text-muted-foreground/50" />
+                  <h3 className="text-xl font-semibold text-foreground mb-2">Nenhuma loja selecionada</h3>
+                  <p className="text-muted-foreground">Selecione uma loja na barra lateral para definir suas metas e pesos.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );

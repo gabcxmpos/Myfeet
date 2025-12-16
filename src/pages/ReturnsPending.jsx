@@ -866,8 +866,8 @@ const ReturnsPending = () => {
                   </div>
                 </div>
                 
-                {/* Botão COLETADO apenas para lojas */}
-                {isStore && returnItem.store_id === user?.storeId && (
+                {/* Botão COLETADO para lojas e perfil de devoluções */}
+                {(isStore && returnItem.store_id === user?.storeId) || isDevolucoes ? (
                   <Button
                     onClick={() => handleMarkAsCollected(returnItem.id)}
                     className="w-full gap-2 bg-green-500 hover:bg-green-600 text-white"
@@ -875,7 +875,7 @@ const ReturnsPending = () => {
                     <CheckSquare className="w-4 h-4" />
                     COLETADO
                   </Button>
-                )}
+                ) : null}
               </motion.div>
             );
           })}

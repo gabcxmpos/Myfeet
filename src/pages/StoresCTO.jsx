@@ -937,8 +937,8 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
   };
 
   const getCurrentMonthBills = () => {
-    if (!selectedMonth) return { amm: '', fpp: '', cond: '', ammDiscount: '', additionalCosts: [] };
-    return monthlyBills[selectedMonth] || { amm: '', fpp: '', cond: '', ammDiscount: '', additionalCosts: [] };
+    if (!selectedMonth) return { amm: '', fpp: '', cond: '', ammDiscount: '', paidValue: '', additionalCosts: [] };
+    return monthlyBills[selectedMonth] || { amm: '', fpp: '', cond: '', ammDiscount: '', paidValue: '', additionalCosts: [] };
   };
 
   const handleUpdateMonthBills = (field, value) => {
@@ -1091,10 +1091,21 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
     
     const ctoTotal = ctoBoleto + additionalCosts;
     const percentualCTO = ctoBoleto > 0 && sales > 0 ? (ctoBoleto / sales) * 100 : 0;
+    const paidValue = parseFloat(currentBills.paidValue || 0);
     
     const aluguelMin = parseFloat(ctoInfo.aluguelMin) || 0;
     const aluguelPercentual = parseFloat(ctoInfo.aluguelPercentual) || 0;
     const pe = aluguelPercentual > 0 ? aluguelMin / (aluguelPercentual / 100) : 0;
+    
+    // Cálculo do Valor Complementar: (Vendas - PE) × Aluguel Percentual
+    const diferencaVendas = sales > pe ? sales - pe : 0;
+    const valorComplementarCalculado = diferencaVendas > 0 && aluguelPercentual > 0 
+      ? diferencaVendas * (aluguelPercentual / 100) 
+      : 0;
+    
+    // Diferença entre o valor calculado e o valor pago
+    const diferencaValor = paidValue > 0 ? valorComplementarCalculado - paidValue : 0;
+    
     const lucro = sales - ctoTotal;
     const margem = sales > 0 ? ((sales - ctoTotal) / sales) * 100 : 0;
 
@@ -1109,7 +1120,12 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
       additionalCosts,
       ctoTotal,
       percentualCTO,
+      paidValue,
+      diferencaValor,
+      valorComplementarCalculado,
+      diferencaVendas,
       pe,
+      aluguelPercentual,
       lucro,
       margem,
       acimaPE: sales >= pe
@@ -1238,12 +1254,13 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                 const isDecember = monthDate && monthDate.getMonth() === 11; // Dezembro = mês 11
                 const isJanuary = monthDate && monthDate.getMonth() === 0; // Janeiro = mês 0
                 
-                // Lógica: Dezembro tem aluguel dobro, boleto vem em janeiro
+                // Lógica: Quando seleciona um mês, registra o boleto daquele mês (vencimento no mês seguinte)
+                // Dezembro tem aluguel em dobro, então quando seleciona dezembro, o AMM deve ser o dobro
                 const monthLabel = monthDate ? format(monthDate, 'MMMM yyyy', { locale: ptBR }) : '';
+                // Quando seleciona um mês, registra o boleto daquele mês (vencimento no mês seguinte)
+                // Dezembro tem aluguel em dobro, então o AMM deve ser o dobro do aluguel mínimo
                 const noteText = isDecember 
-                  ? '⚠️ Dezembro: Aluguel vem em dobro. O boleto será registrado em janeiro.'
-                  : isJanuary
-                  ? '📋 Janeiro: Registre aqui o boleto de dezembro (aluguel em dobro) + boleto normal de janeiro.'
+                  ? '⚠️ Dezembro: Este mês tem aluguel em dobro. Informe o AMM como o dobro do aluguel mínimo (o boleto vence em janeiro).'
                   : '';
 
                 return (
@@ -1311,6 +1328,20 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                           placeholder="Ex: 3000.00"
                           className="bg-background"
                         />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="paidValue">Valor Complementar Pago (R$)</Label>
+                        <Input
+                          id="paidValue"
+                          type="number"
+                          step="0.01"
+                          value={currentBills.paidValue || ''}
+                          onChange={(e) => handleUpdateMonthBills('paidValue', e.target.value)}
+                          placeholder="Ex: 35000.00"
+                          className="bg-background"
+                        />
+                        <p className="text-xs text-muted-foreground">Valor complementar que foi efetivamente pago no boleto (não interfere no cálculo)</p>
                       </div>
                     </div>
 
@@ -1422,6 +1453,61 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                       </span>
                     </div>
                   </div>
+
+                  {/* Comparação com Valor Complementar Pago */}
+                  {monthData.paidValue > 0 && monthData.valorComplementarCalculado > 0 && (
+                    <div className={`border-2 rounded-lg p-6 ${
+                      Math.abs(monthData.diferencaValor) < 100
+                        ? 'bg-green-500/10 border-green-500/30'
+                        : monthData.diferencaValor > 0
+                        ? 'bg-orange-500/10 border-orange-500/30'
+                        : 'bg-blue-500/10 border-blue-500/30'
+                    }`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-lg font-semibold">Comparação com Valor Complementar Pago:</span>
+                        <span className={`text-2xl font-bold ${
+                          Math.abs(monthData.diferencaValor) < 100
+                            ? 'text-green-500'
+                            : monthData.diferencaValor > 0
+                            ? 'text-orange-500'
+                            : 'text-blue-500'
+                        }`}>
+                          {monthData.diferencaValor > 0 
+                            ? `+R$ ${Math.abs(monthData.diferencaValor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : monthData.diferencaValor < 0
+                            ? `-R$ ${Math.abs(monthData.diferencaValor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'R$ 0,00'
+                          }
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-sm mb-3">
+                        <div>
+                          <span className="text-muted-foreground">Valor Calculado (Complementar):</span>
+                          <p className="font-semibold text-lg">
+                            R$ {monthData.valorComplementarCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            (Vendas {monthData.sales.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - PE {monthData.pe.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) × {monthData.aluguelPercentual}%
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Valor Complementar Pago:</span>
+                          <p className="font-semibold text-lg">
+                            R$ {monthData.paidValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 text-xs font-semibold">
+                        {Math.abs(monthData.diferencaValor) < 100 ? (
+                          <span className="text-green-500">✓ Valores coincidem (diferença menor que R$ 100,00)</span>
+                        ) : monthData.diferencaValor > 0 ? (
+                          <span className="text-orange-500">⚠️ Pagaram a MENOS: O valor pago é menor que o calculado</span>
+                        ) : (
+                          <span className="text-blue-500">ℹ️ Pagaram a MAIS: O valor pago é maior que o calculado</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Resumo do Mês */}
                   <div className="bg-secondary/50 p-4 rounded-lg space-y-2">

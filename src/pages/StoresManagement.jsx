@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, Target, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users, AlertCircle, FileText, Download, Upload } from 'lucide-react';
+import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users, AlertCircle, FileText, Download, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { filterStoresByUserType } from '@/lib/storeTypeHelper';
 import {
@@ -393,9 +393,14 @@ const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users }) => {
 const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onViewDetail }) => {
   const { evaluations, users } = useData();
   const { user } = useAuth();
-  const pendingEvaluations = evaluations
-    .filter(ev => ev.storeId === store.id && ev.status === 'pending')
-    .sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+  const pendingEvaluations = useMemo(() => {
+    return evaluations
+      .filter(ev => {
+        const evalStoreId = ev.storeId || ev.store_id;
+        return evalStoreId === store.id && ev.status === 'pending';
+      })
+      .sort((a, b) => new Date(b.date || b.created_at || 0) - new Date(a.date || a.created_at || 0));
+  }, [evaluations, store.id]);
 
   return (
     <DialogContent className="max-w-2xl bg-card border-border">
@@ -448,7 +453,10 @@ const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onV
 const ViewEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onViewDetail }) => {
   const { evaluations, users } = useData();
   const { user } = useAuth();
-  const storeEvaluations = evaluations.filter(ev => ev.storeId === store.id).sort((a,b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+  const storeEvaluations = evaluations.filter(ev => {
+    const evalStoreId = ev.storeId || ev.store_id;
+    return evalStoreId === store.id;
+  }).sort((a,b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
 
   return (
     <DialogContent className="max-w-2xl bg-card border-border">
@@ -735,10 +743,17 @@ const StoresManagement = () => {
   }, [stores, user?.role, user?.storeId]);
 
   const filteredStores = useMemo(() => {
-    return storesByType.filter(store => 
-      store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      store.code.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    return storesByType
+      .filter(store => 
+        store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        store.code.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      .sort((a, b) => {
+        // Ordenar por código em ordem crescente
+        const codeA = (a.code || '').toUpperCase();
+        const codeB = (b.code || '').toUpperCase();
+        return codeA.localeCompare(codeB);
+      });
   }, [storesByType, searchTerm]);
 
   // Calcular avaliações pendentes por loja
@@ -746,7 +761,10 @@ const StoresManagement = () => {
     const pending = {};
     evaluations?.forEach(ev => {
       if (ev.status === 'pending') {
-        pending[ev.storeId] = (pending[ev.storeId] || 0) + 1;
+        const evalStoreId = ev.storeId || ev.store_id;
+        if (evalStoreId) {
+          pending[evalStoreId] = (pending[evalStoreId] || 0) + 1;
+        }
       }
     });
     return pending;
@@ -1003,25 +1021,38 @@ const StoresManagement = () => {
   
   const handleDeleteEvaluation = async (evalId) => {
      if (window.confirm(`Tem certeza que deseja excluir esta avaliação? Esta ação não pode ser desfeita.`)) {
-      await deleteEvaluation(evalId);
-      // Toast já é exibido pela função deleteEvaluation
+      try {
+        await deleteEvaluation(evalId);
+        // Recarregar dados para atualizar a lista
+        await fetchData();
+        // Toast já é exibido pela função deleteEvaluation
+      } catch (error) {
+        console.error('Erro ao excluir avaliação:', error);
+      }
     }
   }
 
   const handleApproveEvaluation = async (evalId) => {
     try {
       await approveEvaluation(evalId);
+      // Recarregar dados para atualizar a lista
+      await fetchData();
       // Toast já é exibido pela função approveEvaluation
       // Fechar modal de pendentes se estiver aberto
       if (modalState.type === 'pendingEvaluations') {
         setModalState({ type: null, data: null });
       }
     } catch (error) {
+      console.error('Erro ao aprovar avaliação:', error);
       // Error já é tratado pela função approveEvaluation
     }
   }
 
   const handleViewEvaluationDetail = (evaluation) => {
+    if (!evaluation) {
+      console.error('Avaliação não fornecida para visualização');
+      return;
+    }
     setSelectedEvaluation(evaluation);
     setModalState({ type: 'evaluationDetail', data: null });
   }
@@ -1127,7 +1158,6 @@ const StoresManagement = () => {
                       <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="w-4 h-4" /></Button></DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setModalState({ type: 'editStore', data: store })}><Edit className="mr-2 h-4 w-4" /> Editar</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => navigate(`/goals?storeId=${store.id}`)}><Target className="mr-2 h-4 w-4" /> Definir Metas</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setModalState({ type: 'viewEvaluations', data: store })}><Eye className="mr-2 h-4 w-4" /> Ver Avaliações</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => setModalState({ type: 'headcount', data: store })}><Users className="mr-2 h-4 w-4" /> Headcount</DropdownMenuItem>
                         {isAdmin && <DropdownMenuItem onClick={() => handleDeleteStore(store)} className="text-destructive focus:text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Excluir</DropdownMenuItem>}
@@ -1176,7 +1206,7 @@ const StoresManagement = () => {
         {modalState.type === 'evaluationDetail' && selectedEvaluation && (
           <EvaluationDetailModal 
             evaluation={selectedEvaluation} 
-            form={forms?.find(f => f.id === selectedEvaluation.formId)} 
+            form={forms?.find(f => f.id === (selectedEvaluation.formId || selectedEvaluation.form_id))} 
             onOpenChange={(isOpen) => {
               if (!isOpen) {
                 setModalState({ type: null, data: null });
