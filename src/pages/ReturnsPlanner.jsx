@@ -273,18 +273,23 @@ const ReturnsPlanner = () => {
     try {
       // Preparar dados para envio (garantir que campos vazios sejam null ou string vazia conforme necessário)
       const dataToSend = {
-        ...formData,
+        store_id: formData.store_id,
+        supervisor: formData.supervisor?.trim() || null,
+        return_type: formData.return_type,
+        opening_date: formData.opening_date,
+        brand: formData.brand,
+        case_number: formData.case_number?.trim() || null,
+        invoice_number: formData.invoice_number?.trim() || null,
+        // IMPORTANTE: Campos de data vazios devem ser null, não string vazia
+        invoice_issue_date: formData.invoice_issue_date?.trim() || null,
         // Garantir que campos numéricos sejam números ou null
         return_value: formData.return_value ? parseFloat(formData.return_value) : null,
         items_quantity: formData.items_quantity ? parseInt(formData.items_quantity) : null,
-        // Garantir que campos de texto vazios sejam null ou string vazia
-        case_number: formData.case_number?.trim() || null,
-        invoice_number: formData.invoice_number?.trim() || null,
-        supervisor: formData.supervisor?.trim() || null,
+        status: formData.status,
         responsible_user_id: formData.responsible_user_id || null,
-        // IMPORTANTE: Campos de data vazios devem ser null, não string vazia
-        invoice_issue_date: formData.invoice_issue_date?.trim() || null,
       };
+
+      console.log('📤 [ReturnsPlanner] Dados a serem enviados:', dataToSend);
 
       if (editingItem && editingItem !== 'new' && editingItem.id) {
         await updateReturnsPlanner(editingItem.id, dataToSend);
@@ -298,8 +303,18 @@ const ReturnsPlanner = () => {
       // Atualizar a lista após salvar
       await fetchData();
     } catch (error) {
-      console.error('Erro ao salvar planner:', error);
-      toast({ title: 'Erro', description: error.message || 'Erro ao salvar registro.', variant: 'destructive' });
+      console.error('❌ [ReturnsPlanner] Erro ao salvar planner:', error);
+      console.error('❌ [ReturnsPlanner] Detalhes do erro:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      toast({ 
+        title: 'Erro', 
+        description: error.message || error.details || 'Erro ao salvar registro.', 
+        variant: 'destructive' 
+      });
     }
   };
   
@@ -470,6 +485,20 @@ const ReturnsPlanner = () => {
         byBrand: coletados.reduce((acc, item) => {
           const brand = item.brand || 'Sem marca';
           acc[brand] = (acc[brand] || 0) + 1;
+          return acc;
+        }, {}),
+        byType: coletados.reduce((acc, item) => {
+          const type = item.return_type || 'Sem tipo';
+          if (!acc[type]) {
+            acc[type] = {
+              count: 0,
+              totalValue: 0,
+              totalQuantity: 0,
+            };
+          }
+          acc[type].count++;
+          acc[type].totalValue += parseFloat(item.return_value) || 0;
+          acc[type].totalQuantity += parseInt(item.items_quantity) || 0;
           return acc;
         }, {}),
       },
@@ -818,7 +847,7 @@ const ReturnsPlanner = () => {
               </Card>
               <Card className="border-green-500/20 bg-green-500/5">
                 <CardContent className="p-4">
-                  <div className="text-sm text-muted-foreground mb-1">Coletado</div>
+                  <div className="text-sm text-muted-foreground mb-1">Coletado/Finalizado</div>
                   <div className="text-3xl font-bold text-green-400 mb-2">{stats.coletado.count}</div>
                   <div className="text-xs text-muted-foreground">
                     R$ {stats.coletado.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • {stats.coletado.totalQuantity} peças
@@ -889,12 +918,12 @@ const ReturnsPlanner = () => {
                 </CardContent>
               </Card>
               
-              {/* Coletado */}
+              {/* Coletado/Finalizado */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-green-400">
                     <CheckCircle className="w-5 h-5" />
-                    Coletado
+                    Coletado/Finalizado
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -906,6 +935,25 @@ const ReturnsPlanner = () => {
                     <div className="text-lg text-muted-foreground">
                       {stats.coletado.totalQuantity} peças
                     </div>
+                  </div>
+                  <div className="border-t pt-4">
+                    <div className="text-sm font-semibold mb-2">Por Tipo de Devolução:</div>
+                    {Object.entries(stats.coletado.byType).map(([type, data]) => {
+                      const typeLabel = type === 'COMERCIAL' ? 'Comercial' : 
+                                       type === 'DEFEITO' ? 'Defeito' : 
+                                       type === 'FALTA_FISICA' ? 'Falta Física' : type;
+                      return (
+                        <div key={type} className="mb-3 pb-2 border-b border-border/50 last:border-0">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-sm font-medium text-foreground">{typeLabel}:</span>
+                            <span className="text-sm font-bold text-green-400">{data.count} registros</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground ml-2">
+                            R$ {data.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • {data.totalQuantity} peças
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                   <div className="border-t pt-4">
                     <div className="text-sm font-semibold mb-2">Por Marca:</div>
