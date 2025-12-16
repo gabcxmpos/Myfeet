@@ -221,11 +221,7 @@ const ReturnsPlanner = () => {
       toast({ title: 'Erro', description: 'Selecione uma marca. O campo marca é obrigatório.', variant: 'destructive' });
       return;
     }
-    // Validar data de emissão NF obrigatória
-    if (!formData.invoice_issue_date || formData.invoice_issue_date.trim() === '') {
-      toast({ title: 'Erro', description: 'Informe a data de emissão da NF. Este campo é obrigatório.', variant: 'destructive' });
-      return;
-    }
+    // Nota: Data de emissão NF e número da nota NÃO são obrigatórios, pois o caso pode ser aberto antes da aprovação da marca
 
     // Verificar duplicidade apenas ao criar novo registro
     if (!editingItem || editingItem === 'new' || !editingItem.id) {
@@ -1256,12 +1252,11 @@ const ReturnsPlanner = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Data Emissão NF *</Label>
+                      <Label>Data Emissão NF</Label>
                       <Input
                         type="date"
                         value={formData.invoice_issue_date || ''}
                         onChange={(e) => setFormData({ ...formData, invoice_issue_date: e.target.value })}
-                        required
                       />
                     </div>
                     <div className="space-y-2">
@@ -1453,12 +1448,11 @@ const ReturnsPlanner = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Data Emissão NF *</Label>
+                        <Label>Data Emissão NF</Label>
                         <Input
                           type="date"
                           value={formData.invoice_issue_date || ''}
                           onChange={(e) => setFormData({ ...formData, invoice_issue_date: e.target.value })}
-                          required
                         />
                       </div>
                       <div className="space-y-2">
