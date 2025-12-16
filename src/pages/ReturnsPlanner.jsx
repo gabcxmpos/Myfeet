@@ -282,6 +282,8 @@ const ReturnsPlanner = () => {
         invoice_number: formData.invoice_number?.trim() || null,
         supervisor: formData.supervisor?.trim() || null,
         responsible_user_id: formData.responsible_user_id || null,
+        // IMPORTANTE: Campos de data vazios devem ser null, não string vazia
+        invoice_issue_date: formData.invoice_issue_date?.trim() || null,
       };
 
       if (editingItem && editingItem !== 'new' && editingItem.id) {
