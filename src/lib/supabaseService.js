@@ -1314,10 +1314,11 @@ export const fetchPhysicalMissing = async () => {
 };
 
 export const createPhysicalMissing = async (missingData) => {
+  // Especificar explicitamente as colunas que existem na tabela (excluindo 'items' que não existe)
   const { data, error } = await supabase
     .from('physical_missing')
     .insert([missingData])
-    .select()
+    .select('id, nf_number, moved_to_defect, store_id, status, missing_type, brand, sku, color, size, sku_info, cost_value, quantity, total_value, created_at, updated_at')
     .single();
   
   if (error) throw error;
