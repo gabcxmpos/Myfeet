@@ -1,4 +1,4 @@
-﻿
+
 import { supabase } from '@/lib/customSupabaseClient';
 import { format } from 'date-fns';
 
@@ -1189,13 +1189,20 @@ export const fetchReturnsPlanner = async () => {
 };
 
 export const createReturnsPlanner = async (plannerData) => {
+  console.log('📤 [createReturnsPlanner] Criando registro com dados:', plannerData);
+  
   const { data, error } = await supabase
     .from('returns_planner')
     .insert([plannerData])
     .select()
     .single();
   
-  if (error) throw error;
+  if (error) {
+    console.error('❌ [createReturnsPlanner] Erro ao criar:', error);
+    throw error;
+  }
+  
+  console.log('✅ [createReturnsPlanner] Registro criado com sucesso:', data);
   return data;
 };
 
