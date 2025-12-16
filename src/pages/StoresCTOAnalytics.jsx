@@ -45,10 +45,17 @@ const StoresCTOAnalytics = () => {
     const months = eachMonthOfInterval({ start: startDate, end: endDate });
 
     const ctoData = selectedStore.cto_data || {};
-    const aluguelMin = parseFloat(ctoData.aluguelMin) || 0;
-    const aluguelPercentual = parseFloat(ctoData.aluguelPercentual) || 0;
+    const basicInfo = ctoData.basicInfo || {};
+    const monthYear = year.toString();
+    const yearBasicInfo = basicInfo[monthYear] || {};
+    
+    // Usar informações básicas do ano (ou campos antigos para compatibilidade)
+    const aluguelMin = yearBasicInfo.aluguelMin || parseFloat(ctoData.aluguelMin) || 0;
+    const aluguelPercentual = yearBasicInfo.aluguelPercentual || parseFloat(ctoData.aluguelPercentual) || 0;
+    const expectedFPP = yearBasicInfo.fundoParticipacao || 0;
+    const expectedCond = yearBasicInfo.condominio || 0;
 
-    // Buscar vendas mensais do cto_data (independente do store_results)
+    // Buscar vendas mensais do cto_data (nova estrutura: objeto com fisico e digital)
     const monthlySalesData = ctoData.monthlySales || {};
     
     // Buscar boletos mensais (nova estrutura)
@@ -56,11 +63,35 @@ const StoresCTOAnalytics = () => {
 
     return months.map(month => {
       const monthKey = format(month, 'yyyy-MM');
-      // Usar vendas do cto_data ao invés de store_results
-      const faturamento = parseFloat(monthlySalesData[monthKey] || 0);
+      const monthDate = month;
+      const isDecember = monthDate.getMonth() === 11;
       
-      // Buscar boletos do mês específico
+      // Obter vendas (suportando estrutura antiga e nova)
+      const salesData = monthlySalesData[monthKey];
+      let salesFisico = 0;
+      let salesDigital = 0;
+      
+      if (salesData) {
+        if (typeof salesData === 'object' && salesData !== null) {
+          // Nova estrutura: objeto com fisico e digital
+          salesFisico = parseFloat(salesData.fisico || 0);
+          salesDigital = parseFloat(salesData.digital || 0);
+        } else {
+          // Estrutura antiga: apenas número (considerar como físico)
+          salesFisico = parseFloat(salesData || 0);
+          salesDigital = 0;
+        }
+      }
+      
+      // Verificar se o botão digital está ativo para este mês
       const monthBills = monthlyBillsData[monthKey] || {};
+      const includeDigital = monthBills.includeDigital || false;
+      
+      // Faturamento total: físico + digital (se botão ativo)
+      const faturamento = salesFisico + (includeDigital ? salesDigital : 0);
+      
+      // Valores esperados baseado nas informações básicas
+      const expectedAMM = isDecember ? aluguelMin * 2 : aluguelMin;
       const amm = parseFloat(monthBills.amm || 0);
       const ammDiscount = parseFloat(monthBills.ammDiscount || 0);
       const ammFinal = Math.max(0, amm - ammDiscount);
@@ -133,7 +164,15 @@ const StoresCTOAnalytics = () => {
         percentualPE: pe > 0 ? (faturamento / pe) * 100 : 0, // Percentual do PE
         margem,
         acimaPE,
-        lucro: faturamento - ctoTotal
+        lucro: faturamento - ctoTotal,
+        // Vendas separadas
+        salesFisico,
+        salesDigital,
+        includeDigital,
+        // Valores esperados
+        expectedAMM,
+        expectedFPP,
+        expectedCond,
       };
     });
   }, [selectedStore, selectedYear]);
@@ -328,10 +367,108 @@ const StoresCTOAnalytics = () => {
               </CardContent>
             </Card>
 
-            {/* Tabela Detalhada */}
+            {/* Tabela 1: Esperado x Pago */}
             <Card>
               <CardHeader>
-                <CardTitle>Detalhamento Mensal</CardTitle>
+                <CardTitle>Detalhamento Mensal - Esperado x Pago</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-secondary/50">
+                      <tr>
+                        <th className="p-3 text-left">Mês</th>
+                        <th className="p-3 text-right">AMM Esperado</th>
+                        <th className="p-3 text-right">AMM Pago</th>
+                        <th className="p-3 text-right">FPP Esperado</th>
+                        <th className="p-3 text-right">FPP Pago</th>
+                        <th className="p-3 text-right">Condomínio Esperado</th>
+                        <th className="p-3 text-right">Condomínio Pago</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyData.map((month, index) => {
+                        const tolerance = 100;
+                        const ammDiff = Math.abs(month.amm - (month.expectedAMM || 0));
+                        const fppDiff = Math.abs(month.fpp - (month.expectedFPP || 0));
+                        const condDiff = Math.abs(month.cond - (month.expectedCond || 0));
+                        const ammOk = !month.expectedAMM || ammDiff <= tolerance;
+                        const fppOk = !month.expectedFPP || fppDiff <= tolerance;
+                        const condOk = !month.expectedCond || condDiff <= tolerance;
+                        
+                        return (
+                          <tr key={index} className="border-b border-border/50 hover:bg-accent/50">
+                            <td className="p-3 font-medium">{month.mes}</td>
+                            <td className="p-3 text-right">
+                              {month.expectedAMM ? (
+                                <span className="text-green-400">
+                                  R$ {month.expectedAMM.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                            <td className={`p-3 text-right ${ammOk ? 'text-green-400' : 'text-orange-400'}`}>
+                              <div className="flex flex-col items-end">
+                                <span>R$ {month.amm.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                {!ammOk && month.expectedAMM && (
+                                  <span className="text-xs">
+                                    Dif: R$ {ammDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-3 text-right">
+                              {month.expectedFPP ? (
+                                <span className="text-green-400">
+                                  R$ {month.expectedFPP.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                            <td className={`p-3 text-right ${fppOk ? 'text-green-400' : 'text-orange-400'}`}>
+                              <div className="flex flex-col items-end">
+                                <span>R$ {month.fpp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                {!fppOk && month.expectedFPP && (
+                                  <span className="text-xs">
+                                    Dif: R$ {fppDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-3 text-right">
+                              {month.expectedCond ? (
+                                <span className="text-green-400">
+                                  R$ {month.expectedCond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </td>
+                            <td className={`p-3 text-right ${condOk ? 'text-green-400' : 'text-orange-400'}`}>
+                              <div className="flex flex-col items-end">
+                                <span>R$ {month.cond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                {!condOk && month.expectedCond && (
+                                  <span className="text-xs">
+                                    Dif: R$ {condDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tabela 2: Cálculo do CTO e Complementar */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Detalhamento Mensal - Cálculo do CTO e Complementar</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -354,9 +491,29 @@ const StoresCTOAnalytics = () => {
                     <tbody>
                       {monthlyData.map((month, index) => (
                         <tr key={index} className="border-b border-border/50 hover:bg-accent/50">
-                          <td className="p-3 font-medium">{month.mes}</td>
+                          <td className="p-3 font-medium">
+                            {month.mes}
+                            {month.includeDigital && (
+                              <span className="ml-2 text-xs text-blue-400" title="Incluindo faturamento digital">
+                                📱
+                              </span>
+                            )}
+                          </td>
                           <td className="p-3 text-right">
-                            R$ {month.faturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <div className="flex flex-col items-end">
+                              <span className="font-semibold">
+                                R$ {month.faturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              {month.salesDigital > 0 && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  <div>Físico: R$ {month.salesFisico.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                  <div className={month.includeDigital ? 'text-blue-400' : 'text-muted-foreground'}>
+                                    Digital: R$ {month.salesDigital.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {month.includeDigital && ' ✓'}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3 text-right">
                             <div className="flex flex-col items-end">
