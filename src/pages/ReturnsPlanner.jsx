@@ -221,6 +221,11 @@ const ReturnsPlanner = () => {
       toast({ title: 'Erro', description: 'Selecione uma marca. O campo marca é obrigatório.', variant: 'destructive' });
       return;
     }
+    // Validar data de emissão NF obrigatória
+    if (!formData.invoice_issue_date || formData.invoice_issue_date.trim() === '') {
+      toast({ title: 'Erro', description: 'Informe a data de emissão da NF. Este campo é obrigatório.', variant: 'destructive' });
+      return;
+    }
 
     // Verificar duplicidade apenas ao criar novo registro
     if (!editingItem || editingItem === 'new' || !editingItem.id) {
@@ -270,16 +275,32 @@ const ReturnsPlanner = () => {
     }
 
     try {
+      // Preparar dados para envio (garantir que campos vazios sejam null ou string vazia conforme necessário)
+      const dataToSend = {
+        ...formData,
+        // Garantir que campos numéricos sejam números ou null
+        return_value: formData.return_value ? parseFloat(formData.return_value) : null,
+        items_quantity: formData.items_quantity ? parseInt(formData.items_quantity) : null,
+        // Garantir que campos de texto vazios sejam null ou string vazia
+        case_number: formData.case_number?.trim() || null,
+        invoice_number: formData.invoice_number?.trim() || null,
+        supervisor: formData.supervisor?.trim() || null,
+        responsible_user_id: formData.responsible_user_id || null,
+      };
+
       if (editingItem && editingItem !== 'new' && editingItem.id) {
-        await updateReturnsPlanner(editingItem.id, formData);
+        await updateReturnsPlanner(editingItem.id, dataToSend);
         toast({ title: 'Sucesso!', description: 'Registro atualizado com sucesso.' });
       } else {
-        await addReturnsPlanner(formData);
+        await addReturnsPlanner(dataToSend);
         toast({ title: 'Sucesso!', description: 'Registro criado com sucesso.' });
       }
       resetForm();
       setEditingItem(null);
+      // Atualizar a lista após salvar
+      await fetchData();
     } catch (error) {
+      console.error('Erro ao salvar planner:', error);
       toast({ title: 'Erro', description: error.message || 'Erro ao salvar registro.', variant: 'destructive' });
     }
   };
@@ -306,7 +327,10 @@ const ReturnsPlanner = () => {
         toast({ title: 'Sucesso!', description: 'Registro excluído com sucesso.' });
         setDeleteDialogOpen(false);
         setItemToDelete(null);
+        // Atualizar a lista após exclusão
+        await fetchData();
       } catch (error) {
+        console.error('Erro ao excluir planner:', error);
         toast({ title: 'Erro', description: error.message || 'Erro ao excluir registro.', variant: 'destructive' });
       }
     }
@@ -1232,11 +1256,12 @@ const ReturnsPlanner = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Data Emissão NF</Label>
+                      <Label>Data Emissão NF *</Label>
                       <Input
                         type="date"
                         value={formData.invoice_issue_date || ''}
                         onChange={(e) => setFormData({ ...formData, invoice_issue_date: e.target.value })}
+                        required
                       />
                     </div>
                     <div className="space-y-2">
@@ -1428,11 +1453,12 @@ const ReturnsPlanner = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Data Emissão NF</Label>
+                        <Label>Data Emissão NF *</Label>
                         <Input
                           type="date"
                           value={formData.invoice_issue_date || ''}
                           onChange={(e) => setFormData({ ...formData, invoice_issue_date: e.target.value })}
+                          required
                         />
                       </div>
                       <div className="space-y-2">
