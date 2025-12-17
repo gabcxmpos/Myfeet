@@ -401,7 +401,7 @@ const StoresCTOAnalytics = () => {
                             <td className="p-3 font-medium">{month.mes}</td>
                             <td className="p-3 text-right">
                               {month.expectedAMM ? (
-                                <span className="text-green-400">
+                                <span className="text-foreground">
                                   R$ {month.expectedAMM.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                               ) : (
@@ -420,7 +420,7 @@ const StoresCTOAnalytics = () => {
                             </td>
                             <td className="p-3 text-right">
                               {month.expectedFPP ? (
-                                <span className="text-green-400">
+                                <span className="text-foreground">
                                   R$ {month.expectedFPP.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                               ) : (
@@ -439,7 +439,7 @@ const StoresCTOAnalytics = () => {
                             </td>
                             <td className="p-3 text-right">
                               {month.expectedCond ? (
-                                <span className="text-green-400">
+                                <span className="text-foreground">
                                   R$ {month.expectedCond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                               ) : (

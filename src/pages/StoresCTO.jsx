@@ -218,7 +218,18 @@ const StoresCTO = () => {
                   let hasData = false;
                   
                   monthsToProcess.forEach(monthKey => {
-                    const sales = parseFloat(monthlySales[monthKey] || 0);
+                    // Obter vendas (suportando estrutura antiga e nova)
+                    const salesData = monthlySales[monthKey];
+                    let sales = 0;
+                    if (salesData) {
+                      if (typeof salesData === 'object' && salesData !== null) {
+                        // Nova estrutura: sempre usar físico (digital só conta se botão ativo no CTO mensal)
+                        sales = parseFloat(salesData.fisico || 0);
+                      } else {
+                        // Estrutura antiga
+                        sales = parseFloat(salesData || 0);
+                      }
+                    }
                     const bills = monthlyBills[monthKey] || {};
                     
                     const amm = parseFloat(bills.amm || 0);
@@ -373,7 +384,18 @@ const StoresCTO = () => {
                                 let totalCTOBoleto = 0;
                                 
                                 monthsToProcess.forEach(monthKey => {
-                                  const sales = parseFloat(monthlySales[monthKey] || 0);
+                                  // Obter vendas (suportando estrutura antiga e nova)
+                                  const salesData = monthlySales[monthKey];
+                                  let sales = 0;
+                                  if (salesData) {
+                                    if (typeof salesData === 'object' && salesData !== null) {
+                                      // Nova estrutura: sempre usar físico (digital só conta se botão ativo no CTO mensal)
+                                      sales = parseFloat(salesData.fisico || 0);
+                                    } else {
+                                      // Estrutura antiga
+                                      sales = parseFloat(salesData || 0);
+                                    }
+                                  }
                                   const bills = monthlyBills[monthKey] || {};
                                   const amm = parseFloat(bills.amm || 0);
                                   const ammDiscount = parseFloat(bills.ammDiscount || 0);
@@ -460,21 +482,47 @@ const BasicInfoTab = ({ stores, fetchData }) => {
   const { toast } = useToast();
   const [selectedStore, setSelectedStore] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [ctoData, setCtoData] = useState({
     m2: '',
     aluguelMin: '',
     aluguelPercentual: '',
+    condominio: '',
+    fundoParticipacao: '',
   });
+
+  // Gerar lista de anos (ano atual e próximos 2 anos)
+  const getAvailableYears = () => {
+    const currentYear = new Date().getFullYear();
+    return [
+      (currentYear - 1).toString(),
+      currentYear.toString(),
+      (currentYear + 1).toString(),
+      (currentYear + 2).toString(),
+    ];
+  };
 
   const loadStoreData = (store) => {
     const ctoInfo = store.cto_data || {};
+    const basicInfo = ctoInfo.basicInfo || {};
+    const yearData = basicInfo[selectedYear] || {};
+    
     setCtoData({
-      m2: ctoInfo.m2 !== undefined && ctoInfo.m2 !== null ? String(ctoInfo.m2) : '',
-      aluguelMin: ctoInfo.aluguelMin !== undefined && ctoInfo.aluguelMin !== null ? String(ctoInfo.aluguelMin) : '',
-      aluguelPercentual: ctoInfo.aluguelPercentual !== undefined && ctoInfo.aluguelPercentual !== null ? String(ctoInfo.aluguelPercentual) : '',
+      m2: yearData.m2 !== undefined && yearData.m2 !== null ? String(yearData.m2) : '',
+      aluguelMin: yearData.aluguelMin !== undefined && yearData.aluguelMin !== null ? String(yearData.aluguelMin) : '',
+      aluguelPercentual: yearData.aluguelPercentual !== undefined && yearData.aluguelPercentual !== null ? String(yearData.aluguelPercentual) : '',
+      condominio: yearData.condominio !== undefined && yearData.condominio !== null ? String(yearData.condominio) : '',
+      fundoParticipacao: yearData.fundoParticipacao !== undefined && yearData.fundoParticipacao !== null ? String(yearData.fundoParticipacao) : '',
     });
     setSelectedStore(store);
   };
+
+  // Recarregar dados quando o ano mudar
+  useEffect(() => {
+    if (selectedStore) {
+      loadStoreData(selectedStore);
+    }
+  }, [selectedYear]);
 
   const handleSave = async () => {
     if (!selectedStore) {
@@ -517,12 +565,30 @@ const BasicInfoTab = ({ stores, fetchData }) => {
       setSaving(true);
 
       const currentCTOData = selectedStore.cto_data || {};
+      const currentBasicInfo = currentCTOData.basicInfo || {};
+      
+      // Salvar informações básicas por ano
+      const basicInfoToSave = {
+        ...currentBasicInfo,
+        [selectedYear]: {
+          m2: parseFloat(ctoData.m2),
+          aluguelMin: parseFloat(ctoData.aluguelMin),
+          aluguelPercentual: parseFloat(ctoData.aluguelPercentual),
+          condominio: ctoData.condominio ? parseFloat(ctoData.condominio) : 0,
+          fundoParticipacao: ctoData.fundoParticipacao ? parseFloat(ctoData.fundoParticipacao) : 0,
+        }
+      };
       
       const ctoDataToSave = {
         ...currentCTOData, // Preservar TUDO que já existe
-        m2: parseFloat(ctoData.m2),
-        aluguelMin: parseFloat(ctoData.aluguelMin),
-        aluguelPercentual: parseFloat(ctoData.aluguelPercentual),
+        basicInfo: basicInfoToSave,
+        // Manter compatibilidade: também salvar nos campos antigos para o ano atual
+        // (para não quebrar código existente que ainda usa os campos diretos)
+        ...(selectedYear === new Date().getFullYear().toString() ? {
+          m2: parseFloat(ctoData.m2),
+          aluguelMin: parseFloat(ctoData.aluguelMin),
+          aluguelPercentual: parseFloat(ctoData.aluguelPercentual),
+        } : {}),
         // Garantir que monthlyBills e monthlySales sejam preservados
         monthlyBills: currentCTOData.monthlyBills || {},
         monthlySales: currentCTOData.monthlySales || {},
@@ -551,15 +617,15 @@ const BasicInfoTab = ({ stores, fetchData }) => {
         found: !!updatedStore,
         hasCtoData: !!updatedStore?.cto_data,
         ctoData: updatedStore?.cto_data,
-        m2: updatedStore?.cto_data?.m2,
-        aluguelMin: updatedStore?.cto_data?.aluguelMin,
-        aluguelPercentual: updatedStore?.cto_data?.aluguelPercentual
+        basicInfo: updatedStore?.cto_data?.basicInfo,
+        yearData: updatedStore?.cto_data?.basicInfo?.[selectedYear]
       });
 
-      if (!updatedStore || !updatedStore.cto_data || 
-          updatedStore.cto_data.m2 !== ctoDataToSave.m2 ||
-          updatedStore.cto_data.aluguelMin !== ctoDataToSave.aluguelMin ||
-          updatedStore.cto_data.aluguelPercentual !== ctoDataToSave.aluguelPercentual) {
+      const savedYearData = updatedStore?.cto_data?.basicInfo?.[selectedYear];
+      if (!updatedStore || !updatedStore.cto_data || !savedYearData ||
+          savedYearData.m2 !== basicInfoToSave[selectedYear].m2 ||
+          savedYearData.aluguelMin !== basicInfoToSave[selectedYear].aluguelMin ||
+          savedYearData.aluguelPercentual !== basicInfoToSave[selectedYear].aluguelPercentual) {
         console.error('❌ [BasicInfoTab] DADOS NÃO FORAM SALVOS CORRETAMENTE!');
         toast({
           title: 'Erro',
@@ -601,33 +667,51 @@ const BasicInfoTab = ({ stores, fetchData }) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label>Selecione a Loja</Label>
-            <Select value={selectedStore?.id || ''} onValueChange={(id) => {
-              const store = stores.find(s => s.id === id);
-              if (store) loadStoreData(store);
-            }}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione uma loja" />
-              </SelectTrigger>
-              <SelectContent>
-                {stores.map(store => (
-                  <SelectItem key={store.id} value={store.id}>
-                    {store.name} ({store.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Selecione a Loja</Label>
+              <Select value={selectedStore?.id || ''} onValueChange={(id) => {
+                const store = stores.find(s => s.id === id);
+                if (store) loadStoreData(store);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma loja" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map(store => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name} ({store.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Selecione o Ano</Label>
+              <Select value={selectedYear} onValueChange={setSelectedYear}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o ano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getAvailableYears().map(year => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {selectedStore && (
             <div className="space-y-4 pt-4 border-t">
               <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
                 <p className="text-sm text-blue-400 mb-2">
-                  <strong>Dados Fixos - Raramente Alterados</strong>
+                  <strong>Dados Fixos por Ano - Raramente Alterados</strong>
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Estes campos são configurações fixas da loja que não mudam facilmente. Edite apenas quando necessário.
+                  Estes campos são configurações fixas da loja que podem mudar na virada de ano. As informações são salvas por ano para permitir alterações anuais.
                 </p>
               </div>
 
@@ -676,18 +760,48 @@ const BasicInfoTab = ({ stores, fetchData }) => {
                     placeholder="Ex: 12.5"
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="condominio" className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4" />
+                    Condomínio (R$)
+                  </Label>
+                  <Input
+                    id="condominio"
+                    type="number"
+                    step="0.01"
+                    value={ctoData.condominio}
+                    onChange={(e) => setCtoData({ ...ctoData, condominio: e.target.value })}
+                    placeholder="Ex: 500.00"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="fundoParticipacao" className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4" />
+                    Fundo de Participação (R$)
+                  </Label>
+                  <Input
+                    id="fundoParticipacao"
+                    type="number"
+                    step="0.01"
+                    value={ctoData.fundoParticipacao}
+                    onChange={(e) => setCtoData({ ...ctoData, fundoParticipacao: e.target.value })}
+                    placeholder="Ex: 300.00"
+                  />
+                </div>
               </div>
 
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => {
                   setSelectedStore(null);
-                  setCtoData({ m2: '', aluguelMin: '', aluguelPercentual: '' });
+                  setCtoData({ m2: '', aluguelMin: '', aluguelPercentual: '', condominio: '', fundoParticipacao: '' });
                 }}>
                   Cancelar
                 </Button>
                 <Button onClick={handleSave} disabled={saving} className="gap-2">
                   <Save className="w-4 h-4" />
-                  {saving ? 'Salvando...' : 'Salvar Informações Básicas'}
+                  {saving ? 'Salvando...' : `Salvar Informações Básicas ${selectedYear}`}
                 </Button>
               </div>
             </div>
@@ -714,14 +828,37 @@ const SalesRegistrationTab = ({ stores, fetchData }) => {
 
   const loadStoreSales = (store) => {
     const ctoInfo = store.cto_data || {};
-    setMonthlySales(ctoInfo.monthlySales || {});
+    const salesData = ctoInfo.monthlySales || {};
+    
+    // Converter estrutura antiga (apenas número) para nova estrutura (objeto com fisico e digital)
+    const convertedSales = {};
+    Object.keys(salesData).forEach(key => {
+      if (typeof salesData[key] === 'object' && salesData[key] !== null) {
+        // Já está na nova estrutura
+        convertedSales[key] = {
+          fisico: salesData[key].fisico || salesData[key].fisico === 0 ? salesData[key].fisico : '',
+          digital: salesData[key].digital || salesData[key].digital === 0 ? salesData[key].digital : '',
+        };
+      } else {
+        // Estrutura antiga: migrar para novo formato
+        convertedSales[key] = {
+          fisico: salesData[key] || '',
+          digital: '',
+        };
+      }
+    });
+    
+    setMonthlySales(convertedSales);
     setSelectedStore(store);
   };
 
-  const handleUpdateSales = (monthKey, value) => {
+  const handleUpdateSales = (monthKey, type, value) => {
     setMonthlySales({
       ...monthlySales,
-      [monthKey]: value
+      [monthKey]: {
+        ...(monthlySales[monthKey] || { fisico: '', digital: '' }),
+        [type]: value
+      }
     });
   };
 
@@ -852,25 +989,47 @@ const SalesRegistrationTab = ({ stores, fetchData }) => {
           {selectedStore && (
             <div className="space-y-4 pt-4 border-t">
               <p className="text-sm text-muted-foreground">
-                Registre as vendas totais mensais da loja. Este campo é independente e usado apenas para cálculos de CTO.
+                Registre as vendas mensais da loja separadas por tipo. O faturamento físico sempre conta para o cálculo do CTO. O faturamento digital é opcional e pode ser incluído através de um botão no registro CTO mensal.
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {months.map(month => {
                   const monthKey = format(month, 'yyyy-MM');
                   const monthLabel = format(month, 'MMMM yyyy', { locale: ptBR });
+                  const salesData = monthlySales[monthKey] || { fisico: '', digital: '' };
                   return (
-                    <div key={monthKey} className="space-y-2">
-                      <Label htmlFor={`sales-${monthKey}`}>{monthLabel}</Label>
-                      <Input
-                        id={`sales-${monthKey}`}
-                        type="number"
-                        step="0.01"
-                        value={monthlySales[monthKey] || ''}
-                        onChange={(e) => handleUpdateSales(monthKey, e.target.value)}
-                        placeholder="Ex: 150000.00"
-                        className="bg-secondary"
-                      />
+                    <div key={monthKey} className="space-y-3 p-4 border rounded-lg bg-secondary/30">
+                      <Label className="text-base font-semibold">{monthLabel}</Label>
+                      <div className="space-y-2">
+                        <div className="space-y-1">
+                          <Label htmlFor={`sales-fisico-${monthKey}`} className="text-sm text-muted-foreground">
+                            Faturamento Físico (R$)
+                          </Label>
+                          <Input
+                            id={`sales-fisico-${monthKey}`}
+                            type="number"
+                            step="0.01"
+                            value={salesData.fisico || ''}
+                            onChange={(e) => handleUpdateSales(monthKey, 'fisico', e.target.value)}
+                            placeholder="Ex: 150000.00"
+                            className="bg-background"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label htmlFor={`sales-digital-${monthKey}`} className="text-sm text-muted-foreground">
+                            Faturamento Digital (R$) <span className="text-xs">(opcional)</span>
+                          </Label>
+                          <Input
+                            id={`sales-digital-${monthKey}`}
+                            type="number"
+                            step="0.01"
+                            value={salesData.digital || ''}
+                            onChange={(e) => handleUpdateSales(monthKey, 'digital', e.target.value)}
+                            placeholder="Ex: 50000.00"
+                            className="bg-background"
+                          />
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -937,8 +1096,8 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
   };
 
   const getCurrentMonthBills = () => {
-    if (!selectedMonth) return { amm: '', fpp: '', cond: '', ammDiscount: '', paidValue: '', additionalCosts: [] };
-    return monthlyBills[selectedMonth] || { amm: '', fpp: '', cond: '', ammDiscount: '', paidValue: '', additionalCosts: [] };
+    if (!selectedMonth) return { amm: '', fpp: '', cond: '', ammDiscount: '', paidValue: '', additionalCosts: [], includeDigital: false };
+    return monthlyBills[selectedMonth] || { amm: '', fpp: '', cond: '', ammDiscount: '', paidValue: '', additionalCosts: [], includeDigital: false };
   };
 
   const handleUpdateMonthBills = (field, value) => {
@@ -1069,15 +1228,97 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
     }
   };
 
+  // Obter informações básicas do ano do mês selecionado
+  const getBasicInfoForMonth = () => {
+    if (!selectedStore || !selectedMonth) return null;
+    
+    const ctoInfo = selectedStore.cto_data || {};
+    const basicInfo = ctoInfo.basicInfo || {};
+    
+    // Extrair ano do mês selecionado (formato: "2024-12")
+    const monthYear = selectedMonth.split('-')[0];
+    
+    // Buscar informações básicas do ano do mês
+    const yearData = basicInfo[monthYear];
+    
+    // Se não encontrar no formato novo, tentar campos antigos (compatibilidade)
+    if (!yearData) {
+      return {
+        m2: ctoInfo.m2 || 0,
+        aluguelMin: ctoInfo.aluguelMin || 0,
+        aluguelPercentual: ctoInfo.aluguelPercentual || 0,
+        condominio: 0,
+        fundoParticipacao: 0,
+      };
+    }
+    
+    return {
+      m2: yearData.m2 || 0,
+      aluguelMin: yearData.aluguelMin || 0,
+      aluguelPercentual: yearData.aluguelPercentual || 0,
+      condominio: yearData.condominio || 0,
+      fundoParticipacao: yearData.fundoParticipacao || 0,
+    };
+  };
+
+  // Calcular valores esperados baseado nas informações básicas
+  const calculateExpectedValues = () => {
+    const basicInfo = getBasicInfoForMonth();
+    if (!basicInfo || !selectedMonth) return null;
+    
+    const monthDate = getAvailableMonths().find(m => m.key === selectedMonth)?.date;
+    const isDecember = monthDate && monthDate.getMonth() === 11;
+    
+    // AMM esperado: aluguel mínimo (ou dobro em dezembro)
+    const expectedAMM = isDecember ? basicInfo.aluguelMin * 2 : basicInfo.aluguelMin;
+    
+    // FPP esperado: fundo de participação das informações básicas
+    const expectedFPP = basicInfo.fundoParticipacao || 0;
+    
+    // Condomínio esperado: condomínio das informações básicas
+    const expectedCond = basicInfo.condominio || 0;
+    
+    // CTO esperado base (sem considerar complementar)
+    const expectedCTOBase = expectedAMM + expectedFPP + expectedCond;
+    
+    return {
+      expectedAMM,
+      expectedFPP,
+      expectedCond,
+      expectedCTOBase,
+      basicInfo
+    };
+  };
+
   // Calcular valores do mês selecionado
   const calculateMonthData = () => {
     if (!selectedStore || !selectedMonth) return null;
 
     const ctoInfo = selectedStore.cto_data || {};
     const monthlySales = ctoInfo.monthlySales || {};
-    const sales = parseFloat(monthlySales[selectedMonth] || 0);
-    
     const currentBills = getCurrentMonthBills();
+    const includeDigital = currentBills.includeDigital || false;
+    
+    // Obter vendas do mês (suportando estrutura antiga e nova)
+    let salesFisico = 0;
+    let salesDigital = 0;
+    
+    const salesData = monthlySales[selectedMonth];
+    if (salesData) {
+      if (typeof salesData === 'object' && salesData !== null) {
+        // Nova estrutura: objeto com fisico e digital
+        salesFisico = parseFloat(salesData.fisico || 0);
+        salesDigital = parseFloat(salesData.digital || 0);
+      } else {
+        // Estrutura antiga: apenas número (considerar como físico)
+        salesFisico = parseFloat(salesData || 0);
+        salesDigital = 0;
+      }
+    }
+    
+    // Vendas totais: sempre físico + digital (se botão ativo)
+    const sales = salesFisico + (includeDigital ? salesDigital : 0);
+    
     const amm = parseFloat(currentBills.amm || 0);
     const ammDiscount = parseFloat(currentBills.ammDiscount || 0);
     const ammFinal = Math.max(0, amm - ammDiscount);
@@ -1093,9 +1334,13 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
     const percentualCTO = ctoBoleto > 0 && sales > 0 ? (ctoBoleto / sales) * 100 : 0;
     const paidValue = parseFloat(currentBills.paidValue || 0);
     
-    const aluguelMin = parseFloat(ctoInfo.aluguelMin) || 0;
-    const aluguelPercentual = parseFloat(ctoInfo.aluguelPercentual) || 0;
+    const basicInfo = getBasicInfoForMonth() || {};
+    const aluguelMin = basicInfo.aluguelMin || 0;
+    const aluguelPercentual = basicInfo.aluguelPercentual || 0;
     const pe = aluguelPercentual > 0 ? aluguelMin / (aluguelPercentual / 100) : 0;
+    
+    // Valores esperados
+    const expectedValues = calculateExpectedValues();
     
     // Cálculo do Valor Complementar: (Vendas - PE) × Aluguel Percentual
     const diferencaVendas = sales > pe ? sales - pe : 0;
@@ -1108,6 +1353,16 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
     
     const lucro = sales - ctoTotal;
     const margem = sales > 0 ? ((sales - ctoTotal) / sales) * 100 : 0;
+
+    // Comparações com valores esperados
+    const tolerance = 100; // Tolerância de R$ 100
+    const ammDiff = expectedValues ? Math.abs(ammFinal - expectedValues.expectedAMM) : 0;
+    const fppDiff = expectedValues ? Math.abs(fpp - expectedValues.expectedFPP) : 0;
+    const condDiff = expectedValues ? Math.abs(cond - expectedValues.expectedCond) : 0;
+    
+    const ammOk = !expectedValues || ammDiff <= tolerance;
+    const fppOk = !expectedValues || fppDiff <= tolerance;
+    const condOk = !expectedValues || condDiff <= tolerance;
 
     return {
       sales,
@@ -1128,7 +1383,19 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
       aluguelPercentual,
       lucro,
       margem,
-      acimaPE: sales >= pe
+      acimaPE: sales >= pe,
+      // Valores esperados e comparações
+      expectedValues: expectedValues || null,
+      ammDiff,
+      fppDiff,
+      condDiff,
+      ammOk,
+      fppOk,
+      condOk,
+      // Vendas separadas
+      salesFisico,
+      salesDigital,
+      includeDigital,
     };
   };
 
@@ -1183,16 +1450,17 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
 
           {selectedStore && selectedMonth && (
             <div className="space-y-6 pt-4 border-t">
-              {/* Informações da Loja */}
+              {/* Informações da Loja e Valores Esperados */}
               {(() => {
-                const ctoInfo = selectedStore.cto_data || {};
-                const hasBasicInfo = ctoInfo.m2 && ctoInfo.aluguelMin && ctoInfo.aluguelPercentual;
+                const basicInfo = getBasicInfoForMonth();
+                const expectedValues = calculateExpectedValues();
+                const monthYear = selectedMonth.split('-')[0];
                 
-                if (!hasBasicInfo) {
+                if (!basicInfo || !basicInfo.aluguelMin || !basicInfo.aluguelPercentual) {
                   return (
                     <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
                       <p className="text-sm text-yellow-400">
-                        ⚠️ Esta loja ainda não tem informações básicas cadastradas. 
+                        ⚠️ Esta loja ainda não tem informações básicas cadastradas para o ano {monthYear}. 
                         Vá para a aba "Informações Básicas" para cadastrar.
                       </p>
                     </div>
@@ -1200,23 +1468,49 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                 }
 
                 return (
-                  <div className="bg-secondary/50 p-4 rounded-lg">
+                  <div className="bg-secondary/50 p-4 rounded-lg space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                       <div>
                         <span className="text-muted-foreground">m²:</span>
-                        <span className="ml-2 font-semibold">{ctoInfo.m2}</span>
+                        <span className="ml-2 font-semibold">{basicInfo.m2}</span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Aluguel Mín.:</span>
                         <span className="ml-2 font-semibold">
-                          R$ {parseFloat(ctoInfo.aluguelMin || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          R$ {parseFloat(basicInfo.aluguelMin || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground">Aluguel %:</span>
-                        <span className="ml-2 font-semibold">{ctoInfo.aluguelPercentual}%</span>
+                        <span className="ml-2 font-semibold">{basicInfo.aluguelPercentual}%</span>
                       </div>
                     </div>
+                    
+                    {expectedValues && (
+                      <div className="border-t pt-4">
+                        <p className="text-sm font-semibold mb-2 text-green-400">Valores Esperados (Ano {monthYear}):</p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">AMM Esperado:</span>
+                            <span className="ml-2 font-semibold text-green-400">
+                              R$ {expectedValues.expectedAMM.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">FPP Esperado:</span>
+                            <span className="ml-2 font-semibold text-green-400">
+                              R$ {expectedValues.expectedFPP.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Condomínio Esperado:</span>
+                            <span className="ml-2 font-semibold text-green-400">
+                              R$ {expectedValues.expectedCond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -1225,24 +1519,69 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
               {(() => {
                 const ctoInfo = selectedStore.cto_data || {};
                 const monthlySales = ctoInfo.monthlySales || {};
-                const sales = parseFloat(monthlySales[selectedMonth] || 0);
+                const salesData = monthlySales[selectedMonth];
+                
+                let salesFisico = 0;
+                let salesDigital = 0;
+                
+                if (salesData) {
+                  if (typeof salesData === 'object' && salesData !== null) {
+                    salesFisico = parseFloat(salesData.fisico || 0);
+                    salesDigital = parseFloat(salesData.digital || 0);
+                  } else {
+                    salesFisico = parseFloat(salesData || 0);
+                    salesDigital = 0;
+                  }
+                }
+                
+                const currentBills = getCurrentMonthBills();
+                const includeDigital = currentBills.includeDigital || false;
+                const salesTotal = salesFisico + (includeDigital ? salesDigital : 0);
                 
                 return (
-                  <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
+                  <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 space-y-3">
+                    <div>
+                      <Label className="text-sm text-muted-foreground">Vendas do Mês Selecionado</Label>
+                      <p className="text-2xl font-bold text-green-500">
+                        {salesTotal > 0 
+                          ? `R$ ${salesTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : 'Não informado'
+                        }
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm border-t pt-3">
                       <div>
-                        <Label className="text-sm text-muted-foreground">Vendas do Mês Selecionado</Label>
-                        <p className="text-2xl font-bold text-green-500">
-                          {sales > 0 
-                            ? `R$ ${sales.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : 'Não informado'
-                          }
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Preencha na aba "Registro de Vendas"
-                        </p>
+                        <span className="text-muted-foreground">Físico:</span>
+                        <span className="ml-2 font-semibold">
+                          R$ {salesFisico.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Digital:</span>
+                        <span className={`ml-2 font-semibold ${includeDigital ? 'text-green-400' : 'text-muted-foreground'}`}>
+                          R$ {salesDigital.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {includeDigital && ' ✓'}
+                        </span>
                       </div>
                     </div>
+                    {salesDigital > 0 && (
+                      <div className="pt-2">
+                        <Button
+                          type="button"
+                          variant={includeDigital ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            handleUpdateMonthBills('includeDigital', !includeDigital);
+                          }}
+                          className="w-full"
+                        >
+                          {includeDigital ? '✓ Incluindo Digital no Cálculo' : 'Adicionar Faturamento Digital ao Cálculo'}
+                        </Button>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Preencha na aba "Registro de Vendas"
+                    </p>
                   </div>
                 );
               })()}
@@ -1252,13 +1591,22 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                 const currentBills = getCurrentMonthBills();
                 const monthDate = getAvailableMonths().find(m => m.key === selectedMonth)?.date;
                 const isDecember = monthDate && monthDate.getMonth() === 11; // Dezembro = mês 11
-                const isJanuary = monthDate && monthDate.getMonth() === 0; // Janeiro = mês 0
                 
-                // Lógica: Quando seleciona um mês, registra o boleto daquele mês (vencimento no mês seguinte)
-                // Dezembro tem aluguel em dobro, então quando seleciona dezembro, o AMM deve ser o dobro
-                const monthLabel = monthDate ? format(monthDate, 'MMMM yyyy', { locale: ptBR }) : '';
-                // Quando seleciona um mês, registra o boleto daquele mês (vencimento no mês seguinte)
-                // Dezembro tem aluguel em dobro, então o AMM deve ser o dobro do aluguel mínimo
+                // Calcular valores para comparação
+                const ammFinal = Math.max(0, parseFloat(currentBills.amm || 0) - parseFloat(currentBills.ammDiscount || 0));
+                const fpp = parseFloat(currentBills.fpp || 0);
+                const cond = parseFloat(currentBills.cond || 0);
+                const expectedValues = calculateExpectedValues();
+                const tolerance = 100;
+                
+                const ammDiff = expectedValues ? Math.abs(ammFinal - expectedValues.expectedAMM) : 0;
+                const fppDiff = expectedValues ? Math.abs(fpp - expectedValues.expectedFPP) : 0;
+                const condDiff = expectedValues ? Math.abs(cond - expectedValues.expectedCond) : 0;
+                
+                const ammOk = !expectedValues || ammDiff <= tolerance;
+                const fppOk = !expectedValues || fppDiff <= tolerance;
+                const condOk = !expectedValues || condDiff <= tolerance;
+                
                 const noteText = isDecember 
                   ? '⚠️ Dezembro: Este mês tem aluguel em dobro. Informe o AMM como o dobro do aluguel mínimo (o boleto vence em janeiro).'
                   : '';
@@ -1273,7 +1621,14 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="amm">AMM - Aluguel Mínimo Mensal (R$)</Label>
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="amm">AMM - Aluguel Mínimo Mensal (R$)</Label>
+                          {expectedValues && (
+                            <span className={`text-xs ${ammOk ? 'text-green-400' : 'text-orange-400'}`}>
+                              {ammOk ? '✅' : `⚠️ Diferença: R$ ${ammDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            </span>
+                          )}
+                        </div>
                         <Input
                           id="amm"
                           type="number"
@@ -1281,8 +1636,14 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                           value={currentBills.amm || ''}
                           onChange={(e) => handleUpdateMonthBills('amm', e.target.value)}
                           placeholder="Ex: 15000.00"
-                          className="bg-background"
+                          className={`bg-background ${!ammOk ? 'border-orange-500/50' : ''}`}
                         />
+                        {expectedValues && (
+                          <p className={`text-xs ${ammOk ? 'text-green-400' : 'text-orange-400'}`}>
+                            Esperado: R$ {expectedValues.expectedAMM.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {!ammOk && ` | Pago: R$ ${ammFinal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </p>
+                        )}
                         {isDecember && (
                           <p className="text-xs text-yellow-500">
                             ⚠️ Em dezembro, este valor será o dobro do aluguel mínimo
@@ -1305,7 +1666,14 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="fpp">FPP - Fundo de Promoção (R$)</Label>
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="fpp">FPP - Fundo de Participação (R$)</Label>
+                          {expectedValues && (
+                            <span className={`text-xs ${fppOk ? 'text-green-400' : 'text-orange-400'}`}>
+                              {fppOk ? '✅' : `⚠️ Diferença: R$ ${fppDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            </span>
+                          )}
+                        </div>
                         <Input
                           id="fpp"
                           type="number"
@@ -1313,12 +1681,25 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                           value={currentBills.fpp || ''}
                           onChange={(e) => handleUpdateMonthBills('fpp', e.target.value)}
                           placeholder="Ex: 5000.00"
-                          className="bg-background"
+                          className={`bg-background ${!fppOk ? 'border-orange-500/50' : ''}`}
                         />
+                        {expectedValues && (
+                          <p className={`text-xs ${fppOk ? 'text-green-400' : 'text-orange-400'}`}>
+                            Esperado: R$ {expectedValues.expectedFPP.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {!fppOk && ` | Pago: R$ ${fpp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </p>
+                        )}
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="cond">COND - Condomínio (R$)</Label>
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="cond">COND - Condomínio (R$)</Label>
+                          {expectedValues && (
+                            <span className={`text-xs ${condOk ? 'text-green-400' : 'text-orange-400'}`}>
+                              {condOk ? '✅' : `⚠️ Diferença: R$ ${condDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                            </span>
+                          )}
+                        </div>
                         <Input
                           id="cond"
                           type="number"
@@ -1326,8 +1707,14 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                           value={currentBills.cond || ''}
                           onChange={(e) => handleUpdateMonthBills('cond', e.target.value)}
                           placeholder="Ex: 3000.00"
-                          className="bg-background"
+                          className={`bg-background ${!condOk ? 'border-orange-500/50' : ''}`}
                         />
+                        {expectedValues && (
+                          <p className={`text-xs ${condOk ? 'text-green-400' : 'text-orange-400'}`}>
+                            Esperado: R$ {expectedValues.expectedCond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {!condOk && ` | Pago: R$ ${cond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          </p>
+                        )}
                       </div>
 
                       <div className="space-y-2">

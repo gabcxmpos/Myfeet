@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash2, Calendar, Store, FileText, User, Search, BarChart3, Clock, TrendingUp, AlertCircle, CheckCircle, DollarSign, Package, CheckSquare, Save, X, Settings } from 'lucide-react';
+import { Plus, Edit, Trash2, Calendar, Store, FileText, User, Search, BarChart3, Clock, TrendingUp, AlertCircle, CheckCircle, DollarSign, Package, CheckSquare, Save, X, Settings, Download } from 'lucide-react';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,8 @@ import { format, differenceInDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { ResponsiveContainer, BarChart, XAxis, YAxis, Bar, Cell, Tooltip, PieChart, Pie, Legend, LineChart, Line } from 'recharts';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import { AVAILABLE_BRANDS as DEFAULT_BRANDS } from '@/lib/brands';
 import { fetchAppSettings } from '@/lib/supabaseService';
 import {
@@ -449,12 +451,30 @@ const ReturnsPlanner = () => {
     return data;
   }, [returnsPlanner, dateRange, dashboardFilters]);
 
-  // Estatísticas detalhadas por status
+  // Estatísticas detalhadas por status e tipo
   const stats = useMemo(() => {
     const data = dashboardData;
     const aguardandoAprovacao = data.filter(d => d.status === 'Aguardando aprovação da marca');
     const aguardandoColeta = data.filter(d => d.status === 'Aguardando coleta');
     const coletados = data.filter(d => d.status === 'Coletado');
+    
+    // Função auxiliar para calcular por tipo
+    const calculateByType = (items) => {
+      return items.reduce((acc, item) => {
+        const type = item.return_type || 'Sem tipo';
+        if (!acc[type]) {
+          acc[type] = {
+            count: 0,
+            totalValue: 0,
+            totalQuantity: 0,
+          };
+        }
+        acc[type].count++;
+        acc[type].totalValue += parseFloat(item.return_value) || 0;
+        acc[type].totalQuantity += parseInt(item.items_quantity) || 0;
+        return acc;
+      }, {});
+    };
     
     return {
       total: data.length,
@@ -467,6 +487,7 @@ const ReturnsPlanner = () => {
           acc[brand] = (acc[brand] || 0) + 1;
           return acc;
         }, {}),
+        byType: calculateByType(aguardandoAprovacao),
       },
       aguardandoColeta: {
         count: aguardandoColeta.length,
@@ -477,6 +498,7 @@ const ReturnsPlanner = () => {
           acc[brand] = (acc[brand] || 0) + 1;
           return acc;
         }, {}),
+        byType: calculateByType(aguardandoColeta),
       },
       coletado: {
         count: coletados.length,
@@ -487,23 +509,30 @@ const ReturnsPlanner = () => {
           acc[brand] = (acc[brand] || 0) + 1;
           return acc;
         }, {}),
-        byType: coletados.reduce((acc, item) => {
-          const type = item.return_type || 'Sem tipo';
-          if (!acc[type]) {
-            acc[type] = {
-              count: 0,
-              totalValue: 0,
-              totalQuantity: 0,
-            };
-          }
-          acc[type].count++;
-          acc[type].totalValue += parseFloat(item.return_value) || 0;
-          acc[type].totalQuantity += parseInt(item.items_quantity) || 0;
-          return acc;
-        }, {}),
+        byType: calculateByType(coletados),
       },
       totalValue: data.reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
       totalQuantity: data.reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+      // Estatísticas gerais por tipo (todos os status)
+      byType: calculateByType(data),
+      // Estatísticas gerais por status
+      byStatus: {
+        'Aguardando aprovação da marca': {
+          count: aguardandoAprovacao.length,
+          totalValue: aguardandoAprovacao.reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: aguardandoAprovacao.reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
+        'Aguardando coleta': {
+          count: aguardandoColeta.length,
+          totalValue: aguardandoColeta.reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: aguardandoColeta.reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
+        'Coletado': {
+          count: coletados.length,
+          totalValue: coletados.reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: coletados.reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
+      },
     };
   }, [dashboardData]);
   
@@ -623,35 +652,87 @@ const ReturnsPlanner = () => {
       const data = dashboardData;
       const storesList = stores || [];
       
-      // Gráfico por tipo
+      // Gráfico por tipo (com valores e quantidades)
       const byType = {
-        COMERCIAL: data.filter(d => d.return_type === 'COMERCIAL').length,
-        DEFEITO: data.filter(d => d.return_type === 'DEFEITO').length,
-        FALTA_FISICA: data.filter(d => d.return_type === 'FALTA_FISICA').length,
+        COMERCIAL: {
+          count: data.filter(d => d.return_type === 'COMERCIAL').length,
+          totalValue: data.filter(d => d.return_type === 'COMERCIAL').reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: data.filter(d => d.return_type === 'COMERCIAL').reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
+        DEFEITO: {
+          count: data.filter(d => d.return_type === 'DEFEITO').length,
+          totalValue: data.filter(d => d.return_type === 'DEFEITO').reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: data.filter(d => d.return_type === 'DEFEITO').reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
+        FALTA_FISICA: {
+          count: data.filter(d => d.return_type === 'FALTA_FISICA').length,
+          totalValue: data.filter(d => d.return_type === 'FALTA_FISICA').reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: data.filter(d => d.return_type === 'FALTA_FISICA').reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
       };
       
-      // Gráfico por status
+      // Gráfico por status (com valores e quantidades)
       const byStatus = {
-        'Aguardando aprovação da marca': data.filter(d => d.status === 'Aguardando aprovação da marca').length,
-        'Aguardando coleta': data.filter(d => d.status === 'Aguardando coleta').length,
-        'Coletado': data.filter(d => d.status === 'Coletado').length,
+        'Aguardando aprovação da marca': {
+          count: data.filter(d => d.status === 'Aguardando aprovação da marca').length,
+          totalValue: data.filter(d => d.status === 'Aguardando aprovação da marca').reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: data.filter(d => d.status === 'Aguardando aprovação da marca').reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
+        'Aguardando coleta': {
+          count: data.filter(d => d.status === 'Aguardando coleta').length,
+          totalValue: data.filter(d => d.status === 'Aguardando coleta').reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: data.filter(d => d.status === 'Aguardando coleta').reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
+        'Coletado': {
+          count: data.filter(d => d.status === 'Coletado').length,
+          totalValue: data.filter(d => d.status === 'Coletado').reduce((sum, item) => sum + (parseFloat(item.return_value) || 0), 0),
+          totalQuantity: data.filter(d => d.status === 'Coletado').reduce((sum, item) => sum + (parseInt(item.items_quantity) || 0), 0),
+        },
       };
       
-      // Gráfico por loja (top 10)
+      // Gráfico por tipo e status (matriz)
+      const byTypeAndStatus = {};
+      ['COMERCIAL', 'DEFEITO', 'FALTA_FISICA'].forEach(type => {
+        byTypeAndStatus[type] = {
+          'Aguardando aprovação da marca': data.filter(d => d.return_type === type && d.status === 'Aguardando aprovação da marca').length,
+          'Aguardando coleta': data.filter(d => d.return_type === type && d.status === 'Aguardando coleta').length,
+          'Coletado': data.filter(d => d.return_type === type && d.status === 'Coletado').length,
+        };
+      });
+      
+      // Gráfico por loja (top 10) - com separação por tipo e status
       const byStore = {};
       data.forEach(item => {
         if (item.store_id) {
           const store = storesList.find(s => s.id === item.store_id);
           const storeName = store?.name || 'Loja não encontrada';
-          byStore[storeName] = (byStore[storeName] || 0) + 1;
+          if (!byStore[storeName]) {
+            byStore[storeName] = {
+              total: 0,
+              byType: { COMERCIAL: 0, DEFEITO: 0, FALTA_FISICA: 0 },
+              byStatus: {
+                'Aguardando aprovação da marca': 0,
+                'Aguardando coleta': 0,
+                'Coletado': 0,
+              },
+            };
+          }
+          byStore[storeName].total++;
+          const type = item.return_type || 'COMERCIAL';
+          if (byStore[storeName].byType[type] !== undefined) {
+            byStore[storeName].byType[type]++;
+          }
+          if (item.status && byStore[storeName].byStatus[item.status] !== undefined) {
+            byStore[storeName].byStatus[item.status]++;
+          }
         }
       });
       const topStores = Object.entries(byStore)
-        .sort((a, b) => b[1] - a[1])
+        .sort((a, b) => b[1].total - a[1].total)
         .slice(0, 10)
-        .map(([name, count]) => ({ name, count }));
+        .map(([name, data]) => ({ name, ...data }));
       
-      // Gráfico de evolução temporal (últimos 30 dias)
+      // Gráfico de evolução temporal (últimos 30 dias) - com separação por tipo e status
       const last30Days = [];
       for (let i = 29; i >= 0; i--) {
         try {
@@ -671,6 +752,13 @@ const ReturnsPlanner = () => {
             date: format(date, 'dd/MM'),
             abertos: dayData.length,
             coletados: dayData.filter(d => d.status === 'Coletado').length,
+            // Por tipo
+            comercial: dayData.filter(d => d.return_type === 'COMERCIAL').length,
+            defeito: dayData.filter(d => d.return_type === 'DEFEITO').length,
+            faltaFisica: dayData.filter(d => d.return_type === 'FALTA_FISICA').length,
+            // Por status
+            aguardandoAprovacao: dayData.filter(d => d.status === 'Aguardando aprovação da marca').length,
+            aguardandoColeta: dayData.filter(d => d.status === 'Aguardando coleta').length,
           });
         } catch (e) {
           // Ignorar erro em um dia específico
@@ -678,8 +766,9 @@ const ReturnsPlanner = () => {
       }
       
       return {
-        byType: Object.entries(byType).map(([name, value]) => ({ name, value })),
-        byStatus: Object.entries(byStatus).map(([name, value]) => ({ name, value })),
+        byType: Object.entries(byType).map(([name, data]) => ({ name, ...data })),
+        byStatus: Object.entries(byStatus).map(([name, data]) => ({ name, ...data })),
+        byTypeAndStatus,
         topStores,
         timeline: last30Days,
       };
@@ -694,17 +783,125 @@ const ReturnsPlanner = () => {
     }
   }, [dashboardData, stores]);
 
-  // Cores para gráficos
+  // Cores para gráficos - Tons mais claros e vibrantes para melhor visibilidade
   const typeColors = {
-    COMERCIAL: '#a855f7',
-    DEFEITO: '#ef4444',
-    FALTA_FISICA: '#f97316',
+    COMERCIAL: '#c084fc', // Roxo mais claro
+    DEFEITO: '#f87171', // Vermelho mais claro
+    FALTA_FISICA: '#fb923c', // Laranja mais claro
   };
 
   const statusColors = {
-    'Aguardando aprovação da marca': '#eab308',
-    'Aguardando coleta': '#3b82f6',
-    'Coletado': '#22c55e',
+    'Aguardando aprovação da marca': '#fbbf24', // Amarelo mais claro e vibrante
+    'Aguardando coleta': '#60a5fa', // Azul mais claro
+    'Coletado': '#34d399', // Verde mais claro e vibrante
+  };
+
+  // Função para exportar dashboard como PDF
+  const handleExportPDF = async () => {
+    try {
+      toast({
+        title: 'Gerando PDF...',
+        description: 'Aguarde enquanto o PDF é gerado.',
+      });
+
+      // Encontrar o elemento do dashboard
+      const dashboardElement = document.getElementById('dashboard-content');
+      if (!dashboardElement) {
+        toast({
+          title: 'Erro',
+          description: 'Não foi possível encontrar o conteúdo do dashboard.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Criar canvas do conteúdo
+      const canvas = await html2canvas(dashboardElement, {
+        backgroundColor: '#0a0a0a',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      
+      // Criar PDF com fundo escuro
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      // Preencher fundo escuro
+      pdf.setFillColor(10, 10, 10);
+      pdf.rect(0, 0, pdfWidth, pdfHeight, 'F');
+      
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min((pdfWidth - 20) / imgWidth, (pdfHeight - 40) / imgHeight);
+      const imgScaledWidth = imgWidth * ratio;
+      const imgScaledHeight = imgHeight * ratio;
+      
+      // Adicionar título
+      pdf.setFontSize(18);
+      pdf.setTextColor(255, 255, 255);
+      pdf.text('Planner de Devoluções', pdfWidth / 2, 15, { align: 'center' });
+      
+      // Adicionar informações dos filtros
+      pdf.setFontSize(10);
+      pdf.setTextColor(255, 255, 255);
+      let yPos = 25;
+      const filters = [];
+      if (dateRange.startDate && dateRange.endDate) {
+        filters.push(`Período: ${format(new Date(dateRange.startDate), 'dd/MM/yyyy', { locale: ptBR })} até ${format(new Date(dateRange.endDate), 'dd/MM/yyyy', { locale: ptBR })}`);
+      }
+      if (dashboardFilters.stores.length > 0) {
+        const storeNames = dashboardFilters.stores.map(id => stores.find(s => s.id === id)?.name).filter(Boolean).join(', ');
+        filters.push(`Lojas: ${storeNames}`);
+      }
+      if (dashboardFilters.supervisors.length > 0) {
+        filters.push(`Supervisores: ${dashboardFilters.supervisors.join(', ')}`);
+      }
+      if (dashboardFilters.status.length > 0) {
+        filters.push(`Status: ${dashboardFilters.status.join(', ')}`);
+      }
+      if (dashboardFilters.brands.length > 0) {
+        filters.push(`Marcas: ${dashboardFilters.brands.join(', ')}`);
+      }
+      
+      if (filters.length > 0) {
+        pdf.text('Filtros aplicados:', 10, yPos);
+        yPos += 5;
+        filters.forEach(filter => {
+          pdf.text(filter, 10, yPos, { maxWidth: pdfWidth - 20 });
+          yPos += 5;
+        });
+        yPos += 5;
+      }
+      
+      // Adicionar imagem centralizada
+      const imgX = (pdfWidth - imgScaledWidth) / 2;
+      pdf.addImage(imgData, 'PNG', imgX, yPos, imgScaledWidth, imgScaledHeight);
+      
+      // Adicionar data de geração
+      pdf.setFontSize(8);
+      pdf.setTextColor(150, 150, 150);
+      pdf.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: ptBR })}`, pdfWidth / 2, pdfHeight - 10, { align: 'center' });
+      
+      // Salvar PDF
+      const fileName = `Planner_Devolucoes_${format(new Date(), 'yyyy-MM-dd_HH-mm', { locale: ptBR })}.pdf`;
+      pdf.save(fileName);
+      
+      toast({
+        title: 'PDF gerado com sucesso!',
+        description: `O arquivo ${fileName} foi baixado.`,
+      });
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      toast({
+        title: 'Erro',
+        description: 'Não foi possível gerar o PDF. Tente novamente.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (
@@ -720,16 +917,28 @@ const ReturnsPlanner = () => {
             <h1 className="text-3xl font-bold text-foreground">Planner de Devoluções</h1>
             <p className="text-muted-foreground mt-1">Registro e acompanhamento de devoluções</p>
           </div>
-          {user?.role === 'devoluções' || user?.role === 'admin' ? (
-            <Button
-              variant="outline"
-              onClick={() => navigate('/brands-settings')}
-              className="gap-2"
-            >
-              <Settings className="w-4 h-4" />
-              Configurar Marcas
-            </Button>
-          ) : null}
+          <div className="flex gap-2">
+            {activeTab === 'dashboard' && (
+              <Button
+                variant="outline"
+                onClick={handleExportPDF}
+                className="gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Exportar PDF
+              </Button>
+            )}
+            {user?.role === 'devoluções' || user?.role === 'admin' ? (
+              <Button
+                variant="outline"
+                onClick={() => navigate('/brands-settings')}
+                className="gap-2"
+              >
+                <Settings className="w-4 h-4" />
+                Configurar Marcas
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {/* Tabs */}
@@ -760,249 +969,349 @@ const ReturnsPlanner = () => {
 
         {/* Conteúdo das Tabs */}
         {activeTab === 'dashboard' ? (
-          <div className="space-y-6">
-            {/* Filtros do Dashboard */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Filtros</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                  <div className="space-y-2">
-                    <Label>Período - Data Inicial</Label>
-                    <Input
-                      type="date"
-                      value={dateRange.startDate}
-                      onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+          <div id="dashboard-content" className="space-y-6">
+            {/* Filtros do Dashboard - Compacto e Moderno */}
+            <Card className="border-border/50">
+              <CardContent className="p-4">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex items-center gap-2 min-w-[200px]">
+                    <Calendar className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground mb-1 block">Período</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="date"
+                          value={dateRange.startDate}
+                          onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                          className="h-9 text-sm"
+                        />
+                        <span className="self-center text-muted-foreground">até</span>
+                        <Input
+                          type="date"
+                          value={dateRange.endDate}
+                          onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                          className="h-9 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="min-w-[180px]">
+                    <MultiSelectFilter
+                      options={stores.map(s => ({ value: s.id, label: s.name }))}
+                      selected={dashboardFilters.stores}
+                      onChange={(val) => setDashboardFilters(prev => ({ ...prev, stores: val }))}
+                      placeholder="Lojas"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Período - Data Final</Label>
-                    <Input
-                      type="date"
-                      value={dateRange.endDate}
-                      onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                  <div className="min-w-[180px]">
+                    <MultiSelectFilter
+                      options={supervisors.map(s => ({ value: s, label: s }))}
+                      selected={dashboardFilters.supervisors}
+                      onChange={(val) => setDashboardFilters(prev => ({ ...prev, supervisors: val }))}
+                      placeholder="Supervisores"
                     />
                   </div>
-                  <MultiSelectFilter
-                    options={stores.map(s => ({ value: s.id, label: s.name }))}
-                    selected={dashboardFilters.stores}
-                    onChange={(val) => setDashboardFilters(prev => ({ ...prev, stores: val }))}
-                    placeholder="Filtrar por Loja..."
-                  />
-                  <MultiSelectFilter
-                    options={supervisors.map(s => ({ value: s, label: s }))}
-                    selected={dashboardFilters.supervisors}
-                    onChange={(val) => setDashboardFilters(prev => ({ ...prev, supervisors: val }))}
-                    placeholder="Filtrar por Supervisor..."
-                  />
-                  <MultiSelectFilter
-                    options={[
-                      { value: 'Aguardando aprovação da marca', label: 'Aguardando Aprovação' },
-                      { value: 'Aguardando coleta', label: 'Aguardando Coleta' },
-                      { value: 'Coletado', label: 'Coletado' },
-                    ]}
-                    selected={dashboardFilters.status}
-                    onChange={(val) => setDashboardFilters(prev => ({ ...prev, status: val }))}
-                    placeholder="Filtrar por Status..."
-                  />
-                  <MultiSelectFilter
-                    options={availableBrands.map(brand => ({ value: brand, label: brand }))}
-                    selected={dashboardFilters.brands}
-                    onChange={(val) => setDashboardFilters(prev => ({ ...prev, brands: val }))}
-                    placeholder="Filtrar por Marca..."
-                  />
+                  <div className="min-w-[180px]">
+                    <MultiSelectFilter
+                      options={[
+                        { value: 'Aguardando aprovação da marca', label: 'Aguardando Aprovação' },
+                        { value: 'Aguardando coleta', label: 'Aguardando Coleta' },
+                        { value: 'Coletado', label: 'Coletado' },
+                      ]}
+                      selected={dashboardFilters.status}
+                      onChange={(val) => setDashboardFilters(prev => ({ ...prev, status: val }))}
+                      placeholder="Status"
+                    />
+                  </div>
+                  <div className="min-w-[180px]">
+                    <MultiSelectFilter
+                      options={availableBrands.map(brand => ({ value: brand, label: brand }))}
+                      selected={dashboardFilters.brands}
+                      onChange={(val) => setDashboardFilters(prev => ({ ...prev, brands: val }))}
+                      placeholder="Marcas"
+                    />
+                  </div>
+                  {(dashboardFilters.stores.length > 0 || dashboardFilters.supervisors.length > 0 || 
+                    dashboardFilters.status.length > 0 || dashboardFilters.brands.length > 0) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDashboardFilters({ stores: [], supervisors: [], status: [], brands: [] })}
+                      className="h-9 text-xs"
+                    >
+                      Limpar Filtros
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Estatísticas Principais */}
+            {/* Estatísticas Principais - Cards Modernos */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="text-sm text-muted-foreground mb-1">Total de Registros</div>
-                  <div className="text-3xl font-bold text-foreground mb-2">{stats.total}</div>
-                  <div className="text-xs text-muted-foreground">
-                    R$ {stats.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • {stats.totalQuantity} peças
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-yellow-500/20 bg-yellow-500/5">
-                <CardContent className="p-4">
-                  <div className="text-sm text-muted-foreground mb-1">Aguardando Aprovação</div>
-                  <div className="text-3xl font-bold text-yellow-400 mb-2">{stats.aguardandoAprovacao.count}</div>
-                  <div className="text-xs text-muted-foreground">
-                    R$ {stats.aguardandoAprovacao.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • {stats.aguardandoAprovacao.totalQuantity} peças
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-blue-500/20 bg-blue-500/5">
-                <CardContent className="p-4">
-                  <div className="text-sm text-muted-foreground mb-1">Aguardando Coleta</div>
-                  <div className="text-3xl font-bold text-blue-400 mb-2">{stats.aguardandoColeta.count}</div>
-                  <div className="text-xs text-muted-foreground">
-                    R$ {stats.aguardandoColeta.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • {stats.aguardandoColeta.totalQuantity} peças
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-green-500/20 bg-green-500/5">
-                <CardContent className="p-4">
-                  <div className="text-sm text-muted-foreground mb-1">Coletado/Finalizado</div>
-                  <div className="text-3xl font-bold text-green-400 mb-2">{stats.coletado.count}</div>
-                  <div className="text-xs text-muted-foreground">
-                    R$ {stats.coletado.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • {stats.coletado.totalQuantity} peças
-                  </div>
-                </CardContent>
-              </Card>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0 }}
+              >
+                <Card className="border-l-4 border-l-primary hover:shadow-lg transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm font-medium text-muted-foreground">Total</div>
+                      <Package className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="text-3xl font-bold text-foreground mb-1">{stats.total}</div>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div>R$ {stats.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div>{stats.totalQuantity} peças</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+              
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+              >
+                <Card className="border-l-4 border-l-yellow-500 hover:shadow-lg transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm font-medium text-muted-foreground">Aguardando Aprovação</div>
+                      <Clock className="w-5 h-5 text-yellow-500" />
+                    </div>
+                    <div className="text-3xl font-bold text-yellow-500 mb-1">{stats.aguardandoAprovacao.count}</div>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div>R$ {stats.aguardandoAprovacao.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div>{stats.aguardandoAprovacao.totalQuantity} peças</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+              
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+              >
+                <Card className="border-l-4 border-l-blue-500 hover:shadow-lg transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm font-medium text-muted-foreground">Aguardando Coleta</div>
+                      <Package className="w-5 h-5 text-blue-500" />
+                    </div>
+                    <div className="text-3xl font-bold text-blue-500 mb-1">{stats.aguardandoColeta.count}</div>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div>R$ {stats.aguardandoColeta.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div>{stats.aguardandoColeta.totalQuantity} peças</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+              
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+              >
+                <Card className="border-l-4 border-l-green-500 hover:shadow-lg transition-shadow">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-sm font-medium text-muted-foreground">Coletado/Finalizado</div>
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    </div>
+                    <div className="text-3xl font-bold text-green-500 mb-1">{stats.coletado.count}</div>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div>R$ {stats.coletado.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div>{stats.coletado.totalQuantity} peças</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
             </div>
             
-            {/* Detalhamento por Status */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Detalhamento por Status - Layout Simplificado */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               {/* Aguardando Aprovação */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-yellow-400">
-                    <Clock className="w-5 h-5" />
-                    Aguardando Aprovação da Marca
+              <Card className="border-l-4 border-l-yellow-500">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Clock className="w-4 h-4 text-yellow-500" />
+                    Aguardando Aprovação
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="text-2xl font-bold text-foreground">{stats.aguardandoAprovacao.count} registros</div>
-                    <div className="text-lg text-muted-foreground">
-                      R$ {stats.aguardandoAprovacao.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <CardContent className="space-y-3">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-yellow-500">{stats.aguardandoAprovacao.count}</span>
+                    <span className="text-sm text-muted-foreground">registros</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-muted-foreground">Valor</div>
+                      <div className="font-semibold">R$ {stats.aguardandoAprovacao.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     </div>
-                    <div className="text-lg text-muted-foreground">
-                      {stats.aguardandoAprovacao.totalQuantity} peças
+                    <div>
+                      <div className="text-muted-foreground">Peças</div>
+                      <div className="font-semibold">{stats.aguardandoAprovacao.totalQuantity}</div>
                     </div>
                   </div>
-                  <div className="border-t pt-4">
-                    <div className="text-sm font-semibold mb-2">Por Marca:</div>
-                    {Object.entries(stats.aguardandoAprovacao.byBrand).map(([brand, count]) => (
-                      <div key={brand} className="flex justify-between text-sm mb-1">
-                        <span className="text-muted-foreground">{brand}:</span>
-                        <span className="font-medium">{count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Aguardando Coleta */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-blue-400">
-                    <Package className="w-5 h-5" />
-                    Aguardando Coleta
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="text-2xl font-bold text-foreground">{stats.aguardandoColeta.count} registros</div>
-                    <div className="text-lg text-muted-foreground">
-                      R$ {stats.aguardandoColeta.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-lg text-muted-foreground">
-                      {stats.aguardandoColeta.totalQuantity} peças
-                    </div>
-                  </div>
-                  <div className="border-t pt-4">
-                    <div className="text-sm font-semibold mb-2">Por Marca:</div>
-                    {Object.entries(stats.aguardandoColeta.byBrand).map(([brand, count]) => (
-                      <div key={brand} className="flex justify-between text-sm mb-1">
-                        <span className="text-muted-foreground">{brand}:</span>
-                        <span className="font-medium">{count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Coletado/Finalizado */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-green-400">
-                    <CheckCircle className="w-5 h-5" />
-                    Coletado/Finalizado
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="text-2xl font-bold text-foreground">{stats.coletado.count} registros</div>
-                    <div className="text-lg text-muted-foreground">
-                      R$ {stats.coletado.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                    <div className="text-lg text-muted-foreground">
-                      {stats.coletado.totalQuantity} peças
-                    </div>
-                  </div>
-                  <div className="border-t pt-4">
-                    <div className="text-sm font-semibold mb-2">Por Tipo de Devolução:</div>
-                    {Object.entries(stats.coletado.byType).map(([type, data]) => {
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por Tipo</div>
+                    {Object.entries(stats.aguardandoAprovacao.byType || {}).map(([type, data]) => {
                       const typeLabel = type === 'COMERCIAL' ? 'Comercial' : 
                                        type === 'DEFEITO' ? 'Defeito' : 
                                        type === 'FALTA_FISICA' ? 'Falta Física' : type;
+                      if (!data || data.count === 0) return null;
                       return (
-                        <div key={type} className="mb-3 pb-2 border-b border-border/50 last:border-0">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-sm font-medium text-foreground">{typeLabel}:</span>
-                            <span className="text-sm font-bold text-green-400">{data.count} registros</span>
-                          </div>
-                          <div className="text-xs text-muted-foreground ml-2">
-                            R$ {data.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • {data.totalQuantity} peças
+                        <div key={type} className="flex justify-between items-center text-xs">
+                          <span className="text-muted-foreground">{typeLabel}</span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs px-2 py-0">{data.count}</Badge>
+                            <span className="text-muted-foreground">R$ {data.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                  <div className="border-t pt-4">
-                    <div className="text-sm font-semibold mb-2">Por Marca:</div>
-                    {Object.entries(stats.coletado.byBrand).map(([brand, count]) => (
-                      <div key={brand} className="flex justify-between text-sm mb-1">
-                        <span className="text-muted-foreground">{brand}:</span>
-                        <span className="font-medium">{count}</span>
-                      </div>
-                    ))}
+                </CardContent>
+              </Card>
+              
+              {/* Aguardando Coleta */}
+              <Card className="border-l-4 border-l-blue-500">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Package className="w-4 h-4 text-blue-500" />
+                    Aguardando Coleta
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-blue-500">{stats.aguardandoColeta.count}</span>
+                    <span className="text-sm text-muted-foreground">registros</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-muted-foreground">Valor</div>
+                      <div className="font-semibold">R$ {stats.aguardandoColeta.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Peças</div>
+                      <div className="font-semibold">{stats.aguardandoColeta.totalQuantity}</div>
+                    </div>
+                  </div>
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por Tipo</div>
+                    {Object.entries(stats.aguardandoColeta.byType || {}).map(([type, data]) => {
+                      const typeLabel = type === 'COMERCIAL' ? 'Comercial' : 
+                                       type === 'DEFEITO' ? 'Defeito' : 
+                                       type === 'FALTA_FISICA' ? 'Falta Física' : type;
+                      if (!data || data.count === 0) return null;
+                      return (
+                        <div key={type} className="flex justify-between items-center text-xs">
+                          <span className="text-muted-foreground">{typeLabel}</span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs px-2 py-0">{data.count}</Badge>
+                            <span className="text-muted-foreground">R$ {data.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+              
+              {/* Coletado/Finalizado */}
+              <Card className="border-l-4 border-l-green-500">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    Coletado/Finalizado
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-green-500">{stats.coletado.count}</span>
+                    <span className="text-sm text-muted-foreground">registros</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-muted-foreground">Valor</div>
+                      <div className="font-semibold">R$ {stats.coletado.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Peças</div>
+                      <div className="font-semibold">{stats.coletado.totalQuantity}</div>
+                    </div>
+                  </div>
+                  <div className="border-t pt-3 space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por Tipo</div>
+                    {Object.entries(stats.coletado.byType || {}).map(([type, data]) => {
+                      const typeLabel = type === 'COMERCIAL' ? 'Comercial' : 
+                                       type === 'DEFEITO' ? 'Defeito' : 
+                                       type === 'FALTA_FISICA' ? 'Falta Física' : type;
+                      if (!data || data.count === 0) return null;
+                      return (
+                        <div key={type} className="flex justify-between items-center text-xs">
+                          <span className="text-muted-foreground">{typeLabel}</span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs px-2 py-0">{data.count}</Badge>
+                            <span className="text-muted-foreground">R$ {data.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
             </div>
             
-            {/* Produtividade por Usuário (Apenas Admin) */}
+            {/* Produtividade por Usuário (Apenas Admin) - Simplificado */}
             {user?.role === 'admin' && userProductivity.length > 0 && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="w-5 h-5" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <User className="w-4 h-4" />
                     Produtividade por Usuário
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {userProductivity.map((userStat) => (
-                      <div key={userStat.userId} className="border rounded-lg p-4 space-y-2">
+                      <div key={userStat.userId} className="border rounded-lg p-3 space-y-2 hover:bg-accent/50 transition-colors">
                         <div className="flex items-center justify-between">
-                          <div className="font-semibold">{userStat.username}</div>
-                          <Badge variant="outline">{userStat.total} registros</Badge>
+                          <div className="font-semibold text-sm">{userStat.username}</div>
+                          <Badge variant="secondary" className="text-xs">{userStat.total}</Badge>
                         </div>
-                        <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div className="grid grid-cols-2 gap-2 text-xs">
                           <div>
-                            <div className="text-muted-foreground">Valor Total</div>
-                            <div className="font-medium">R$ {userStat.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                            <div className="text-muted-foreground">Valor</div>
+                            <div className="font-medium">R$ {userStat.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</div>
                           </div>
                           <div>
-                            <div className="text-muted-foreground">Quantidade</div>
-                            <div className="font-medium">{userStat.totalQuantity} peças</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Status</div>
-                            <div className="flex gap-2 flex-wrap">
-                              <Badge variant="outline" className="text-xs">Aprov: {userStat.byStatus['Aguardando aprovação da marca']}</Badge>
-                              <Badge variant="outline" className="text-xs">Coleta: {userStat.byStatus['Aguardando coleta']}</Badge>
-                              <Badge variant="outline" className="text-xs">Colet: {userStat.byStatus['Coletado']}</Badge>
-                            </div>
+                            <div className="text-muted-foreground">Peças</div>
+                            <div className="font-medium">{userStat.totalQuantity}</div>
                           </div>
                         </div>
+                        <div className="flex gap-1 flex-wrap">
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">Aprov: {userStat.byStatus['Aguardando aprovação da marca']}</Badge>
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">Coleta: {userStat.byStatus['Aguardando coleta']}</Badge>
+                          <Badge variant="outline" className="text-xs px-1.5 py-0">Colet: {userStat.byStatus['Coletado']}</Badge>
+                        </div>
+                        {userStat.byType && Object.keys(userStat.byType).some(type => userStat.byType[type]?.count > 0) && (
+                          <div className="border-t pt-2 space-y-1">
+                            {Object.entries(userStat.byType).map(([type, data]) => {
+                              const typeLabel = type === 'COMERCIAL' ? 'Comercial' : 
+                                               type === 'DEFEITO' ? 'Defeito' : 
+                                               type === 'FALTA_FISICA' ? 'Falta Física' : type;
+                              if (!data || data.count === 0) return null;
+                              return (
+                                <div key={type} className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground">{typeLabel}:</span>
+                                  <span className="font-medium">{data.count}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1010,66 +1319,64 @@ const ReturnsPlanner = () => {
               </Card>
             )}
 
-            {/* Métricas de SLA */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                    <div className="text-sm text-muted-foreground">Tempo Médio Aprovação</div>
+            {/* Métricas de SLA - Compactas */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Card className="border-l-2 border-l-muted">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                    <div className="text-xs text-muted-foreground">Tempo Médio Aprovação</div>
                   </div>
-                  <div className="text-2xl font-bold text-foreground">{slaMetrics.avgTimeAprovacao} dias</div>
+                  <div className="text-xl font-bold text-foreground">{slaMetrics.avgTimeAprovacao} dias</div>
                 </CardContent>
               </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock className="w-4 h-4 text-muted-foreground" />
-                    <div className="text-sm text-muted-foreground">Tempo Médio Coleta</div>
+              <Card className="border-l-2 border-l-muted">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                    <div className="text-xs text-muted-foreground">Tempo Médio Coleta</div>
                   </div>
-                  <div className="text-2xl font-bold text-foreground">{slaMetrics.avgTimeColeta} dias</div>
+                  <div className="text-xl font-bold text-foreground">{slaMetrics.avgTimeColeta} dias</div>
                 </CardContent>
               </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                    <div className="text-sm text-muted-foreground">Tempo Médio Total</div>
+              <Card className="border-l-2 border-l-muted">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" />
+                    <div className="text-xs text-muted-foreground">Tempo Médio Total</div>
                   </div>
-                  <div className="text-2xl font-bold text-foreground">{slaMetrics.avgTimeToColeta} dias</div>
+                  <div className="text-xl font-bold text-foreground">{slaMetrics.avgTimeToColeta} dias</div>
                 </CardContent>
               </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                    <div className="text-sm text-muted-foreground">Itens em Risco</div>
+              <Card className="border-l-2 border-l-orange-500">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertCircle className="w-3.5 h-3.5 text-orange-500" />
+                    <div className="text-xs text-muted-foreground">Itens em Risco</div>
                   </div>
-                  <div className="text-2xl font-bold text-orange-400">{slaMetrics.itemsAtRisk}</div>
-                  <div className="text-xs text-muted-foreground mt-1">Mais de 7 dias</div>
+                  <div className="text-xl font-bold text-orange-500">{slaMetrics.itemsAtRisk}</div>
+                  <div className="text-xs text-muted-foreground">+7 dias</div>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Taxa de Conclusão */}
+            {/* Taxa de Conclusão - Simplificada */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5" />
-                  Taxa de Conclusão
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <div className="h-4 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-green-500 transition-all"
-                        style={{ width: `${slaMetrics.completionRate}%` }}
-                      />
-                    </div>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <span className="text-sm font-medium">Taxa de Conclusão</span>
                   </div>
-                  <div className="text-2xl font-bold text-foreground">{slaMetrics.completionRate}%</div>
+                  <span className="text-2xl font-bold text-green-500">{slaMetrics.completionRate}%</span>
+                </div>
+                <div className="mt-3">
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 transition-all rounded-full"
+                      style={{ width: `${slaMetrics.completionRate}%` }}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1082,61 +1389,184 @@ const ReturnsPlanner = () => {
                   <CardTitle>Devoluções por Tipo</CardTitle>
                 </CardHeader>
                 <CardContent>
+                  <style>{`
+                    .recharts-cartesian-axis-tick-value { fill: #ffffff !important; }
+                    .recharts-legend-item-text { fill: #ffffff !important; }
+                    .recharts-tooltip-wrapper .recharts-tooltip-label { color: #ffffff !important; }
+                    .recharts-tooltip-wrapper .recharts-tooltip-item { color: #ffffff !important; }
+                    .recharts-tooltip-wrapper .recharts-tooltip-item-value { color: #ffffff !important; }
+                    .recharts-tooltip-wrapper .recharts-tooltip-item-name { color: #ffffff !important; }
+                    .recharts-tooltip-wrapper * { color: #ffffff !important; }
+                  `}</style>
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={chartData?.byType || []}>
-                      <XAxis dataKey="name" stroke="hsla(var(--muted-foreground))" />
-                      <YAxis stroke="hsla(var(--muted-foreground))" />
-                      <Tooltip />
-                      <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                      <XAxis 
+                        dataKey="name" 
+                        stroke="#ffffff" 
+                        tick={{ fill: '#ffffff', fontSize: 12 }}
+                      />
+                      <YAxis 
+                        stroke="#ffffff" 
+                        tick={{ fill: '#ffffff', fontSize: 12 }}
+                      />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: '#ffffff' }}
+                        itemStyle={{ color: '#ffffff' }}
+                        labelStyle={{ color: '#ffffff' }}
+                        formatter={(value, name) => {
+                          if (name === 'count') return [`${value} registros`, 'Quantidade'];
+                          if (name === 'totalValue') return [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Valor Total'];
+                          if (name === 'totalQuantity') return [`${value} peças`, 'Quantidade de Peças'];
+                          return [value, name];
+                        }}
+                      />
+                      <Legend wrapperStyle={{ color: '#ffffff' }} />
+                      <Bar dataKey="count" radius={[4, 4, 0, 0]} name="Quantidade">
                         {(chartData?.byType || []).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={typeColors[entry.name] || '#8884d8'} />
                         ))}
                       </Bar>
                     </BarChart>
                   </ResponsiveContainer>
+                  <div className="mt-4 grid grid-cols-3 gap-4 text-xs">
+                    {(chartData?.byType || []).map((entry) => (
+                      <div key={entry.name} className="text-center">
+                        <div className="font-semibold">{entry.name}</div>
+                        <div className="text-muted-foreground">
+                          R$ {entry.totalValue?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0,00'} • {entry.totalQuantity || 0} peças
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
 
               {/* Gráfico por Status */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Devoluções por Status</CardTitle>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Devoluções por Status</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <style>{`
+                    .recharts-legend-item-text { fill: #ffffff !important; }
+                    .recharts-pie-label-text { fill: #ffffff !important; }
+                    .recharts-tooltip-wrapper .recharts-tooltip-label { color: #ffffff !important; }
+                    .recharts-tooltip-wrapper .recharts-tooltip-item { color: #ffffff !important; }
+                    .recharts-tooltip-wrapper .recharts-tooltip-item-value { color: #ffffff !important; }
+                    .recharts-tooltip-wrapper .recharts-tooltip-item-name { color: #ffffff !important; }
+                    .recharts-tooltip-wrapper * { color: #ffffff !important; }
+                  `}</style>
+                  <ResponsiveContainer width="100%" height={250}>
                     <PieChart>
                       <Pie
                         data={chartData?.byStatus || []}
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                        outerRadius={80}
+                        label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                        labelStyle={{ fill: '#ffffff', fontSize: '14px', fontWeight: 'bold' }}
+                        outerRadius={70}
                         fill="#8884d8"
-                        dataKey="value"
+                        dataKey="count"
                       >
                         {(chartData?.byStatus || []).map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={statusColors[entry.name] || '#8884d8'} />
                         ))}
                       </Pie>
-                      <Tooltip />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: '#ffffff' }}
+                        itemStyle={{ color: '#ffffff' }}
+                        labelStyle={{ color: '#ffffff' }}
+                        formatter={(value) => {
+                          const entry = (chartData?.byStatus || []).find(e => e.count === value);
+                          if (entry) {
+                            return [`${value} registros • R$ ${entry.totalValue?.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) || '0'} • ${entry.totalQuantity || 0} peças`, entry.name];
+                          }
+                          return [value];
+                        }}
+                      />
+                      <Legend 
+                        wrapperStyle={{ fontSize: '12px', paddingTop: '10px', color: '#ffffff' }}
+                        formatter={(value) => {
+                          const entry = (chartData?.byStatus || []).find(e => e.name === value);
+                          return entry ? `${value} (${entry.count})` : value;
+                        }}
+                      />
                     </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              {/* Gráfico por Tipo e Status */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Devoluções por Tipo e Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart data={chartData?.byTypeAndStatus ? Object.entries(chartData.byTypeAndStatus).map(([type, statuses]) => ({
+                      name: type === 'COMERCIAL' ? 'Comercial' : type === 'DEFEITO' ? 'Defeito' : 'Falta Física',
+                      aguardandoAprovacao: (statuses && statuses['Aguardando aprovação da marca']) || 0,
+                      aguardandoColeta: (statuses && statuses['Aguardando coleta']) || 0,
+                      coletado: (statuses && statuses['Coletado']) || 0,
+                    })) : []}>
+                      <XAxis 
+                        dataKey="name" 
+                        stroke="#ffffff" 
+                        tick={{ fill: '#ffffff' }}
+                        style={{ fontSize: '12px' }}
+                      />
+                      <YAxis 
+                        stroke="#ffffff" 
+                        tick={{ fill: '#ffffff' }}
+                        style={{ fontSize: '12px' }}
+                      />
+                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }} />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px', color: '#ffffff' }} />
+                      <Bar dataKey="aguardandoAprovacao" stackId="a" fill="#fbbf24" radius={[0, 0, 0, 0]} name="Aguardando Aprovação" />
+                      <Bar dataKey="aguardandoColeta" stackId="a" fill="#60a5fa" radius={[0, 0, 0, 0]} name="Aguardando Coleta" />
+                      <Bar dataKey="coletado" stackId="a" fill="#34d399" radius={[4, 4, 0, 0]} name="Coletado" />
+                    </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
 
               {/* Top 10 Lojas */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Top 10 Lojas com Mais Devoluções</CardTitle>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Top 10 Lojas</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={chartData?.topStores || []} layout="vertical">
-                      <XAxis type="number" stroke="hsla(var(--muted-foreground))" />
-                      <YAxis dataKey="name" type="category" stroke="hsla(var(--muted-foreground))" width={120} />
-                      <Tooltip />
-                      <Bar dataKey="count" radius={[0, 4, 4, 0]} fill="#8884d8" />
+                  <ResponsiveContainer width="100%" height={250}>
+                    <BarChart 
+                      data={(chartData?.topStores || []).map(store => ({
+                        name: store.name.length > 15 ? store.name.substring(0, 15) + '...' : store.name,
+                        total: store.total,
+                        comercial: store.byType?.COMERCIAL || 0,
+                        defeito: store.byType?.DEFEITO || 0,
+                        faltaFisica: store.byType?.FALTA_FISICA || 0,
+                      }))} 
+                      layout="vertical"
+                    >
+                      <XAxis 
+                        type="number" 
+                        stroke="#ffffff" 
+                        tick={{ fill: '#ffffff' }}
+                        style={{ fontSize: '12px' }}
+                      />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        stroke="#ffffff" 
+                        tick={{ fill: '#ffffff' }}
+                        width={100} 
+                        style={{ fontSize: '11px' }}
+                      />
+                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }} />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px', color: '#ffffff' }} />
+                      <Bar dataKey="comercial" stackId="a" radius={[0, 0, 0, 0]} fill="#c084fc" name="Comercial" />
+                      <Bar dataKey="defeito" stackId="a" radius={[0, 0, 0, 0]} fill="#f87171" name="Defeito" />
+                      <Bar dataKey="faltaFisica" stackId="a" radius={[0, 4, 4, 0]} fill="#fb923c" name="Falta Física" />
                     </BarChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -1144,18 +1574,34 @@ const ReturnsPlanner = () => {
 
               {/* Evolução Temporal */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Evolução (Últimos 30 Dias)</CardTitle>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Evolução (Últimos 30 Dias)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
+                  <ResponsiveContainer width="100%" height={250}>
                     <LineChart data={chartData?.timeline || []}>
-                      <XAxis dataKey="date" stroke="hsla(var(--muted-foreground))" />
-                      <YAxis stroke="hsla(var(--muted-foreground))" />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" dataKey="abertos" stroke="#3b82f6" name="Abertos" />
-                      <Line type="monotone" dataKey="coletados" stroke="#22c55e" name="Coletados" />
+                      <XAxis 
+                        dataKey="date" 
+                        stroke="#ffffff" 
+                        tick={{ fill: '#ffffff' }}
+                        style={{ fontSize: '11px' }}
+                        angle={-45} 
+                        textAnchor="end" 
+                        height={60} 
+                      />
+                      <YAxis 
+                        stroke="#ffffff" 
+                        tick={{ fill: '#ffffff' }}
+                        style={{ fontSize: '12px' }}
+                      />
+                      <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }} />
+                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px', color: '#ffffff' }} />
+                      <Line type="monotone" dataKey="comercial" stroke="#c084fc" strokeWidth={2} name="Comercial" dot={false} />
+                      <Line type="monotone" dataKey="defeito" stroke="#f87171" strokeWidth={2} name="Defeito" dot={false} />
+                      <Line type="monotone" dataKey="faltaFisica" stroke="#fb923c" strokeWidth={2} name="Falta Física" dot={false} />
+                      <Line type="monotone" dataKey="aguardandoAprovacao" stroke="#fbbf24" strokeWidth={2} name="Aguardando Aprovação" dot={false} />
+                      <Line type="monotone" dataKey="aguardandoColeta" stroke="#60a5fa" strokeWidth={2} name="Aguardando Coleta" dot={false} />
+                      <Line type="monotone" dataKey="coletados" stroke="#34d399" strokeWidth={2} name="Coletados" dot={false} />
                     </LineChart>
                   </ResponsiveContainer>
                 </CardContent>
