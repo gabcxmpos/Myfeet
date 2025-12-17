@@ -779,7 +779,7 @@ const BasicInfoTab = ({ stores, fetchData }) => {
                 <div className="space-y-2">
                   <Label htmlFor="fundoParticipacao" className="flex items-center gap-2">
                     <DollarSign className="w-4 h-4" />
-                    Fundo de Participação (R$)
+                    Fundo de Promoção (FPP) (R$)
                   </Label>
                   <Input
                     id="fundoParticipacao"
@@ -1272,7 +1272,7 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
     // AMM esperado: aluguel mínimo (ou dobro em dezembro)
     const expectedAMM = isDecember ? basicInfo.aluguelMin * 2 : basicInfo.aluguelMin;
     
-    // FPP esperado: fundo de participação das informações básicas
+    // FPP esperado: fundo de promoção das informações básicas
     const expectedFPP = basicInfo.fundoParticipacao || 0;
     
     // Condomínio esperado: condomínio das informações básicas
@@ -1355,14 +1355,13 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
     const margem = sales > 0 ? ((sales - ctoTotal) / sales) * 100 : 0;
 
     // Comparações com valores esperados
-    const tolerance = 100; // Tolerância de R$ 100
     const ammDiff = expectedValues ? Math.abs(ammFinal - expectedValues.expectedAMM) : 0;
     const fppDiff = expectedValues ? Math.abs(fpp - expectedValues.expectedFPP) : 0;
     const condDiff = expectedValues ? Math.abs(cond - expectedValues.expectedCond) : 0;
     
-    const ammOk = !expectedValues || ammDiff <= tolerance;
-    const fppOk = !expectedValues || fppDiff <= tolerance;
-    const condOk = !expectedValues || condDiff <= tolerance;
+    const ammOk = !expectedValues || ammDiff === 0;
+    const fppOk = !expectedValues || fppDiff === 0;
+    const condOk = !expectedValues || condDiff === 0;
 
     return {
       sales,
@@ -1597,15 +1596,14 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                 const fpp = parseFloat(currentBills.fpp || 0);
                 const cond = parseFloat(currentBills.cond || 0);
                 const expectedValues = calculateExpectedValues();
-                const tolerance = 100;
                 
                 const ammDiff = expectedValues ? Math.abs(ammFinal - expectedValues.expectedAMM) : 0;
                 const fppDiff = expectedValues ? Math.abs(fpp - expectedValues.expectedFPP) : 0;
                 const condDiff = expectedValues ? Math.abs(cond - expectedValues.expectedCond) : 0;
                 
-                const ammOk = !expectedValues || ammDiff <= tolerance;
-                const fppOk = !expectedValues || fppDiff <= tolerance;
-                const condOk = !expectedValues || condDiff <= tolerance;
+                const ammOk = !expectedValues || ammDiff === 0;
+                const fppOk = !expectedValues || fppDiff === 0;
+                const condOk = !expectedValues || condDiff === 0;
                 
                 const noteText = isDecember 
                   ? '⚠️ Dezembro: Este mês tem aluguel em dobro. Informe o AMM como o dobro do aluguel mínimo (o boleto vence em janeiro).'
@@ -1667,7 +1665,7 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
 
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <Label htmlFor="fpp">FPP - Fundo de Participação (R$)</Label>
+                          <Label htmlFor="fpp">FPP - Fundo de Promoção (R$)</Label>
                           {expectedValues && (
                             <span className={`text-xs ${fppOk ? 'text-green-400' : 'text-orange-400'}`}>
                               {fppOk ? '✅' : `⚠️ Diferença: R$ ${fppDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -1844,7 +1842,7 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                   {/* Comparação com Valor Complementar Pago */}
                   {monthData.paidValue > 0 && monthData.valorComplementarCalculado > 0 && (
                     <div className={`border-2 rounded-lg p-6 ${
-                      Math.abs(monthData.diferencaValor) < 100
+                      Math.abs(monthData.diferencaValor) === 0
                         ? 'bg-green-500/10 border-green-500/30'
                         : monthData.diferencaValor > 0
                         ? 'bg-orange-500/10 border-orange-500/30'
@@ -1853,7 +1851,7 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-lg font-semibold">Comparação com Valor Complementar Pago:</span>
                         <span className={`text-2xl font-bold ${
-                          Math.abs(monthData.diferencaValor) < 100
+                          Math.abs(monthData.diferencaValor) === 0
                             ? 'text-green-500'
                             : monthData.diferencaValor > 0
                             ? 'text-orange-500'
@@ -1885,8 +1883,8 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                         </div>
                       </div>
                       <div className="mt-3 text-xs font-semibold">
-                        {Math.abs(monthData.diferencaValor) < 100 ? (
-                          <span className="text-green-500">✓ Valores coincidem (diferença menor que R$ 100,00)</span>
+                        {Math.abs(monthData.diferencaValor) === 0 ? (
+                          <span className="text-green-500">✓ Valores coincidem perfeitamente</span>
                         ) : monthData.diferencaValor > 0 ? (
                           <span className="text-orange-500">⚠️ Pagaram a MENOS: O valor pago é menor que o calculado</span>
                         ) : (
@@ -1940,18 +1938,6 @@ const CTOMonthlyTab = ({ stores, fetchData }) => {
                           </div>
                         </>
                       )}
-                      <div>
-                        <span className="text-muted-foreground">Lucro:</span>
-                        <p className={`font-semibold ${monthData.lucro >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          R$ {monthData.lucro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Margem:</span>
-                        <p className={`font-semibold ${monthData.margem >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                          {monthData.margem.toFixed(2)}%
-                        </p>
-                      </div>
                     </div>
                   </div>
 

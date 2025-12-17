@@ -101,10 +101,10 @@ const StoresCTOAnalytics = () => {
       
       // PONTO DE EQUILÍBRIO: valor mínimo de vendas para que o aluguel percentual seja maior que o mínimo
       // PE = AMM / (percentual / 100)
-      // Se vendas > PE, então aluguel percentual > AMM, então precisa pagar complemento
+      // Se vendas > PE, então aluguel percentual > AMM, então precisa pagar complementar
       const pe = aluguelPercentual > 0 ? aluguelMin / (aluguelPercentual / 100) : 0;
       
-      // ALUGUEL CALCULADO BASEADO NAS VENDAS (para saber se tem complemento)
+      // ALUGUEL CALCULADO BASEADO NAS VENDAS (para saber se tem complementar)
       // Se vendas * percentual > AMM, então o aluguel seria vendas * percentual
       // Caso contrário, seria apenas o AMM
       const aluguelPercentualCalculado = aluguelPercentual > 0 && faturamento > 0
@@ -119,7 +119,7 @@ const StoresCTOAnalytics = () => {
           ? aluguelPercentualCalculado  // Se vendas * % >= mínimo, usar percentual
           : aluguelMin);  // Caso contrário, usar mínimo
       
-      // COMPLEMENTO CALCULADO: diferença entre aluguel percentual e AMM (quando vendas > PE)
+      // COMPLEMENTAR CALCULADO: diferença entre aluguel percentual e AMM (quando vendas > PE)
       // Cálculo: (Vendas - PE) × Aluguel Percentual
       const diferencaVendas = (faturamento && pe && faturamento > pe) ? faturamento - pe : 0;
       const valorComplementarCalculado = diferencaVendas > 0 && aluguelPercentual > 0 
@@ -411,7 +411,7 @@ const StoresCTOAnalytics = () => {
                             <td className={`p-3 text-right ${ammOk ? 'text-green-400' : 'text-orange-400'}`}>
                               <div className="flex flex-col items-end">
                                 <span>R$ {month.amm.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                {!ammOk && month.expectedAMM && (
+                                {ammDiff > 0 && month.expectedAMM && (
                                   <span className="text-xs">
                                     Dif: R$ {ammDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
@@ -430,7 +430,7 @@ const StoresCTOAnalytics = () => {
                             <td className={`p-3 text-right ${fppOk ? 'text-green-400' : 'text-orange-400'}`}>
                               <div className="flex flex-col items-end">
                                 <span>R$ {month.fpp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                {!fppOk && month.expectedFPP && (
+                                {fppDiff > 0 && month.expectedFPP && (
                                   <span className="text-xs">
                                     Dif: R$ {fppDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
@@ -449,7 +449,7 @@ const StoresCTOAnalytics = () => {
                             <td className={`p-3 text-right ${condOk ? 'text-green-400' : 'text-orange-400'}`}>
                               <div className="flex flex-col items-end">
                                 <span>R$ {month.cond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                {!condOk && month.expectedCond && (
+                                {condDiff > 0 && month.expectedCond && (
                                   <span className="text-xs">
                                     Dif: R$ {condDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
@@ -478,7 +478,7 @@ const StoresCTOAnalytics = () => {
                         <th className="p-3 text-left">Mês</th>
                         <th className="p-3 text-right">Faturamento</th>
                         <th className="p-3 text-right">Aluguel (AMM)</th>
-                        <th className="p-3 text-right">Complemento</th>
+                        <th className="p-3 text-right">Complementar</th>
                         <th className="p-3 text-right">FPP</th>
                         <th className="p-3 text-right">COND</th>
                         <th className="p-3 text-right">Outros</th>
@@ -551,7 +551,7 @@ const StoresCTOAnalytics = () => {
                                         R$ {month.paidValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                       </span>
                                     </div>
-                                    {Math.abs(month.valorComplementarCalculado - month.paidValue) >= 100 && (
+                                    {Math.abs(month.valorComplementarCalculado - month.paidValue) > 0 && (
                                       <div>
                                         <span className="text-xs text-muted-foreground">Diferença:</span>
                                         <span className="ml-1 font-semibold text-orange-500">
