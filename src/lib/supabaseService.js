@@ -1,4 +1,4 @@
-﻿
+
 import { supabase } from '@/lib/customSupabaseClient';
 import { format } from 'date-fns';
 
@@ -306,9 +306,42 @@ export const fetchCollaborators = async (storeId = null) => {
 };
 
 export const createCollaborator = async (collaboratorData) => {
+  // Converter storeId (camelCase) para store_id (snake_case) se necessário
+  const dataToInsert = {
+    ...collaboratorData,
+    store_id: collaboratorData.store_id || collaboratorData.storeId,
+  };
+  
+  // Remover storeId se existir (manter apenas store_id)
+  if (dataToInsert.storeId && dataToInsert.store_id) {
+    delete dataToInsert.storeId;
+  }
+  
   const { data, error } = await supabase
     .from('collaborators')
-    .insert([collaboratorData])
+    .insert([dataToInsert])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateCollaborator = async (id, updates) => {
+  // Converter storeId (camelCase) para store_id (snake_case) se necessário
+  const dataToUpdate = {
+    ...updates,
+  };
+  
+  if (updates.storeId !== undefined) {
+    dataToUpdate.store_id = updates.storeId;
+    delete dataToUpdate.storeId;
+  }
+  
+  const { data, error } = await supabase
+    .from('collaborators')
+    .update(dataToUpdate)
+    .eq('id', id)
     .select()
     .single();
   
