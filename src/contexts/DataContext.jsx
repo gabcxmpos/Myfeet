@@ -426,6 +426,7 @@ export const DataProvider = ({ children }) => {
   
   // Collaborators
   const addCollaborator = (collabData) => handleApiCall(() => api.createCollaborator(collabData), 'Colaborador adicionado.');
+  const updateCollaborator = (id, updates) => handleApiCall(() => api.updateCollaborator(id, updates), 'Colaborador atualizado.');
   const deleteCollaborator = (id) => handleApiCall(() => api.deleteCollaborator(id), 'Colaborador removido.');
 
   // Feedback
@@ -717,6 +718,7 @@ export const DataProvider = ({ children }) => {
     updatePatentSettings,
     collaborators,
     addCollaborator,
+    updateCollaborator,
     deleteCollaborator,
     feedbacks,
     addFeedback,
