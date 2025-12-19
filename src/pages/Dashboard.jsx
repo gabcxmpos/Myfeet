@@ -129,12 +129,12 @@ const calculateGaps = (approvedEvaluations, forms) => {
 
   // Agrupar avaliações por pilar
   const evaluationsByPillar = {};
-  approvedEvaluations.forEach(eval => {
-    const pillar = eval.pillar;
+  approvedEvaluations.forEach(evaluation => {
+    const pillar = evaluation.pillar;
     if (!evaluationsByPillar[pillar]) {
       evaluationsByPillar[pillar] = [];
     }
-    evaluationsByPillar[pillar].push(eval);
+    evaluationsByPillar[pillar].push(evaluation);
   });
 
   // Para cada pilar, analisar as avaliações
@@ -142,8 +142,8 @@ const calculateGaps = (approvedEvaluations, forms) => {
     const pillarEvals = evaluationsByPillar[pillar] || [];
     const questionGaps = new Map(); // Map<questionId, {count: number, totalScore: number, questionText: string}>
 
-    pillarEvals.forEach(eval => {
-      const form = formsMap.get(eval.form_id || eval.formId);
+    pillarEvals.forEach(evaluation => {
+      const form = formsMap.get(evaluation.form_id || evaluation.formId);
       if (!form) return;
 
       // Parsear questions se for string JSON
@@ -157,10 +157,10 @@ const calculateGaps = (approvedEvaluations, forms) => {
         }
       }
 
-      if (!questions || !Array.isArray(questions) || !eval.answers) return;
+      if (!questions || !Array.isArray(questions) || !evaluation.answers) return;
 
       // Parsear answers se for string JSON
-      let answers = eval.answers;
+      let answers = evaluation.answers;
       if (typeof answers === 'string') {
         try {
           answers = JSON.parse(answers);
