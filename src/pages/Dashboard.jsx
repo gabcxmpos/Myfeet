@@ -102,8 +102,145 @@ const SupervisorAnalysisRow = ({ supervisor, stores, score }) => {
   );
 };
 
+// Função para calcular gaps baseado em perguntas com pontuação abaixo de 70
+const calculateGaps = (approvedEvaluations, forms) => {
+  const gapsByPillar = {
+    Pessoas: [],
+    Performance: [],
+    Ambientação: [],
+    Digital: [],
+  };
+
+  if (!approvedEvaluations || approvedEvaluations.length === 0 || !forms || forms.length === 0) {
+    console.log('⚠️ [calculateGaps] Sem dados suficientes:', {
+      evaluations: approvedEvaluations?.length || 0,
+      forms: forms?.length || 0
+    });
+    return gapsByPillar;
+  }
+
+  console.log('🔍 [calculateGaps] Calculando gaps:', {
+    evaluations: approvedEvaluations.length,
+    forms: forms.length
+  });
+
+  // Criar mapa de formulários por ID para acesso rápido
+  const formsMap = new Map(forms.map(f => [f.id, f]));
+
+  // Agrupar avaliações por pilar
+  const evaluationsByPillar = {};
+  approvedEvaluations.forEach(eval => {
+    const pillar = eval.pillar;
+    if (!evaluationsByPillar[pillar]) {
+      evaluationsByPillar[pillar] = [];
+    }
+    evaluationsByPillar[pillar].push(eval);
+  });
+
+  // Para cada pilar, analisar as avaliações
+  Object.keys(gapsByPillar).forEach(pillar => {
+    const pillarEvals = evaluationsByPillar[pillar] || [];
+    const questionGaps = new Map(); // Map<questionId, {count: number, totalScore: number, questionText: string}>
+
+    pillarEvals.forEach(eval => {
+      const form = formsMap.get(eval.form_id || eval.formId);
+      if (!form) return;
+
+      // Parsear questions se for string JSON
+      let questions = form.questions;
+      if (typeof questions === 'string') {
+        try {
+          questions = JSON.parse(questions);
+        } catch (e) {
+          console.warn('⚠️ Erro ao parsear questions do formulário:', e);
+          return;
+        }
+      }
+
+      if (!questions || !Array.isArray(questions) || !eval.answers) return;
+
+      // Parsear answers se for string JSON
+      let answers = eval.answers;
+      if (typeof answers === 'string') {
+        try {
+          answers = JSON.parse(answers);
+        } catch (e) {
+          console.warn('⚠️ Erro ao parsear answers da avaliação:', e);
+          return;
+        }
+      }
+
+      // Analisar cada pergunta da avaliação
+      questions.forEach(question => {
+        if (question.type === 'text') return; // Ignorar perguntas de texto
+
+        const answer = answers[question.id];
+        if (answer === undefined || answer === null) return;
+
+        let questionScore = 0;
+        let maxScore = 0;
+
+        // Calcular pontuação da pergunta
+        if (question.type === 'satisfaction') {
+          questionScore = answer || 0;
+          maxScore = 10;
+        } else if (question.type === 'multiple-choice') {
+          const selectedOption = question.options?.find(opt => opt.text === answer);
+          questionScore = selectedOption?.value || 0;
+          maxScore = Math.max(...(question.options?.map(o => o.value || 0) || [0]), 0);
+        } else if (question.type === 'checkbox') {
+          if (Array.isArray(answer) && answer.length > 0) {
+            answer.forEach(ans => {
+              const selectedOption = question.options?.find(opt => opt.text === ans);
+              if (selectedOption) {
+                questionScore += selectedOption.value || 0;
+              }
+            });
+          }
+          maxScore = question.options?.reduce((sum, opt) => sum + (opt.value > 0 ? opt.value : 0), 0) || 0;
+        }
+
+        // Calcular pontuação percentual (0-100)
+        const percentageScore = maxScore > 0 ? (questionScore / maxScore) * 100 : 0;
+
+        // Se a pontuação for abaixo de 70, registrar como gap
+        if (percentageScore < 70) {
+          if (!questionGaps.has(question.id)) {
+            questionGaps.set(question.id, {
+              count: 0,
+              totalScore: 0,
+              questionText: question.text || question.question || 'Pergunta sem texto',
+            });
+          }
+          const gap = questionGaps.get(question.id);
+          gap.count += 1;
+          gap.totalScore += percentageScore;
+        }
+      });
+    });
+
+    // Converter gaps em lista de strings descritivas
+    const gapsList = Array.from(questionGaps.entries())
+      .map(([questionId, gap]) => {
+        const avgScore = Math.round(gap.totalScore / gap.count);
+        return `${gap.questionText} (${gap.count} avaliação${gap.count > 1 ? 'ões' : ''} com média de ${avgScore} pontos)`;
+      })
+      .sort((a, b) => {
+        // Ordenar por frequência (mais frequente primeiro)
+        const countA = parseInt(a.match(/\((\d+)/)?.[1] || '0');
+        const countB = parseInt(b.match(/\((\d+)/)?.[1] || '0');
+        return countB - countA;
+      })
+      .slice(0, 5); // Limitar a 5 gaps mais frequentes por pilar
+
+    gapsByPillar[pillar] = gapsList;
+  });
+
+  return gapsByPillar;
+};
+
 const Dashboard = () => {
-  const { stores, feedbacks, evaluations } = useData();
+  const { stores, feedbacks, evaluations, forms } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   const [filters, setFilters] = useState({ store: [], bandeira: [], franqueado: [], supervisor: [], estado: [] });
@@ -221,15 +358,13 @@ const Dashboard = () => {
           return { name: pillar, score };
         });
         
+        // Calcular gaps para loja
+        const gaps = calculateGaps(storeEvals, forms);
+        
         return {
             overallScore,
             pillars: pillarScores,
-            gaps: {
-              Pessoas: [],
-              Performance: [],
-              Ambientação: [],
-              Digital: [],
-            },
+            gaps,
             feedbackSummary,
         }
     }
@@ -275,26 +410,25 @@ const Dashboard = () => {
         };
     });
 
+    // Calcular gaps para admin/supervisor
+    const gaps = calculateGaps(approvedEvaluations, forms);
+
     console.log('📊 [Dashboard] Dados calculados:', {
       overallScore,
       pillarScores,
-      supervisorAnalysis: supervisorAnalysis.length
+      supervisorAnalysis: supervisorAnalysis.length,
+      gaps: Object.keys(gaps).map(p => ({ pillar: p, count: gaps[p].length }))
     });
 
     return {
         overallScore,
         overallTrend: null, // Pode ser calculado depois comparando com mês anterior
         pillars: pillarScores,
-        gaps: {
-          Pessoas: [],
-          Performance: [],
-          Ambientação: [],
-          Digital: [],
-        },
+        gaps,
         supervisorAnalysis,
         feedbackSummary,
     };
-  }, [user, filteredData, feedbacks, evaluations]);
+  }, [user, filteredData, feedbacks, evaluations, forms]);
 
   const handleExport = () => {
     toast({
