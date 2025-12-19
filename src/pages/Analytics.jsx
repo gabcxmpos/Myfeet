@@ -130,16 +130,51 @@ const Analytics = () => {
       Digital: [],
     };
 
+    if (!approvedEvals || approvedEvals.length === 0 || !formsList || formsList.length === 0) {
+      console.log('⚠️ [calculateDetailedGaps] Sem dados suficientes:', {
+        evaluations: approvedEvals?.length || 0,
+        forms: formsList?.length || 0
+      });
+      return gapsByPillar;
+    }
+
     const questionScores = {};
 
     approvedEvals.forEach(evaluation => {
-      const form = formsList.find(f => f.id === evaluation.formId);
-      if (!form || !form.questions) return;
+      const formId = evaluation.form_id || evaluation.formId;
+      const form = formsList.find(f => f.id === formId);
+      if (!form) return;
 
-      form.questions.forEach(question => {
+      // Parsear questions se for string JSON
+      let questions = form.questions;
+      if (typeof questions === 'string') {
+        try {
+          questions = JSON.parse(questions);
+        } catch (e) {
+          console.warn('⚠️ Erro ao parsear questions do formulário:', e);
+          return;
+        }
+      }
+
+      if (!questions || !Array.isArray(questions)) return;
+
+      // Parsear answers se for string JSON
+      let answers = evaluation.answers;
+      if (typeof answers === 'string') {
+        try {
+          answers = JSON.parse(answers);
+        } catch (e) {
+          console.warn('⚠️ Erro ao parsear answers da avaliação:', e);
+          return;
+        }
+      }
+
+      if (!answers) return;
+
+      questions.forEach(question => {
         if (question.type === 'text') return;
 
-        const answer = evaluation.answers?.[question.id];
+        const answer = answers[question.id];
         const questionScore = calculateQuestionScore(question, answer);
         
         if (questionScore === null) return;
@@ -159,7 +194,7 @@ const Analytics = () => {
         }
         questionScores[pillar][questionKey].scores.push({
           score: questionScore,
-          storeId: evaluation.storeId,
+          storeId: evaluation.storeId || evaluation.store_id,
           evaluationId: evaluation.id,
           date: evaluation.date || evaluation.created_at
         });
@@ -324,6 +359,14 @@ const Analytics = () => {
 
     // Calcular gaps com análises aprofundadas
     const detailedGaps = calculateDetailedGaps(filteredEvaluations, forms);
+    
+    console.log('📊 [Analytics] Gaps calculados:', {
+      totalGaps: Object.values(detailedGaps).reduce((sum, pillarGaps) => sum + pillarGaps.length, 0),
+      byPillar: Object.keys(detailedGaps).map(p => ({
+        pillar: p,
+        count: detailedGaps[p].length
+      }))
+    });
 
     return { radarData, brandPerformance, franchiseeRanking, patentDistributionData, gaps: detailedGaps };
   }, [filteredData, patentSettings, forms, periodFilter]);
@@ -465,7 +508,7 @@ const Analytics = () => {
         )}
 
         {/* Seção de Gaps com Análises Aprofundadas */}
-        {filteredData.filteredStores.length > 0 && analyticsData.gaps && (
+        {filteredData.filteredStores.length > 0 && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }} 
             animate={{ opacity: 1, y: 0 }} 
@@ -482,10 +525,19 @@ const Analytics = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {['Pessoas', 'Performance', 'Ambientação', 'Digital'].map(pillar => {
-                const pillarGaps = analyticsData.gaps[pillar] || [];
-                if (pillarGaps.length === 0) return null;
+            {!analyticsData.gaps || Object.values(analyticsData.gaps).every(pillarGaps => pillarGaps.length === 0) ? (
+              <div className="bg-card rounded-xl shadow-lg border border-border p-8 text-center">
+                <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-lg font-semibold text-foreground mb-2">Nenhum gap identificado</p>
+                <p className="text-sm text-muted-foreground">
+                  Todas as perguntas estão com pontuação acima de 70 pontos. Parabéns! 🎉
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {['Pessoas', 'Performance', 'Ambientação', 'Digital'].map(pillar => {
+                  const pillarGaps = analyticsData.gaps?.[pillar] || [];
+                  if (pillarGaps.length === 0) return null;
 
                 const pillarColors = {
                   Pessoas: 'text-blue-400',
@@ -590,10 +642,11 @@ const Analytics = () => {
                   </motion.div>
                 );
               })}
-            </div>
+              </div>
+            )}
 
             {/* Resumo geral */}
-            {Object.values(analyticsData.gaps).some(pillarGaps => pillarGaps.length > 0) && (
+            {analyticsData.gaps && Object.values(analyticsData.gaps).some(pillarGaps => pillarGaps.length > 0) && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
