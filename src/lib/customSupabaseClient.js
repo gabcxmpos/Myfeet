@@ -49,33 +49,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       try {
         const response = await fetch(url, options);
         
-        // Se for erro 400 em rotas de refresh token, tratar silenciosamente
-        if (response.status === 400 && typeof window !== 'undefined') {
-          try {
-            const urlString = typeof url === 'string' ? url : url.url || url.toString();
-            const urlObj = urlString.startsWith('http') 
-              ? new URL(urlString) 
-              : new URL(urlString, window.location.origin);
-            
-            // Verificar se é erro de refresh token (erro esperado quando sessão expira)
-            const isRefreshTokenError = urlObj.pathname.includes('/auth/v1/token') && 
-                                       urlObj.searchParams.get('grant_type') === 'refresh_token';
-            
-            if (isRefreshTokenError) {
-              // Não logar como erro crítico - apenas limpar sessão silenciosamente
-              clearExpiredSession();
-              window.dispatchEvent(new CustomEvent('supabase-session-expired'));
-              // Retornar uma resposta mock para não quebrar o fluxo
-              return new Response(JSON.stringify({ error: 'refresh_token_not_found' }), {
-                status: 400,
-                headers: { 'Content-Type': 'application/json' }
-              });
-            }
-          } catch (urlError) {
-            // Ignorar erros ao verificar URL
-          }
-        }
-        
         // Se for erro 403 em rotas de autenticação, limpar sessão
         if (response.status === 403 && typeof window !== 'undefined') {
           try {
@@ -88,6 +61,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
                 (urlObj.pathname.includes('/user') || urlObj.pathname.includes('/logout'))) {
               console.warn('⚠️ Erro 403 detectado em rota de autenticação. Limpando sessão local...');
               clearExpiredSession();
+              // Disparar evento customizado para o AuthContext tratar
               window.dispatchEvent(new CustomEvent('supabase-session-expired'));
             }
           } catch (urlError) {
