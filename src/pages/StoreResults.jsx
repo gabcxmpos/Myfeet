@@ -32,6 +32,12 @@ const StoreResults = () => {
   
   // Forçar recarregamento dos dados quando voltar para a aba ou quando a página carregar
   useEffect(() => {
+    // Verificar se fetchData existe antes de usar
+    if (!fetchData || typeof fetchData !== 'function') {
+      console.warn('⚠️ [StoreResults] fetchData não está disponível');
+      return;
+    }
+    
     // Sempre recarregar dados quando o componente montar ou quando currentStore mudar
     if (currentStore) {
       console.log('🔄 [StoreResults] Recarregando dados do servidor ao montar/atualizar componente');
@@ -43,7 +49,7 @@ const StoreResults = () => {
     }
     
     const handleVisibilityChange = () => {
-      if (!document.hidden && currentStore) {
+      if (!document.hidden && currentStore && fetchData && typeof fetchData === 'function') {
         console.log('👁️ [StoreResults] Aba voltou ao foco - recarregando dados do servidor');
         // Forçar recarregamento dos dados do servidor
         fetchData().then(() => {
@@ -56,7 +62,7 @@ const StoreResults = () => {
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [currentStore?.id]); // Recarregar quando a loja mudar
+  }, [currentStore?.id, fetchData]); // Recarregar quando a loja mudar ou fetchData mudar
 
   // Buscar metas do mês selecionado usando JSONB (goals[resultMonth])
   const goals = useMemo(() => {
@@ -419,12 +425,14 @@ const StoreResults = () => {
       
       // IMPORTANTE: Forçar recarregamento completo dos dados do servidor após salvar
       // Isso garante que quando o usuário voltar, os dados estarão atualizados
-      console.log('🔄 [StoreResults] Forçando recarregamento completo dos dados após salvamento...');
-      fetchData().then(() => {
-        console.log('✅ [StoreResults] Dados recarregados do servidor após salvamento');
-      }).catch(err => {
-        console.error('⚠️ [StoreResults] Erro ao recarregar dados:', err);
-      });
+      if (fetchData && typeof fetchData === 'function') {
+        console.log('🔄 [StoreResults] Forçando recarregamento completo dos dados após salvamento...');
+        fetchData().then(() => {
+          console.log('✅ [StoreResults] Dados recarregados do servidor após salvamento');
+        }).catch(err => {
+          console.error('⚠️ [StoreResults] Erro ao recarregar dados:', err);
+        });
+      }
       
       // Atualizar lastLoadedMonth e lastLoadedStoreId para evitar reset
       setLastLoadedMonth(resultMonth);

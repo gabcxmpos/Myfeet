@@ -50,6 +50,11 @@ const Training = () => {
       return [];
     }
     
+    if (!trainings || !Array.isArray(trainings)) {
+      console.log('⚠️ [Training] Trainings não está disponível ou não é um array:', trainings);
+      return [];
+    }
+    
     console.log('🔍 [Training] Filtrando treinamentos para loja:', user.storeId);
     console.log('🔍 [Training] Total de treinamentos recebidos:', trainings.length);
     

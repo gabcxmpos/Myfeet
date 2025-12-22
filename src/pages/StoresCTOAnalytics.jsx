@@ -133,6 +133,9 @@ const StoresCTOAnalytics = () => {
       // CTO TOTAL = AMM Final + FPP + COND + Custos Adicionais
       const ctoTotal = ammFinal + fpp + cond + totalAdditionalCosts;
       
+      // CTO TOTAL ESPERADO = Expected AMM + Expected FPP + Expected COND + Custos Adicionais
+      const ctoTotalEsperado = expectedAMM + expectedFPP + expectedCond + totalAdditionalCosts;
+      
       // PERCENTUAL DO CTO MENSAL = (CTO do Boleto / Vendas do Mês) × 100
       // CTO do Boleto = AMM Final + FPP + COND (sem custos adicionais)
       const ctoBoleto = ammFinal + fpp + cond;
@@ -158,6 +161,7 @@ const StoresCTOAnalytics = () => {
         additionalCosts: totalAdditionalCosts,
         ctoBoleto, // CTO do Boleto (sem custos adicionais)
         ctoTotal,
+        ctoTotalEsperado, // CTO Total Esperado
         percentualCTO, // Percentual do CTO Mensal
         pe,
         diferencaPE: faturamento > pe ? faturamento - pe : 0, // Diferença entre vendas e PE
@@ -177,21 +181,68 @@ const StoresCTOAnalytics = () => {
     });
   }, [selectedStore, selectedYear]);
 
-  // Calcular totais anuais
+  // Calcular totais anuais e estatísticas relevantes
   const annualTotals = useMemo(() => {
-    return monthlyData.reduce((acc, month) => ({
+    const totals = monthlyData.reduce((acc, month) => ({
       faturamento: acc.faturamento + month.faturamento,
       ctoTotal: acc.ctoTotal + month.ctoTotal,
       ctoBoleto: acc.ctoBoleto + (month.ctoBoleto || 0),
+      ctoTotalEsperado: acc.ctoTotalEsperado + (month.ctoTotalEsperado || 0),
       lucro: acc.lucro + month.lucro,
-      mesesAcimaPE: acc.mesesAcimaPE + (month.acimaPE ? 1 : 0)
+      mesesAcimaPE: acc.mesesAcimaPE + (month.acimaPE ? 1 : 0),
+      // Valores pagos
+      ammPago: acc.ammPago + month.amm,
+      fppPago: acc.fppPago + month.fpp,
+      condPago: acc.condPago + month.cond,
+      complementarPago: acc.complementarPago + (month.paidValue || 0),
+      outrosPago: acc.outrosPago + month.additionalCosts,
+      // Diferenças
+      diffAMM: acc.diffAMM + (month.expectedAMM ? (month.amm - month.expectedAMM) : 0),
+      diffFPP: acc.diffFPP + (month.expectedFPP ? (month.fpp - month.expectedFPP) : 0),
+      diffCond: acc.diffCond + (month.expectedCond ? (month.cond - month.expectedCond) : 0),
+      diffComplementar: acc.diffComplementar + (month.valorComplementarCalculado > 0 ? ((month.paidValue || 0) - month.valorComplementarCalculado) : 0),
+      diffCTO: acc.diffCTO + (month.ctoTotalEsperado ? (month.ctoTotal - month.ctoTotalEsperado) : 0),
     }), {
       faturamento: 0,
       ctoTotal: 0,
       ctoBoleto: 0,
+      ctoTotalEsperado: 0,
       lucro: 0,
-      mesesAcimaPE: 0
+      mesesAcimaPE: 0,
+      ammPago: 0,
+      fppPago: 0,
+      condPago: 0,
+      complementarPago: 0,
+      outrosPago: 0,
+      diffAMM: 0,
+      diffFPP: 0,
+      diffCond: 0,
+      diffComplementar: 0,
+      diffCTO: 0,
     });
+
+    // Encontrar maiores diferenças
+    const maioresDiferencas = monthlyData
+      .map(month => ({
+        mes: month.mes,
+        diffAMM: month.expectedAMM ? Math.abs(month.amm - month.expectedAMM) : 0,
+        diffFPP: month.expectedFPP ? Math.abs(month.fpp - month.expectedFPP) : 0,
+        diffCond: month.expectedCond ? Math.abs(month.cond - month.expectedCond) : 0,
+        diffComplementar: month.valorComplementarCalculado > 0 ? Math.abs((month.paidValue || 0) - month.valorComplementarCalculado) : 0,
+        diffCTO: month.ctoTotalEsperado ? Math.abs(month.ctoTotal - month.ctoTotalEsperado) : 0,
+      }))
+      .filter(m => m.diffAMM > 0 || m.diffFPP > 0 || m.diffCond > 0 || m.diffComplementar > 0 || m.diffCTO > 0)
+      .sort((a, b) => {
+        const maxA = Math.max(a.diffAMM, a.diffFPP, a.diffCond, a.diffComplementar, a.diffCTO);
+        const maxB = Math.max(b.diffAMM, b.diffFPP, b.diffCond, b.diffComplementar, b.diffCTO);
+        return maxB - maxA;
+      })
+      .slice(0, 3);
+
+    return {
+      ...totals,
+      maioresDiferencas,
+    };
   }, [monthlyData]);
 
   // Verificar permissões
@@ -279,45 +330,50 @@ const StoresCTOAnalytics = () => {
 
         {selectedStore && (
           <>
-            {/* Resumo Anual */}
+            {/* Resumo Anual - Cards Principais */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
+              <Card className="border-l-4 border-l-green-500 bg-gradient-to-br from-background to-green-500/5">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Faturamento Anual</p>
-                      <p className="text-2xl font-bold text-foreground mt-1">
+                      <p className="text-sm text-muted-foreground font-medium">Faturamento Anual</p>
+                      <p className="text-3xl font-bold text-foreground mt-2">
                         R$ {annualTotals.faturamento.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
-                    <DollarSign className="w-8 h-8 text-green-500" />
+                    <div className="p-3 bg-green-500/10 rounded-lg">
+                      <DollarSign className="w-8 h-8 text-green-500" />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-l-4 border-l-orange-500 bg-gradient-to-br from-background to-orange-500/5">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">CTO Total Anual</p>
-                      <p className="text-2xl font-bold text-foreground mt-1">
+                      <p className="text-sm text-muted-foreground font-medium">CTO Total Pago</p>
+                      <p className="text-3xl font-bold text-foreground mt-2">
                         R$ {annualTotals.ctoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                        <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                         {annualTotals.mesesAcimaPE} de {monthlyData.length} meses acima do PE
                       </p>
                     </div>
-                    <Calculator className="w-8 h-8 text-orange-500" />
+                    <div className="p-3 bg-orange-500/10 rounded-lg">
+                      <Calculator className="w-8 h-8 text-orange-500" />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="border-l-4 border-l-blue-500 bg-gradient-to-br from-background to-blue-500/5">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-muted-foreground">Percentual CTO Médio</p>
-                      <p className={`text-2xl font-bold mt-1 ${
+                      <p className="text-sm text-muted-foreground font-medium">Percentual CTO Médio</p>
+                      <p className={`text-3xl font-bold mt-2 ${
                         annualTotals.faturamento > 0 && annualTotals.ctoBoleto > 0
                           ? (() => {
                               const percentualMedio = (annualTotals.ctoBoleto / annualTotals.faturamento) * 100;
@@ -334,141 +390,261 @@ const StoresCTOAnalytics = () => {
                           : '-'
                         }
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
+                      <p className="text-xs text-muted-foreground mt-2">
                         CTO do Boleto ÷ Faturamento
                       </p>
                     </div>
-                    <BarChart3 className="w-8 h-8 text-blue-500" />
+                    <div className="p-3 bg-blue-500/10 rounded-lg">
+                      <BarChart3 className="w-8 h-8 text-blue-500" />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
             </div>
 
-            {/* Gráfico */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Faturamento vs CTO Mensal</CardTitle>
+            {/* Cards de Informações Relevantes */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Valores Pagos */}
+              <Card className="bg-gradient-to-br from-background to-purple-500/5">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-purple-500/10 rounded-lg">
+                        <DollarSign className="w-5 h-5 text-purple-500" />
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">Valores Pagos</p>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">AMM:</span>
+                        <span className="font-semibold text-green-500">
+                          R$ {annualTotals.ammPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">FPP:</span>
+                        <span className="font-semibold text-green-500">
+                          R$ {annualTotals.fppPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">COND:</span>
+                        <span className="font-semibold text-green-500">
+                          R$ {annualTotals.condPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Complementar:</span>
+                        <span className="font-semibold text-green-500">
+                          R$ {annualTotals.complementarPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Custos com Outros */}
+              <Card className="bg-gradient-to-br from-background to-yellow-500/5">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-yellow-500/10 rounded-lg">
+                        <Calculator className="w-5 h-5 text-yellow-500" />
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">Custos com Outros</p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-2xl font-bold text-yellow-500">
+                        R$ {annualTotals.outrosPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {annualTotals.outrosPago > 0 
+                          ? `${((annualTotals.outrosPago / annualTotals.ctoTotal) * 100).toFixed(2)}% do CTO Total`
+                          : 'Sem custos adicionais'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Diferenças Totais */}
+              <Card className="bg-gradient-to-br from-background to-red-500/5">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-red-500/10 rounded-lg">
+                        <BarChart3 className="w-5 h-5 text-red-500" />
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">Diferenças Totais</p>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">CTO Total:</span>
+                        <span className={`font-semibold ${annualTotals.diffCTO < 0 ? 'text-red-500' : annualTotals.diffCTO > 0 ? 'text-green-500' : 'text-muted-foreground'}`}>
+                          {annualTotals.diffCTO !== 0 
+                            ? `${annualTotals.diffCTO > 0 ? '+' : ''}R$ ${annualTotals.diffCTO.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'R$ 0,00'
+                          }
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">AMM:</span>
+                        <span className={`font-semibold ${annualTotals.diffAMM < 0 ? 'text-red-500' : annualTotals.diffAMM > 0 ? 'text-green-500' : 'text-muted-foreground'}`}>
+                          {annualTotals.diffAMM !== 0 
+                            ? `${annualTotals.diffAMM > 0 ? '+' : ''}R$ ${annualTotals.diffAMM.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'R$ 0,00'
+                          }
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Complementar:</span>
+                        <span className={`font-semibold ${annualTotals.diffComplementar < 0 ? 'text-red-500' : annualTotals.diffComplementar > 0 ? 'text-green-500' : 'text-muted-foreground'}`}>
+                          {annualTotals.diffComplementar !== 0 
+                            ? `${annualTotals.diffComplementar > 0 ? '+' : ''}R$ ${annualTotals.diffComplementar.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'R$ 0,00'
+                          }
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Maiores Diferenças */}
+              <Card className="bg-gradient-to-br from-background to-orange-500/5">
+                <CardContent className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-orange-500/10 rounded-lg">
+                        <BarChart3 className="w-5 h-5 text-orange-500" />
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">Maiores Diferenças</p>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      {annualTotals.maioresDiferencas && annualTotals.maioresDiferencas.length > 0 ? (
+                        annualTotals.maioresDiferencas.map((diff, idx) => {
+                          const maxDiff = Math.max(diff.diffAMM, diff.diffFPP, diff.diffCond, diff.diffComplementar, diff.diffCTO);
+                          return (
+                            <div key={idx} className="flex justify-between items-center">
+                              <span className="text-muted-foreground">{diff.mes}:</span>
+                              <span className="font-semibold text-orange-500">
+                                R$ {maxDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-muted-foreground text-xs">Sem diferenças significativas</p>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Gráfico Modernizado */}
+            <Card className="border-2 border-primary/20">
+              <CardHeader className="bg-gradient-to-r from-primary/10 to-transparent border-b">
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-primary" />
+                  Análise Visual: Faturamento vs CTO Mensal
+                </CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Visualização comparativa com valores pagos, diferenças e custos adicionais
+                </p>
               </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={monthlyData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="mes" />
-                    <YAxis />
-                    <Tooltip 
-                      formatter={(value) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              <CardContent className="pt-6">
+                <ResponsiveContainer width="100%" height={400}>
+                  <LineChart data={monthlyData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
+                    <XAxis 
+                      dataKey="mes" 
+                      stroke="#9ca3af"
+                      style={{ fontSize: '12px' }}
                     />
-                    <Legend />
-                    <Line type="monotone" dataKey="faturamento" stroke="#22c55e" name="Faturamento" strokeWidth={2} />
-                    <Line type="monotone" dataKey="ctoTotal" stroke="#f97316" name="CTO Total" strokeWidth={2} />
-                    <Line type="monotone" dataKey="pe" stroke="#ef4444" name="Ponto de Equilíbrio" strokeWidth={2} strokeDasharray="5 5" />
+                    <YAxis 
+                      stroke="#9ca3af"
+                      style={{ fontSize: '12px' }}
+                      tickFormatter={(value) => `R$ ${(value / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'rgba(17, 24, 39, 0.95)', 
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '8px',
+                        padding: '12px'
+                      }}
+                      formatter={(value, name) => {
+                        if (name === 'faturamento') return [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Faturamento'];
+                        if (name === 'ctoTotal') return [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'CTO Total Pago'];
+                        if (name === 'ctoTotalEsperado') return [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'CTO Total Esperado'];
+                        if (name === 'outros') return [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Custos Outros'];
+                        return [`R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, name];
+                      }}
+                      labelStyle={{ color: '#e5e7eb', fontWeight: 'bold' }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '20px' }}
+                      iconType="line"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="faturamento" 
+                      stroke="#22c55e" 
+                      name="Faturamento" 
+                      strokeWidth={3}
+                      dot={{ fill: '#22c55e', r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="ctoTotal" 
+                      stroke="#f97316" 
+                      name="CTO Total Pago" 
+                      strokeWidth={3}
+                      dot={{ fill: '#f97316', r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="ctoTotalEsperado" 
+                      stroke="#3b82f6" 
+                      name="CTO Total Esperado" 
+                      strokeWidth={2}
+                      strokeDasharray="5 5"
+                      dot={{ fill: '#3b82f6', r: 3 }}
+                      opacity={0.7}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="additionalCosts" 
+                      stroke="#eab308" 
+                      name="Custos Outros" 
+                      strokeWidth={2}
+                      dot={{ fill: '#eab308', r: 3 }}
+                      opacity={0.8}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="pe" 
+                      stroke="#ef4444" 
+                      name="Ponto de Equilíbrio" 
+                      strokeWidth={2} 
+                      strokeDasharray="8 4"
+                      dot={false}
+                      opacity={0.6}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
 
-            {/* Tabela 1: Esperado x Pago */}
+            {/* Tabela Única: Detalhamento Mensal Completo */}
             <Card>
               <CardHeader>
-                <CardTitle>Detalhamento Mensal - Esperado x Pago</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-secondary/50">
-                      <tr>
-                        <th className="p-3 text-left">Mês</th>
-                        <th className="p-3 text-right">AMM Esperado</th>
-                        <th className="p-3 text-right">AMM Pago</th>
-                        <th className="p-3 text-right">FPP Esperado</th>
-                        <th className="p-3 text-right">FPP Pago</th>
-                        <th className="p-3 text-right">Condomínio Esperado</th>
-                        <th className="p-3 text-right">Condomínio Pago</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {monthlyData.map((month, index) => {
-                        const tolerance = 100;
-                        const ammDiff = Math.abs(month.amm - (month.expectedAMM || 0));
-                        const fppDiff = Math.abs(month.fpp - (month.expectedFPP || 0));
-                        const condDiff = Math.abs(month.cond - (month.expectedCond || 0));
-                        const ammOk = !month.expectedAMM || ammDiff <= tolerance;
-                        const fppOk = !month.expectedFPP || fppDiff <= tolerance;
-                        const condOk = !month.expectedCond || condDiff <= tolerance;
-                        
-                        return (
-                          <tr key={index} className="border-b border-border/50 hover:bg-accent/50">
-                            <td className="p-3 font-medium">{month.mes}</td>
-                            <td className="p-3 text-right">
-                              {month.expectedAMM ? (
-                                <span className="text-foreground">
-                                  R$ {month.expectedAMM.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </td>
-                            <td className={`p-3 text-right ${ammOk ? 'text-green-400' : 'text-orange-400'}`}>
-                              <div className="flex flex-col items-end">
-                                <span>R$ {month.amm.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                {ammDiff > 0 && month.expectedAMM && (
-                                  <span className="text-xs">
-                                    Dif: R$ {ammDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-3 text-right">
-                              {month.expectedFPP ? (
-                                <span className="text-foreground">
-                                  R$ {month.expectedFPP.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </td>
-                            <td className={`p-3 text-right ${fppOk ? 'text-green-400' : 'text-orange-400'}`}>
-                              <div className="flex flex-col items-end">
-                                <span>R$ {month.fpp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                {fppDiff > 0 && month.expectedFPP && (
-                                  <span className="text-xs">
-                                    Dif: R$ {fppDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="p-3 text-right">
-                              {month.expectedCond ? (
-                                <span className="text-foreground">
-                                  R$ {month.expectedCond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </td>
-                            <td className={`p-3 text-right ${condOk ? 'text-green-400' : 'text-orange-400'}`}>
-                              <div className="flex flex-col items-end">
-                                <span>R$ {month.cond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                {condDiff > 0 && month.expectedCond && (
-                                  <span className="text-xs">
-                                    Dif: R$ {condDiff.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Tabela 2: Cálculo do CTO e Complementar */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Detalhamento Mensal - Cálculo do CTO e Complementar</CardTitle>
+                <CardTitle>Detalhamento Mensal</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -516,30 +692,42 @@ const StoresCTOAnalytics = () => {
                             </div>
                           </td>
                           <td className="p-3 text-right">
-                            <div className="flex flex-col items-end">
-                              {month.ammDiscount > 0 ? (
-                                <>
-                                  <span className="text-xs text-muted-foreground line-through">
-                                    R$ {month.ammOriginal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {month.expectedAMM ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Esperado:</span>
+                                  <span className="ml-1 text-foreground">
+                                    R$ {month.expectedAMM.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
-                                  <span className="text-green-500 font-semibold">
+                                </div>
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Pago:</span>
+                                  <span className="ml-1 text-green-500">
                                     R$ {month.amm.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
-                                  <span className="text-xs text-green-500">
-                                    (-R$ {month.ammDiscount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                                  </span>
-                                </>
-                              ) : (
-                                <span>R$ {month.amm.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                              )}
-                            </div>
+                                </div>
+                                {Math.abs(month.amm - month.expectedAMM) > 0.01 && (
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Diferença:</span>
+                                    <span className={`ml-1 ${(month.amm - month.expectedAMM) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                      {(month.amm - month.expectedAMM) < 0 
+                                        ? `-R$ ${Math.abs(month.amm - month.expectedAMM).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        : `+R$ ${(month.amm - month.expectedAMM).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      }
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </td>
                           <td className="p-3 text-right">
                             {month.valorComplementarCalculado > 0 ? (
                               <div className="flex flex-col items-end gap-1">
                                 <div>
-                                  <span className="text-xs text-muted-foreground">Calculado:</span>
-                                  <span className="ml-1 font-semibold text-foreground">
+                                  <span className="text-xs text-muted-foreground">Esperado:</span>
+                                  <span className="ml-1 text-foreground">
                                     R$ {month.valorComplementarCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 </div>
@@ -547,16 +735,16 @@ const StoresCTOAnalytics = () => {
                                   <>
                                     <div>
                                       <span className="text-xs text-muted-foreground">Pago:</span>
-                                      <span className="ml-1 font-semibold text-green-500">
+                                      <span className="ml-1 text-green-500">
                                         R$ {month.paidValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                       </span>
                                     </div>
-                                    {Math.abs(month.valorComplementarCalculado - month.paidValue) > 0 && (
+                                    {Math.abs(month.valorComplementarCalculado - month.paidValue) > 0.01 && (
                                       <div>
                                         <span className="text-xs text-muted-foreground">Diferença:</span>
-                                        <span className="ml-1 font-semibold text-orange-500">
-                                          {month.paidValue < month.valorComplementarCalculado 
-                                            ? `-R$ ${(month.valorComplementarCalculado - month.paidValue).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        <span className={`ml-1 ${(month.paidValue - month.valorComplementarCalculado) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                          {(month.paidValue - month.valorComplementarCalculado) < 0 
+                                            ? `-R$ ${Math.abs(month.paidValue - month.valorComplementarCalculado).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                             : `+R$ ${(month.paidValue - month.valorComplementarCalculado).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                                           }
                                         </span>
@@ -566,10 +754,9 @@ const StoresCTOAnalytics = () => {
                                 ) : (
                                   <div>
                                     <span className="text-xs text-muted-foreground">Diferença:</span>
-                                    <span className="ml-1 font-semibold text-orange-500">
-                                      R$ {month.valorComplementarCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    <span className="ml-1 text-red-500">
+                                      -R$ {month.valorComplementarCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
-                                    <span className="text-xs text-orange-500 block mt-0.5">(a pagar)</span>
                                   </div>
                                 )}
                               </div>
@@ -578,16 +765,122 @@ const StoresCTOAnalytics = () => {
                             )}
                           </td>
                           <td className="p-3 text-right">
-                            R$ {month.fpp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {month.expectedFPP ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Esperado:</span>
+                                  <span className="ml-1 text-foreground">
+                                    R$ {month.expectedFPP.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Pago:</span>
+                                  <span className="ml-1 text-green-500">
+                                    R$ {month.fpp.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                {Math.abs(month.fpp - month.expectedFPP) > 0.01 && (
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Diferença:</span>
+                                    <span className={`ml-1 ${(month.fpp - month.expectedFPP) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                      {(month.fpp - month.expectedFPP) < 0 
+                                        ? `-R$ ${Math.abs(month.fpp - month.expectedFPP).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        : `+R$ ${(month.fpp - month.expectedFPP).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      }
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </td>
                           <td className="p-3 text-right">
-                            R$ {month.cond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {month.expectedCond ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Esperado:</span>
+                                  <span className="ml-1 text-foreground">
+                                    R$ {month.expectedCond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Pago:</span>
+                                  <span className="ml-1 text-green-500">
+                                    R$ {month.cond.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                {Math.abs(month.cond - month.expectedCond) > 0.01 && (
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Diferença:</span>
+                                    <span className={`ml-1 ${(month.cond - month.expectedCond) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                      {(month.cond - month.expectedCond) < 0 
+                                        ? `-R$ ${Math.abs(month.cond - month.expectedCond).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                        : `+R$ ${(month.cond - month.expectedCond).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      }
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </td>
                           <td className="p-3 text-right">
-                            R$ {month.additionalCosts.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {month.additionalCosts > 0 ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Pago:</span>
+                                  <span className="ml-1 text-green-500">
+                                    R$ {month.additionalCosts.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
                           </td>
-                          <td className="p-3 text-right font-semibold">
-                            R$ {month.ctoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <td className="p-3 text-right">
+                            {month.ctoTotalEsperado > 0 || month.ctoTotal > 0 ? (
+                              <div className="flex flex-col items-end gap-1">
+                                <div>
+                                  <span className="text-xs text-muted-foreground">Esperado:</span>
+                                  <span className="ml-1 text-foreground">
+                                    R$ {month.ctoTotalEsperado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                                {month.ctoTotal > 0 ? (
+                                  <>
+                                    <div>
+                                      <span className="text-xs text-muted-foreground">Pago:</span>
+                                      <span className="ml-1 text-green-500">
+                                        R$ {month.ctoTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </span>
+                                    </div>
+                                    {Math.abs(month.ctoTotalEsperado - month.ctoTotal) > 0.01 && (
+                                      <div>
+                                        <span className="text-xs text-muted-foreground">Diferença:</span>
+                                        <span className={`ml-1 ${(month.ctoTotal - month.ctoTotalEsperado) < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                                          {(month.ctoTotal - month.ctoTotalEsperado) < 0 
+                                            ? `-R$ ${Math.abs(month.ctoTotal - month.ctoTotalEsperado).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                            : `+R$ ${(month.ctoTotal - month.ctoTotalEsperado).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                          }
+                                        </span>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div>
+                                    <span className="text-xs text-muted-foreground">Diferença:</span>
+                                    <span className="ml-1 text-red-500">
+                                      -R$ {month.ctoTotalEsperado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              '-'
+                            )}
                           </td>
                           <td className={`p-3 text-right font-semibold ${
                             month.percentualCTO > 12 

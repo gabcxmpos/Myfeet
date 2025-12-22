@@ -28,6 +28,16 @@ const StoresCTO = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [dashboardYear, setDashboardYear] = useState(new Date().getFullYear().toString());
   const [dashboardMonth, setDashboardMonth] = useState('all');
+  const [periodStart, setPeriodStart] = useState(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    return firstDay.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
+  const [periodEnd, setPeriodEnd] = useState(() => {
+    const now = new Date();
+    return now.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
+  const [usePeriodFilter, setUsePeriodFilter] = useState(false);
 
   useOptimizedRefresh(fetchData);
 
@@ -141,47 +151,87 @@ const StoresCTO = () => {
                 </div>
                 
                 {/* Filtros */}
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="dashboard-year" className="text-sm text-muted-foreground whitespace-nowrap">Ano:</Label>
-                    <Select value={dashboardYear} onValueChange={setDashboardYear}>
-                      <SelectTrigger id="dashboard-year" className="w-[120px] bg-secondary">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Array.from({ length: 5 }, (_, i) => {
-                          const year = new Date().getFullYear() - i;
-                          return (
-                            <SelectItem key={year} value={year.toString()}>
-                              {year}
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="dashboard-year" className="text-sm text-muted-foreground whitespace-nowrap">Ano:</Label>
+                      <Select value={dashboardYear} onValueChange={setDashboardYear} disabled={usePeriodFilter}>
+                        <SelectTrigger id="dashboard-year" className="w-[120px] bg-secondary">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 5 }, (_, i) => {
+                            const year = new Date().getFullYear() - i;
+                            return (
+                              <SelectItem key={year} value={year.toString()}>
+                                {year}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="dashboard-month" className="text-sm text-muted-foreground whitespace-nowrap">Mês:</Label>
+                      <Select value={dashboardMonth} onValueChange={setDashboardMonth} disabled={usePeriodFilter}>
+                        <SelectTrigger id="dashboard-month" className="w-[180px] bg-secondary">
+                          <SelectValue placeholder="Todos os meses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos os meses</SelectItem>
+                          {Array.from({ length: 12 }, (_, i) => {
+                            const month = i + 1;
+                            const monthKey = `${dashboardYear}-${String(month).padStart(2, '0')}`;
+                            const monthDate = new Date(parseInt(dashboardYear), i, 1);
+                            return (
+                              <SelectItem key={monthKey} value={monthKey}>
+                                {format(monthDate, 'MMMM yyyy', { locale: ptBR })}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="use-period-filter"
+                        checked={usePeriodFilter}
+                        onChange={(e) => setUsePeriodFilter(e.target.checked)}
+                        className="w-4 h-4"
+                      />
+                      <Label htmlFor="use-period-filter" className="text-sm text-muted-foreground whitespace-nowrap cursor-pointer">
+                        Usar período personalizado
+                      </Label>
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="dashboard-month" className="text-sm text-muted-foreground whitespace-nowrap">Mês:</Label>
-                    <Select value={dashboardMonth} onValueChange={setDashboardMonth}>
-                      <SelectTrigger id="dashboard-month" className="w-[180px] bg-secondary">
-                        <SelectValue placeholder="Todos os meses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos os meses</SelectItem>
-                        {Array.from({ length: 12 }, (_, i) => {
-                          const month = i + 1;
-                          const monthKey = `${dashboardYear}-${String(month).padStart(2, '0')}`;
-                          const monthDate = new Date(parseInt(dashboardYear), i, 1);
-                          return (
-                            <SelectItem key={monthKey} value={monthKey}>
-                              {format(monthDate, 'MMMM yyyy', { locale: ptBR })}
-                            </SelectItem>
-                          );
-                        })}
-                      </SelectContent>
-                    </Select>
-                  </div>
+
+                  {usePeriodFilter && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="period-start" className="text-sm text-muted-foreground whitespace-nowrap">Data Início:</Label>
+                        <Input
+                          id="period-start"
+                          type="date"
+                          value={periodStart}
+                          onChange={(e) => setPeriodStart(e.target.value)}
+                          className="w-[150px] bg-secondary"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="period-end" className="text-sm text-muted-foreground whitespace-nowrap">Data Fim:</Label>
+                        <Input
+                          id="period-end"
+                          type="date"
+                          value={periodEnd}
+                          onChange={(e) => setPeriodEnd(e.target.value)}
+                          className="w-[150px] bg-secondary"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -198,19 +248,61 @@ const StoresCTO = () => {
                 let lojasEntre10e12 = 0;
                 let lojasAbaixo10 = 0;
                 
-                // Se mês selecionado, calcular apenas para aquele mês
-                // Se não, calcular para todos os meses do ano
-                const monthsToProcess = selectedMonth 
-                  ? [selectedMonth]
-                  : Array.from({ length: 12 }, (_, i) => {
-                      const month = i + 1;
-                      return `${selectedYear}-${String(month).padStart(2, '0')}`;
-                    });
+                // Custos: Esperado vs Pago
+                let totalAMMEsperado = 0;
+                let totalAMMPago = 0;
+                let totalFPPEsperado = 0;
+                let totalFPPPago = 0;
+                let totalCondEsperado = 0;
+                let totalCondPago = 0;
+                let totalCTOEsperado = 0;
+                let totalCTOPago = 0;
+                
+                // Custos gerais
+                let totalComplementar = 0;
+                let totalValoresAdicionais = 0;
+                
+                // Determinar meses a processar
+                let monthsToProcess = [];
+                
+                if (usePeriodFilter && periodStart && periodEnd) {
+                  // Filtrar por período personalizado
+                  const startDate = new Date(periodStart);
+                  const endDate = new Date(periodEnd);
+                  const currentDate = new Date(startDate);
+                  
+                  while (currentDate <= endDate) {
+                    const year = currentDate.getFullYear();
+                    const month = currentDate.getMonth() + 1;
+                    const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+                    monthsToProcess.push(monthKey);
+                    
+                    // Avançar para o próximo mês
+                    currentDate.setMonth(currentDate.getMonth() + 1);
+                    currentDate.setDate(1); // Primeiro dia do mês
+                  }
+                } else if (selectedMonth) {
+                  // Mês específico selecionado
+                  monthsToProcess = [selectedMonth];
+                } else {
+                  // Todos os meses do ano
+                  monthsToProcess = Array.from({ length: 12 }, (_, i) => {
+                    const month = i + 1;
+                    return `${selectedYear}-${String(month).padStart(2, '0')}`;
+                  });
+                }
                 
                 filteredStores.forEach(store => {
                   const ctoData = store.cto_data || {};
                   const monthlySales = ctoData.monthlySales || {};
                   const monthlyBills = ctoData.monthlyBills || {};
+                  const basicInfo = ctoData.basicInfo || {};
+                  const yearBasicInfo = basicInfo[selectedYear.toString()] || {};
+                  
+                  // Valores esperados do ano (ou campos antigos para compatibilidade)
+                  const aluguelMin = yearBasicInfo.aluguelMin || parseFloat(ctoData.aluguelMin) || 0;
+                  const expectedFPP = yearBasicInfo.fundoParticipacao || 0;
+                  const expectedCond = yearBasicInfo.condominio || 0;
                   
                   let storeFaturamento = 0;
                   let storeCTOBoleto = 0;
@@ -220,17 +312,25 @@ const StoresCTO = () => {
                   monthsToProcess.forEach(monthKey => {
                     // Obter vendas (suportando estrutura antiga e nova)
                     const salesData = monthlySales[monthKey];
-                    let sales = 0;
+                    let salesFisico = 0;
+                    let salesDigital = 0;
                     if (salesData) {
                       if (typeof salesData === 'object' && salesData !== null) {
-                        // Nova estrutura: sempre usar físico (digital só conta se botão ativo no CTO mensal)
-                        sales = parseFloat(salesData.fisico || 0);
+                        // Nova estrutura: objeto com fisico e digital
+                        salesFisico = parseFloat(salesData.fisico || 0);
+                        salesDigital = parseFloat(salesData.digital || 0);
                       } else {
                         // Estrutura antiga
-                        sales = parseFloat(salesData || 0);
+                        salesFisico = parseFloat(salesData || 0);
+                        salesDigital = 0;
                       }
                     }
+                    
                     const bills = monthlyBills[monthKey] || {};
+                    const includeDigital = bills.includeDigital || false;
+                    
+                    // Vendas totais: sempre físico + digital (se botão ativo)
+                    const sales = salesFisico + (includeDigital ? salesDigital : 0);
                     
                     const amm = parseFloat(bills.amm || 0);
                     const ammDiscount = parseFloat(bills.ammDiscount || 0);
@@ -244,6 +344,32 @@ const StoresCTO = () => {
                       .reduce((sum, c) => sum + parseFloat(c.value || 0), 0);
                     
                     const ctoTotal = ctoBoleto + additionalCosts;
+                    
+                    // Calcular valores esperados para este mês
+                    const monthDate = new Date(monthKey + '-01');
+                    const isDecember = monthDate.getMonth() === 11;
+                    const expectedAMM = isDecember ? aluguelMin * 2 : aluguelMin;
+                    const expectedCTO = expectedAMM + expectedFPP + expectedCond;
+                    
+                    // Calcular valor complementar (baseado nas vendas totais)
+                    const aluguelPercentual = yearBasicInfo.aluguelPercentual || parseFloat(ctoData.aluguelPercentual) || 0;
+                    const pe = aluguelPercentual > 0 ? aluguelMin / (aluguelPercentual / 100) : 0;
+                    const diferencaVendas = sales > pe ? sales - pe : 0;
+                    const valorComplementar = diferencaVendas > 0 && aluguelPercentual > 0 
+                      ? diferencaVendas * (aluguelPercentual / 100) 
+                      : 0;
+                    
+                    // Acumular valores esperados e pagos
+                    totalAMMEsperado += expectedAMM;
+                    totalAMMPago += ammFinal;
+                    totalFPPEsperado += expectedFPP;
+                    totalFPPPago += fpp;
+                    totalCondEsperado += expectedCond;
+                    totalCondPago += cond;
+                    totalCTOEsperado += expectedCTO;
+                    totalCTOPago += ctoBoleto;
+                    totalComplementar += valorComplementar;
+                    totalValoresAdicionais += additionalCosts;
                     
                     if (sales > 0 && ctoBoleto > 0) {
                       storeFaturamento += sales;
@@ -268,6 +394,15 @@ const StoresCTO = () => {
                     else lojasAbaixo10++;
                   }
                 });
+                
+                // Calcular diferenças
+                const diffAMM = totalAMMPago - totalAMMEsperado;
+                const diffFPP = totalFPPPago - totalFPPEsperado;
+                const diffCond = totalCondPago - totalCondEsperado;
+                const diffCTO = totalCTOPago - totalCTOEsperado;
+                
+                // Custo total geral
+                const custoTotalGeral = totalAMMPago + totalFPPPago + totalComplementar + totalValoresAdicionais;
                 
                 const percentualMedio = totalFaturamento > 0 && totalCTOBoleto > 0
                   ? (totalCTOBoleto / totalFaturamento) * 100
@@ -363,6 +498,249 @@ const StoresCTO = () => {
                       </Card>
                     </div>
 
+                    {/* Seção de Custos Gerais */}
+                    {(totalAMMPago > 0 || totalFPPPago > 0 || totalComplementar > 0 || totalValoresAdicionais > 0) && (
+                      <Card className="border-2 border-primary/30">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Calculator className="w-5 h-5 text-primary" />
+                            Custos Gerais
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                            {/* AMM */}
+                            <div className="space-y-2 p-4 bg-secondary/50 rounded-lg">
+                              <div className="text-sm font-semibold text-foreground mb-2">AMM</div>
+                              <div className="text-2xl font-bold text-blue-400">
+                                R$ {totalAMMPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">Aluguel Mínimo Mensal</div>
+                            </div>
+
+                            {/* FPP */}
+                            <div className="space-y-2 p-4 bg-secondary/50 rounded-lg">
+                              <div className="text-sm font-semibold text-foreground mb-2">FPP</div>
+                              <div className="text-2xl font-bold text-blue-400">
+                                R$ {totalFPPPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">Fundo de Promoção</div>
+                            </div>
+
+                            {/* Complementar */}
+                            <div className="space-y-2 p-4 bg-secondary/50 rounded-lg">
+                              <div className="text-sm font-semibold text-foreground mb-2">Complementar</div>
+                              <div className="text-2xl font-bold text-purple-400">
+                                R$ {totalComplementar.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">Valor Complementar</div>
+                            </div>
+
+                            {/* Valores Adicionais */}
+                            <div className="space-y-2 p-4 bg-secondary/50 rounded-lg">
+                              <div className="text-sm font-semibold text-foreground mb-2">Outros</div>
+                              <div className="text-2xl font-bold text-orange-400">
+                                R$ {totalValoresAdicionais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                              <div className="text-xs text-muted-foreground">Valores Adicionais</div>
+                            </div>
+                          </div>
+
+                          {/* Total Geral */}
+                          <div className="pt-4 border-t border-border">
+                            <div className="flex items-center justify-between p-4 bg-primary/10 rounded-lg">
+                              <div className="text-lg font-semibold text-foreground">Custo Total Geral:</div>
+                              <div className="text-3xl font-bold text-primary">
+                                R$ {custoTotalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-2 text-center">
+                              AMM + FPP + Complementar + Valores Adicionais
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Seção de Custos: Esperado vs Pago */}
+                    {(totalAMMEsperado > 0 || totalAMMPago > 0) && (
+                      <Card className="border-2 border-primary/30">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Calculator className="w-5 h-5 text-primary" />
+                            Análise de Custos: Esperado vs Pago
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {/* AMM */}
+                            <div className="space-y-2 p-4 bg-secondary/50 rounded-lg">
+                              <div className="text-sm font-semibold text-foreground mb-3">AMM (Aluguel Mínimo Mensal)</div>
+                              <div className="space-y-2">
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Esperado:</div>
+                                  <div className="text-lg font-bold text-green-400">
+                                    R$ {totalAMMEsperado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Pago:</div>
+                                  <div className="text-lg font-bold text-blue-400">
+                                    R$ {totalAMMPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div className="pt-2 border-t border-border">
+                                  <div className="text-xs text-muted-foreground">Diferença:</div>
+                                  <div className={`text-lg font-bold ${
+                                    Math.abs(diffAMM) < 0.01 
+                                      ? 'text-green-500' 
+                                      : diffAMM > 0 
+                                      ? 'text-orange-500' 
+                                      : 'text-blue-500'
+                                  }`}>
+                                    {Math.abs(diffAMM) < 0.01 
+                                      ? 'R$ 0,00' 
+                                      : diffAMM > 0 
+                                      ? `+R$ ${Math.abs(diffAMM).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : `-R$ ${Math.abs(diffAMM).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    }
+                                  </div>
+                                  {Math.abs(diffAMM) >= 0.01 && (
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      {diffAMM > 0 ? 'Pagaram a mais' : 'Pagaram a menos'}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* FPP */}
+                            <div className="space-y-2 p-4 bg-secondary/50 rounded-lg">
+                              <div className="text-sm font-semibold text-foreground mb-3">FPP (Fundo de Promoção)</div>
+                              <div className="space-y-2">
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Esperado:</div>
+                                  <div className="text-lg font-bold text-green-400">
+                                    R$ {totalFPPEsperado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Pago:</div>
+                                  <div className="text-lg font-bold text-blue-400">
+                                    R$ {totalFPPPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div className="pt-2 border-t border-border">
+                                  <div className="text-xs text-muted-foreground">Diferença:</div>
+                                  <div className={`text-lg font-bold ${
+                                    Math.abs(diffFPP) < 0.01 
+                                      ? 'text-green-500' 
+                                      : diffFPP > 0 
+                                      ? 'text-orange-500' 
+                                      : 'text-blue-500'
+                                  }`}>
+                                    {Math.abs(diffFPP) < 0.01 
+                                      ? 'R$ 0,00' 
+                                      : diffFPP > 0 
+                                      ? `+R$ ${Math.abs(diffFPP).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : `-R$ ${Math.abs(diffFPP).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    }
+                                  </div>
+                                  {Math.abs(diffFPP) >= 0.01 && (
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      {diffFPP > 0 ? 'Pagaram a mais' : 'Pagaram a menos'}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Condomínio */}
+                            <div className="space-y-2 p-4 bg-secondary/50 rounded-lg">
+                              <div className="text-sm font-semibold text-foreground mb-3">Condomínio</div>
+                              <div className="space-y-2">
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Esperado:</div>
+                                  <div className="text-lg font-bold text-green-400">
+                                    R$ {totalCondEsperado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Pago:</div>
+                                  <div className="text-lg font-bold text-blue-400">
+                                    R$ {totalCondPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div className="pt-2 border-t border-border">
+                                  <div className="text-xs text-muted-foreground">Diferença:</div>
+                                  <div className={`text-lg font-bold ${
+                                    Math.abs(diffCond) < 0.01 
+                                      ? 'text-green-500' 
+                                      : diffCond > 0 
+                                      ? 'text-orange-500' 
+                                      : 'text-blue-500'
+                                  }`}>
+                                    {Math.abs(diffCond) < 0.01 
+                                      ? 'R$ 0,00' 
+                                      : diffCond > 0 
+                                      ? `+R$ ${Math.abs(diffCond).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : `-R$ ${Math.abs(diffCond).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    }
+                                  </div>
+                                  {Math.abs(diffCond) >= 0.01 && (
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      {diffCond > 0 ? 'Pagaram a mais' : 'Pagaram a menos'}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* CTO Total */}
+                            <div className="space-y-2 p-4 bg-secondary/50 rounded-lg border-2 border-primary/30">
+                              <div className="text-sm font-semibold text-foreground mb-3">CTO Total (Boleto)</div>
+                              <div className="space-y-2">
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Esperado:</div>
+                                  <div className="text-lg font-bold text-green-400">
+                                    R$ {totalCTOEsperado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">Pago:</div>
+                                  <div className="text-lg font-bold text-blue-400">
+                                    R$ {totalCTOPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </div>
+                                </div>
+                                <div className="pt-2 border-t border-border">
+                                  <div className="text-xs text-muted-foreground">Diferença:</div>
+                                  <div className={`text-lg font-bold ${
+                                    Math.abs(diffCTO) < 0.01 
+                                      ? 'text-green-500' 
+                                      : diffCTO > 0 
+                                      ? 'text-orange-500' 
+                                      : 'text-blue-500'
+                                  }`}>
+                                    {Math.abs(diffCTO) < 0.01 
+                                      ? 'R$ 0,00' 
+                                      : diffCTO > 0 
+                                      ? `+R$ ${Math.abs(diffCTO).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                      : `-R$ ${Math.abs(diffCTO).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    }
+                                  </div>
+                                  {Math.abs(diffCTO) >= 0.01 && (
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      {diffCTO > 0 ? 'Pagaram a mais' : 'Pagaram a menos'}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
                     {/* Lista de Lojas com CTO */}
                     {lojasComCTO > 0 && (
                       <Card>
@@ -379,30 +757,80 @@ const StoresCTO = () => {
                                 const ctoData = store.cto_data || {};
                                 const monthlySales = ctoData.monthlySales || {};
                                 const monthlyBills = ctoData.monthlyBills || {};
+                                const basicInfo = ctoData.basicInfo || {};
+                                const yearBasicInfo = basicInfo[selectedYear.toString()] || {};
+                                
+                                // Valores esperados do ano
+                                const aluguelMin = yearBasicInfo.aluguelMin || parseFloat(ctoData.aluguelMin) || 0;
+                                const expectedFPP = yearBasicInfo.fundoParticipacao || 0;
+                                const expectedCond = yearBasicInfo.condominio || 0;
                                 
                                 let totalSales = 0;
                                 let totalCTOBoleto = 0;
+                                let totalAMMEsperado = 0;
+                                let totalAMMPago = 0;
+                                let totalFPPEsperado = 0;
+                                let totalFPPPago = 0;
+                                let totalCondEsperado = 0;
+                                let totalCondPago = 0;
+                                let totalComplementar = 0;
+                                let totalValoresAdicionais = 0;
                                 
                                 monthsToProcess.forEach(monthKey => {
                                   // Obter vendas (suportando estrutura antiga e nova)
                                   const salesData = monthlySales[monthKey];
-                                  let sales = 0;
+                                  let salesFisico = 0;
+                                  let salesDigital = 0;
                                   if (salesData) {
                                     if (typeof salesData === 'object' && salesData !== null) {
-                                      // Nova estrutura: sempre usar físico (digital só conta se botão ativo no CTO mensal)
-                                      sales = parseFloat(salesData.fisico || 0);
+                                      // Nova estrutura: objeto com fisico e digital
+                                      salesFisico = parseFloat(salesData.fisico || 0);
+                                      salesDigital = parseFloat(salesData.digital || 0);
                                     } else {
                                       // Estrutura antiga
-                                      sales = parseFloat(salesData || 0);
+                                      salesFisico = parseFloat(salesData || 0);
+                                      salesDigital = 0;
                                     }
                                   }
+                                  
                                   const bills = monthlyBills[monthKey] || {};
+                                  const includeDigital = bills.includeDigital || false;
+                                  
+                                  // Vendas totais: sempre físico + digital (se botão ativo)
+                                  const sales = salesFisico + (includeDigital ? salesDigital : 0);
+                                  
                                   const amm = parseFloat(bills.amm || 0);
                                   const ammDiscount = parseFloat(bills.ammDiscount || 0);
                                   const ammFinal = Math.max(0, amm - ammDiscount);
                                   const fpp = parseFloat(bills.fpp || 0);
                                   const cond = parseFloat(bills.cond || 0);
                                   const ctoBoleto = ammFinal + fpp + cond;
+                                  
+                                  const additionalCosts = (bills.additionalCosts || [])
+                                    .filter(c => c.value && parseFloat(c.value) > 0)
+                                    .reduce((sum, c) => sum + parseFloat(c.value || 0), 0);
+                                  
+                                  // Calcular valores esperados para este mês
+                                  const monthDate = new Date(monthKey + '-01');
+                                  const isDecember = monthDate.getMonth() === 11;
+                                  const expectedAMM = isDecember ? aluguelMin * 2 : aluguelMin;
+                                  
+                                  // Calcular valor complementar (baseado nas vendas totais)
+                                  const aluguelPercentual = yearBasicInfo.aluguelPercentual || parseFloat(ctoData.aluguelPercentual) || 0;
+                                  const pe = aluguelPercentual > 0 ? aluguelMin / (aluguelPercentual / 100) : 0;
+                                  const diferencaVendas = sales > pe ? sales - pe : 0;
+                                  const valorComplementar = diferencaVendas > 0 && aluguelPercentual > 0 
+                                    ? diferencaVendas * (aluguelPercentual / 100) 
+                                    : 0;
+                                  
+                                  totalAMMEsperado += expectedAMM;
+                                  totalAMMPago += ammFinal;
+                                  totalFPPEsperado += expectedFPP;
+                                  totalFPPPago += fpp;
+                                  totalCondEsperado += expectedCond;
+                                  totalCondPago += cond;
+                                  totalComplementar += valorComplementar;
+                                  totalValoresAdicionais += additionalCosts;
                                   
                                   if (sales > 0 && ctoBoleto > 0) {
                                     totalSales += sales;
@@ -416,21 +844,18 @@ const StoresCTO = () => {
                                 
                                 if (totalSales === 0 || totalCTOBoleto === 0) return null;
                                 
+                                const totalCTOEsperado = totalAMMEsperado + totalFPPEsperado + totalCondEsperado;
+                                const diffCTO = totalCTOBoleto - totalCTOEsperado;
+                                
                                 return (
-                                  <div key={store.id} className="flex items-center justify-between p-3 bg-secondary/50 rounded-lg">
-                                    <div className="flex-1">
+                                  <div key={store.id} className="p-4 bg-secondary/50 rounded-lg border border-border/50">
+                                    <div className="flex items-center justify-between mb-3">
                                       <div className="flex items-center gap-2">
                                         <span className="font-medium text-foreground">{store.name}</span>
                                         {store.code && (
                                           <span className="text-xs text-muted-foreground">({store.code})</span>
                                         )}
                                       </div>
-                                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                                        <span>Vendas: R$ {totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                                        <span>CTO: R$ {totalCTOBoleto.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-3">
                                       <span className={`text-lg font-bold ${
                                         percentualCTO > 12 
                                           ? 'text-red-500' 
@@ -443,6 +868,100 @@ const StoresCTO = () => {
                                         {percentualCTO > 0 ? `${percentualCTO.toFixed(2)}%` : '-'}
                                       </span>
                                     </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3 pt-3 border-t border-border/50">
+                                      <div className="space-y-2">
+                                        <div className="text-xs font-semibold text-muted-foreground mb-2">Vendas e CTO</div>
+                                        <div className="flex items-center justify-between text-xs">
+                                          <span className="text-muted-foreground">Vendas:</span>
+                                          <span className="font-semibold text-green-400">
+                                            R$ {totalSales.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-xs">
+                                          <span className="text-muted-foreground">CTO Pago:</span>
+                                          <span className="font-semibold text-blue-400">
+                                            R$ {totalCTOBoleto.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      
+                                      <div className="space-y-2">
+                                        <div className="text-xs font-semibold text-muted-foreground mb-2">Custos: Esperado vs Pago</div>
+                                        {totalCTOEsperado > 0 ? (
+                                          <>
+                                            <div className="flex items-center justify-between text-xs">
+                                              <span className="text-muted-foreground">CTO Esperado:</span>
+                                              <span className="font-semibold text-green-400">
+                                                R$ {totalCTOEsperado.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center justify-between text-xs">
+                                              <span className="text-muted-foreground">Diferença:</span>
+                                              <span className={`font-semibold ${
+                                                Math.abs(diffCTO) < 0.01 
+                                                  ? 'text-green-500' 
+                                                  : diffCTO > 0 
+                                                  ? 'text-orange-500' 
+                                                  : 'text-blue-500'
+                                              }`}>
+                                                {Math.abs(diffCTO) < 0.01 
+                                                  ? 'R$ 0' 
+                                                  : diffCTO > 0 
+                                                  ? `+R$ ${Math.abs(diffCTO).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                                                  : `-R$ ${Math.abs(diffCTO).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                                                }
+                                              </span>
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div className="text-xs text-muted-foreground">
+                                            Sem informações básicas cadastradas
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Custos Gerais por Loja */}
+                                    {(totalAMMPago > 0 || totalFPPPago > 0 || totalComplementar > 0 || totalValoresAdicionais > 0) && (
+                                      <div className="mt-3 pt-3 border-t border-border/50">
+                                        <div className="text-xs font-semibold text-muted-foreground mb-2">Custos Gerais</div>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                                          <div>
+                                            <div className="text-muted-foreground">AMM:</div>
+                                            <div className="font-semibold text-blue-400">
+                                              R$ {totalAMMPago.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <div className="text-muted-foreground">FPP:</div>
+                                            <div className="font-semibold text-blue-400">
+                                              R$ {totalFPPPago.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <div className="text-muted-foreground">Complementar:</div>
+                                            <div className="font-semibold text-purple-400">
+                                              R$ {totalComplementar.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <div className="text-muted-foreground">Outros:</div>
+                                            <div className="font-semibold text-orange-400">
+                                              R$ {totalValoresAdicionais.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="mt-2 pt-2 border-t border-border/30">
+                                          <div className="flex items-center justify-between text-xs">
+                                            <span className="text-muted-foreground font-semibold">Total Geral:</span>
+                                            <span className="font-bold text-primary">
+                                              R$ {(totalAMMPago + totalFPPPago + totalComplementar + totalValoresAdicionais).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })

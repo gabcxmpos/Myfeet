@@ -20,6 +20,7 @@ const Collaborators = () => {
   const [role, setRole] = useState('');
   const [cpf, setCpf] = useState('');
   const [email, setEmail] = useState('');
+
   useEffect(() => {
     if (!jobRoles || jobRoles.length === 0) {
       setRole('');
@@ -39,9 +40,7 @@ const Collaborators = () => {
   }));
 
   const formatCPF = (value) => {
-    // Remove tudo que não é dígito
     const numbers = value.replace(/\D/g, '');
-    // Aplica a máscara
     if (numbers.length <= 11) {
       return numbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     }
@@ -64,7 +63,6 @@ const Collaborators = () => {
       return;
     }
 
-    // Validar email se fornecido
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast({ title: 'Erro', description: 'Email inválido.', variant: 'destructive' });
       return;
@@ -84,7 +82,6 @@ const Collaborators = () => {
       setCpf('');
       setEmail('');
     } catch (error) {
-      // Erro já é tratado no DataContext
       console.error('Erro ao adicionar colaborador:', error);
     }
   };
