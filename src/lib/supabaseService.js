@@ -260,7 +260,16 @@ export const fetchDailyChecklist = async (storeId, date) => {
     .eq('date', date)
     .single();
   
-  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found
+  // Ignorar erros quando não há registro
+  // PGRST116 = not found
+  // 406 = Cannot coerce the result to a single JSON object (quando não há registros)
+  if (error) {
+    if (error.code === 'PGRST116' || 
+        (error.message && error.message.includes('Cannot coerce'))) {
+      return null; // Não há registro para esta data
+    }
+    throw error; // Outro tipo de erro
+  }
   return data;
 };
 
