@@ -138,32 +138,31 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: is
               </div>
             )}
             <div className="flex items-center gap-2">
-              {/* Botão de minimizar/maximizar - apenas em desktop */}
-              {isDesktop && onToggleCollapse && (
+              {/* Botão de minimizar/maximizar - apenas em desktop e quando expandido */}
+              {/* Quando colapsado em desktop, não mostrar botão (Header já tem o Menu) */}
+              {isDesktop && onToggleCollapse && !isCollapsed && (
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={onToggleCollapse}
-                  aria-label={isCollapsed ? 'Expandir menu' : 'Minimizar menu'}
+                  aria-label="Minimizar menu"
                   className="hidden lg:flex"
                 >
-                  {isCollapsed ? (
-                    <Menu className="w-5 h-5" />
-                  ) : (
-                    <X className="w-5 h-5" />
-                  )}
+                  <X className="w-5 h-5" />
                 </Button>
               )}
-              {/* Botão de fechar - apenas em mobile */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="lg:hidden"
-                onClick={onClose}
-                aria-label="Fechar menu"
-              >
-                <X className="w-5 h-5" />
-              </Button>
+              {/* Botão de fechar - apenas em mobile, e apenas quando sidebar está aberta */}
+              {!isDesktop && isOpen && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="lg:hidden"
+                  onClick={onClose}
+                  aria-label="Fechar menu"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              )}
             </div>
           </div>
           

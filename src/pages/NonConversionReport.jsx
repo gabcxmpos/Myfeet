@@ -28,6 +28,15 @@ const NonConversionReport = () => {
   const { collaborators } = useData();
   const { toast } = useToast();
 
+  // Debug
+  useEffect(() => {
+    console.log('🔍 [NonConversionReport] Componente montado');
+    console.log('🔍 [NonConversionReport] User:', user);
+    console.log('🔍 [NonConversionReport] User role:', user?.role);
+    console.log('🔍 [NonConversionReport] User storeId:', user?.storeId);
+    console.log('🔍 [NonConversionReport] Collaborators:', collaborators?.length || 0);
+  }, [user, collaborators]);
+
   const [selectedCollaborator, setSelectedCollaborator] = useState('');
   const [situacao, setSituacao] = useState('');
   const [observacao, setObservacao] = useState('');
@@ -51,8 +60,12 @@ const NonConversionReport = () => {
 
   // Carregar registros
   const loadRecords = async () => {
-    if (!user?.storeId) return;
+    if (!user?.storeId) {
+      console.warn('⚠️ [NonConversionReport] Sem storeId, não é possível carregar registros');
+      return;
+    }
 
+    console.log('🔄 [NonConversionReport] Carregando registros para storeId:', user.storeId);
     try {
       setLoadingRecords(true);
       // Se tiver filtro de dia específico, usar ele como início e fim
@@ -67,10 +80,12 @@ const NonConversionReport = () => {
         endDate = dateFilterEnd ? new Date(dateFilterEnd) : null;
       }
       
+      console.log('🔄 [NonConversionReport] Parâmetros:', { startDate, endDate, dayFilter });
       const data = await api.fetchNonConversionRecords(user.storeId, startDate, endDate);
+      console.log('✅ [NonConversionReport] Registros carregados:', data?.length || 0);
       setRecords(data || []);
     } catch (error) {
-      console.error('Erro ao carregar registros:', error);
+      console.error('❌ [NonConversionReport] Erro ao carregar registros:', error);
       toast({
         variant: 'destructive',
         title: 'Erro',
@@ -268,12 +283,22 @@ const NonConversionReport = () => {
     }
   };
 
+  // Debug de permissões
+  useEffect(() => {
+    console.log('🔍 [NonConversionReport] Verificando permissões');
+    console.log('🔍 [NonConversionReport] User:', user);
+    console.log('🔍 [NonConversionReport] User role:', user?.role);
+    console.log('🔍 [NonConversionReport] Permissão:', user?.role === 'loja' || user?.role === 'loja_franquia');
+  }, [user]);
+
   if (!user || (user.role !== 'loja' && user.role !== 'loja_franquia')) {
+    console.warn('⚠️ [NonConversionReport] Acesso negado. User:', user, 'Role:', user?.role);
     return (
       <div className="space-y-6">
         <Card>
           <CardContent className="py-8 text-center">
             <p className="text-muted-foreground">Você não tem permissão para acessar esta página.</p>
+            <p className="text-xs text-muted-foreground mt-2">Role atual: {user?.role || 'Não definido'}</p>
           </CardContent>
         </Card>
       </div>
