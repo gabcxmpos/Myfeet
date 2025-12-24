@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Bell, Settings, UserPlus, Eye, Menu, AlertCircle } from 'lucide-react';
+import { LogOut, User, Bell, Settings, UserPlus, Eye, Menu, AlertCircle, Sun, Moon } from 'lucide-react';
 import { useNavigate, NavLink } from 'react-router-dom';
 import {
   DropdownMenu,
@@ -18,6 +19,7 @@ import { cn } from '@/lib/utils';
 
 const Header = ({ onToggleSidebar, isSidebarOpen, isDesktop }) => {
   const { user, signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
   const isStore = user?.role === 'loja' || user?.role === 'loja_franquia' || user?.role === 'admin_loja';
@@ -88,6 +90,22 @@ const Header = ({ onToggleSidebar, isSidebarOpen, isDesktop }) => {
       </div>
       
       <div className="flex items-center gap-4 ml-auto">
+        {/* Botão de Toggle de Tema */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
+          title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+          className="relative"
+        >
+          {theme === 'dark' ? (
+            <Sun className="w-5 h-5 text-yellow-500" />
+          ) : (
+            <Moon className="w-5 h-5 text-blue-600" />
+          )}
+        </Button>
+
         {isStore && (
           <Button 
             variant="ghost" 
