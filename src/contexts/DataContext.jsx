@@ -16,27 +16,28 @@ export const useData = () => {
   return context;
 };
 
-// These can be fetched from app_settings as well
-const dailyTasks = [
-    { id: 'task-1', text: 'Abertura Operacional' },
-    { id: 'task-2', text: 'Limpeza da loja' },
-    { id: 'task-3', text: 'Five Minutes - KPIs' },
-    { id: 'task-4', text: 'Pedidos SFS - Manhã' },
-    { id: 'task-5', text: 'Caixa dia anterior e Depósito' },
-    { id: 'task-6', text: 'Relatório de Performance KPIs' },
-    { id: 'task-7', text: 'Relatório de Performance Produto' },
-    { id: 'task-8', text: 'Acompanhamento Planilha Chegada de Pedidos' },
-    { id: 'task-9', text: 'Ativações CRM' },
-    { id: 'task-10', text: 'Organização de Loja Operacional durante dia' },
-    { id: 'task-11', text: 'Organização de Loja Visual Merchandising' },
-    { id: 'task-12', text: 'Pedidos SFS - Tarde' },
-    { id: 'task-13', text: 'Jornada de atendimento' },
-    { id: 'task-14', text: 'Pedidos Digital Haass noite' },
-    { id: 'task-15', text: 'Pedidos Digital Haass fechamento' },
-    { id: 'task-16', text: 'Virtual Gate' },
-    { id: 'task-17', text: 'Perdas e Danos' },
-    { id: 'task-18', text: 'Tom Ticket' },
-    { id: 'task-19', text: 'SLA/NPS Digital' },
+// Tarefas padrão do checklist diário (fallback se não houver no banco)
+// Setores: PRODUTO, AMBIENTACAO, DIGITAL, ADMINISTRATIVO, PESSOAS, OUTROS
+const defaultDailyTasks = [
+    { id: 'task-1', text: 'Abertura Operacional', sector: 'ADMINISTRATIVO' },
+    { id: 'task-2', text: 'Limpeza da loja', sector: 'AMBIENTACAO' },
+    { id: 'task-3', text: 'Five Minutes - KPIs', sector: 'ADMINISTRATIVO' },
+    { id: 'task-4', text: 'Pedidos SFS - Manhã', sector: 'OUTROS' },
+    { id: 'task-5', text: 'Caixa dia anterior e Depósito', sector: 'ADMINISTRATIVO' },
+    { id: 'task-6', text: 'Relatório de Performance KPIs', sector: 'ADMINISTRATIVO' },
+    { id: 'task-7', text: 'Relatório de Performance Produto', sector: 'PRODUTO' },
+    { id: 'task-8', text: 'Acompanhamento Planilha Chegada de Pedidos', sector: 'ADMINISTRATIVO' },
+    { id: 'task-9', text: 'Ativações CRM', sector: 'DIGITAL' },
+    { id: 'task-10', text: 'Organização de Loja Operacional durante dia', sector: 'AMBIENTACAO' },
+    { id: 'task-11', text: 'Organização de Loja Visual Merchandising', sector: 'AMBIENTACAO' },
+    { id: 'task-12', text: 'Pedidos SFS - Tarde', sector: 'OUTROS' },
+    { id: 'task-13', text: 'Jornada de atendimento', sector: 'PESSOAS' },
+    { id: 'task-14', text: 'Pedidos Digital Haass noite', sector: 'DIGITAL' },
+    { id: 'task-15', text: 'Pedidos Digital Haass fechamento', sector: 'DIGITAL' },
+    { id: 'task-16', text: 'Virtual Gate', sector: 'DIGITAL' },
+    { id: 'task-17', text: 'Perdas e Danos', sector: 'ADMINISTRATIVO' },
+    { id: 'task-18', text: 'Tom Ticket', sector: 'ADMINISTRATIVO' },
+    { id: 'task-19', text: 'SLA/NPS Digital', sector: 'DIGITAL' },
 ];
 
 export const DataProvider = ({ children }) => {
@@ -51,12 +52,15 @@ export const DataProvider = ({ children }) => {
   const [forms, setForms] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
+  const [returnsPlanner, setReturnsPlanner] = useState([]);
   
   // App Settings
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
   const [chaveContent, setChaveContent] = useState('');
   const [menuVisibility, setMenuVisibility] = useState({});
   const [checklist, setChecklist] = useState({});
+  const [gerencialTasks, setGerencialTasks] = useState([]);
+  const [dailyTasks, setDailyTasks] = useState(defaultDailyTasks);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -71,6 +75,9 @@ export const DataProvider = ({ children }) => {
         fetchedPatents,
         fetchedChave,
         fetchedMenu,
+        fetchedDailyTasks,
+        fetchedGerencialTasks,
+        fetchedReturnsPlanner,
       ] = await Promise.all([
         api.fetchStores(),
         api.fetchAppUsers(),
@@ -81,6 +88,9 @@ export const DataProvider = ({ children }) => {
         api.fetchAppSettings('patent_settings'),
         api.fetchAppSettings('chave_content'),
         api.fetchAppSettings('menu_visibility'),
+        api.fetchAppSettings('daily_tasks'),
+        api.fetchAppSettings('gerencial_tasks'),
+        api.fetchReturnsPlanner(),
       ]);
 
       setStores(fetchedStores);
@@ -89,10 +99,23 @@ export const DataProvider = ({ children }) => {
       setEvaluations(fetchedEvaluations);
       setCollaborators(fetchedCollaborators);
       setFeedbacks(fetchedFeedbacks);
+      setReturnsPlanner(fetchedReturnsPlanner || []);
       
       if (fetchedPatents) setPatentSettings(fetchedPatents);
       if (fetchedChave) setChaveContent(fetchedChave.initialContent);
       if (fetchedMenu) setMenuVisibility(fetchedMenu);
+      if (fetchedDailyTasks && Array.isArray(fetchedDailyTasks) && fetchedDailyTasks.length > 0) {
+        setDailyTasks(fetchedDailyTasks);
+      } else {
+        // Se não houver tarefas no banco, usar padrão
+        setDailyTasks(defaultDailyTasks);
+      }
+      if (fetchedGerencialTasks && Array.isArray(fetchedGerencialTasks)) {
+        setGerencialTasks(fetchedGerencialTasks);
+      } else {
+        // Se não houver tarefas no banco, manter array vazio
+        setGerencialTasks([]);
+      }
 
     } catch (error) {
       toast({ variant: 'destructive', title: 'Erro ao carregar dados', description: error.message });
@@ -113,6 +136,7 @@ export const DataProvider = ({ children }) => {
       setEvaluations([]);
       setCollaborators([]);
       setFeedbacks([]);
+      setReturnsPlanner([]);
     }
   }, [isAuthenticated, fetchData]);
   
@@ -156,6 +180,11 @@ export const DataProvider = ({ children }) => {
   // Feedback
   const addFeedback = (feedbackData) => handleApiCall(() => api.createFeedback(feedbackData), 'Feedback enviado.');
 
+  // Returns Planner
+  const addReturnsPlanner = (plannerData) => handleApiCall(() => api.createReturnsPlanner(plannerData), 'Registro do planner adicionado.');
+  const updateReturnsPlanner = (id, data) => handleApiCall(() => api.updateReturnsPlanner(id, data), 'Registro do planner atualizado.');
+  const deleteReturnsPlanner = (id) => handleApiCall(() => api.deleteReturnsPlanner(id), 'Registro do planner removido.');
+
   // Settings
   const updatePatentSettings = (settings) => handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
   const updateChaveContent = (content) => handleApiCall(() => api.upsertAppSettings('chave_content', { initialContent: content }), 'Conteúdo da CHAVE atualizado.');
@@ -179,6 +208,49 @@ export const DataProvider = ({ children }) => {
     } catch(error){
       toast({ variant: 'destructive', title: 'Erro no Checklist', description: error.message });
     }
+  };
+
+  // Gerencial Checklist
+  const updateGerencialChecklist = async (storeId, taskId, isChecked) => {
+    try {
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const currentChecklist = await api.fetchDailyChecklist(storeId, todayStr);
+      
+      const newGerencialTasks = { ...(currentChecklist?.gerencialTasks || {}), [taskId]: isChecked };
+      
+      // Atualizar o registro existente ou criar novo
+      const updatedChecklist = {
+        store_id: storeId,
+        date: todayStr,
+        tasks: currentChecklist?.tasks || {},
+        gerencialTasks: newGerencialTasks
+      };
+      
+      await api.upsertDailyChecklist(storeId, todayStr, updatedChecklist.tasks, updatedChecklist.gerencialTasks);
+      
+      setChecklist(prev => ({
+        ...prev,
+        [storeId]: { 
+          ...(prev[storeId] || { date: todayStr }), 
+          tasks: updatedChecklist.tasks,
+          gerencialTasks: newGerencialTasks 
+        }
+      }));
+      
+    } catch(error){
+      toast({ variant: 'destructive', title: 'Erro no Checklist Gerencial', description: error.message });
+      throw error;
+    }
+  };
+
+  // Update Gerencial Tasks List
+  const updateGerencialTasks = (tasks) => {
+    setGerencialTasks(tasks);
+  };
+
+  // Update Daily Tasks List
+  const updateDailyTasks = (tasks) => {
+    setDailyTasks(tasks);
   };
 
   const value = {
@@ -211,8 +283,16 @@ export const DataProvider = ({ children }) => {
     dailyTasks,
     checklist,
     updateChecklist,
+    gerencialTasks,
+    updateGerencialChecklist,
+    updateGerencialTasks,
+    updateDailyTasks,
     menuVisibility,
     updateMenuVisibility,
+    returnsPlanner,
+    addReturnsPlanner,
+    updateReturnsPlanner,
+    deleteReturnsPlanner,
     fetchData,
   };
 
