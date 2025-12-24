@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Helmet } from 'react-helmet';
 import { AuthProvider } from '@/contexts/SupabaseAuthContext';
 import { DataProvider } from '@/contexts/DataContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { Toaster } from '@/components/ui/toaster';
 import Login from '@/pages/Login';
 import FirstAccess from '@/pages/FirstAccess';
@@ -38,6 +39,9 @@ import StoresCTORegister from '@/pages/StoresCTORegister';
 import StoreChecklistsPage from '@/pages/StoreChecklistsPage';
 import StoreResults from '@/pages/StoreResults';
 import NonConversionReport from '@/pages/NonConversionReport';
+import AnalisesPage from '@/pages/AnalisesPage';
+import ManageChecklists from '@/pages/ManageChecklists';
+import GestaoMetasPage from '@/pages/GestaoMetasPage';
 
 function App() {
   return (
@@ -46,9 +50,10 @@ function App() {
         <title>MYFEET - Painel PPAD</title>
         <meta name="description" content="Painel de avaliação de desempenho de lojas baseado nos pilares: Pessoas, Performance, Ambientação e Digital." />
       </Helmet>
-      <AuthProvider>
-        <DataProvider>
-          <Router>
+      <ThemeProvider>
+        <AuthProvider>
+          <DataProvider>
+            <Router>
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/first-access" element={<FirstAccess />} />
@@ -80,6 +85,12 @@ function App() {
                 <Route path="checklist-audit-analytics" element={<ProtectedRoute allowedRoles={['admin']}><ChecklistAuditAnalytics /></ProtectedRoute>} />
                 {/* Checklists Consolidados */}
                 <Route path="checklists" element={<ProtectedRoute allowedRoles={['admin', 'devoluções', 'motorista', 'comunicação']}><ChecklistsManagement /></ProtectedRoute>} />
+                {/* Gerenciar Checklists */}
+                <Route path="manage-checklists" element={<ProtectedRoute allowedRoles={['admin']}><ManageChecklists /></ProtectedRoute>} />
+                {/* Análises */}
+                <Route path="analises" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'financeiro', 'digital']}><AnalisesPage /></ProtectedRoute>} />
+                {/* Gestão e Metas */}
+                <Route path="gestao-metas" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'financeiro']}><GestaoMetasPage /></ProtectedRoute>} />
                 {/* CTO - Custo Total de Ocupação */}
                 <Route path="stores-cto" element={<ProtectedRoute allowedRoles={['admin', 'financeiro', 'supervisor', 'supervisor_franquia']}><StoresCTO /></ProtectedRoute>} />
                 <Route path="stores-cto-analytics" element={<ProtectedRoute allowedRoles={['admin', 'financeiro']}><StoresCTOAnalytics /></ProtectedRoute>} />
@@ -92,10 +103,11 @@ function App() {
                 <Route path="non-conversion-report" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><NonConversionReport /></ProtectedRoute>} />
               </Route>
             </Routes>
-          </Router>
-          <Toaster />
-        </DataProvider>
-      </AuthProvider>
+            </Router>
+            <Toaster />
+          </DataProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </>
   );
 }
