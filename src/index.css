@@ -6,6 +6,51 @@
 
 @layer base {
   :root {
+    /* Tema Claro (Light) */
+    --background: 0 0% 100%; /* White */
+    --foreground: 224 71% 4%; /* Dark Navy */
+    
+    --card: 0 0% 98%; /* Very light gray */
+    --card-foreground: 224 71% 4%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 71% 4%;
+
+    --primary: 259 81% 69%; /* Vibrant Purple */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 96%; /* Light gray */
+    --secondary-foreground: 224 71% 4%;
+
+    --muted: 0 0% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 0 0% 96%;
+    --accent-foreground: 224 71% 4%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 259 81% 69%;
+
+    --radius: 0.75rem;
+
+    /* Brand Colors */
+    --brand-artwalk: 27 98% 55%; /* Orange */
+    --brand-authentic-feet: 45 93% 55%; /* Yellow */
+    --brand-magic-feet: 145 63% 49%; /* Green */
+
+    /* Pillar Colors */
+    --pillar-pessoas: 217 91% 60%;
+    --pillar-performance: 142 71% 45%;
+    --pillar-ambientacao: 39 91% 55%;
+    --pillar-digital: 283 91% 60%;
+  }
+  
+  .dark {
+    /* Tema Escuro (Dark) - Padrão */
     --background: 224 71% 4%; /* Dark Navy */
     --foreground: 210 40% 98%;
     
@@ -34,8 +79,6 @@
     --input: 226 44% 14%;
     --ring: 259 81% 69%;
 
-    --radius: 0.75rem;
-
     /* Brand Colors */
     --brand-artwalk: 27 98% 55%; /* Orange */
     --brand-authentic-feet: 45 93% 55%; /* Yellow */
@@ -46,10 +89,6 @@
     --pillar-performance: 142 71% 45%;
     --pillar-ambientacao: 39 91% 55%;
     --pillar-digital: 283 91% 60%;
-  }
-  
-  .dark {
-    /* Keeping the same variables for dark mode as it's the default */
   }
 }
 
