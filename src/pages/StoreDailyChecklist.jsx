@@ -11,15 +11,13 @@ import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as api from '@/lib/supabaseService';
 
-// Cores para cada categoria
+// Cores para cada setor (mesmos do PPAD Gerencial)
 const sectorColors = {
-  ABERTURA: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-500', header: 'bg-gray-800' },
-  OPERACIONAL: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-500', header: 'bg-gray-800' },
-  'KPIS/RELATÓRIOS': { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-500', header: 'bg-gray-800' },
-  DIGITAL: { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-500', header: 'bg-gray-800' },
-  CRM: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-500', header: 'bg-gray-800' },
-  'VISUAL MERCHANDISING': { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-500', header: 'bg-gray-800' },
-  ATENDIMENTO: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-500', header: 'bg-gray-800' },
+  PRODUTO: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-500', header: 'bg-gray-800' },
+  AMBIENTACAO: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-500', header: 'bg-gray-800' },
+  DIGITAL: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-500', header: 'bg-gray-800' },
+  ADMINISTRATIVO: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-500', header: 'bg-gray-800' },
+  PESSOAS: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-500', header: 'bg-gray-800' },
   OUTROS: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-500', header: 'bg-gray-800' },
 };
 

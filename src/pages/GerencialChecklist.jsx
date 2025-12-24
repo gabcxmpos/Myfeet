@@ -18,10 +18,12 @@ import * as api from '@/lib/supabaseService';
 
 // Cores para cada setor
 const sectorColors = {
+  PRODUTO: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-500', header: 'bg-gray-800' },
   AMBIENTACAO: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-500', header: 'bg-gray-800' },
   DIGITAL: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-500', header: 'bg-gray-800' },
   ADMINISTRATIVO: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-500', header: 'bg-gray-800' },
   PESSOAS: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-500', header: 'bg-gray-800' },
+  OUTROS: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-500', header: 'bg-gray-800' },
 };
 
 // Organizar tarefas por setor
@@ -427,6 +429,61 @@ const AdminSupervisorGerencialChecklistView = () => {
     });
   };
 
+  const handleMarkAsAudited = async (storeId) => {
+    try {
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const checklistKey = `${storeId}-${todayStr}`;
+      setAuditingChecklist(checklistKey);
+      
+      const updateData = {
+        is_audited: true,
+        audited_by: user?.id,
+        audited_at: new Date().toISOString()
+      };
+      
+      const { error } = await supabase
+        .from('daily_checklists')
+        .update(updateData)
+        .eq('store_id', storeId)
+        .eq('date', todayStr);
+      
+      if (error) {
+        if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
+          console.warn('Campos de auditoria não encontrados, tentando atualização simples...');
+          const { error: simpleError } = await supabase
+            .from('daily_checklists')
+            .update({ is_audited: true })
+            .eq('store_id', storeId)
+            .eq('date', todayStr);
+          
+          if (simpleError) throw simpleError;
+        } else {
+          throw error;
+        }
+      }
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Checklist marcado como auditado.',
+      });
+      
+      // Atualizar status de auditoria localmente
+      setAuditedStatus(prev => ({ ...prev, [storeId]: true }));
+      
+      // Recarregar dados
+      await fetchData();
+    } catch (error) {
+      console.error('Erro ao marcar como auditado:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error.message || 'Não foi possível marcar o checklist como auditado.',
+      });
+    } finally {
+      setAuditingChecklist(null);
+    }
+  };
+
   // Carregar histórico para todas as lojas
   useEffect(() => {
     const loadAllHistories = async () => {
@@ -724,3 +781,4 @@ const GerencialChecklist = () => {
 };
 
 export default GerencialChecklist;
+export { AdminSupervisorGerencialChecklistView };

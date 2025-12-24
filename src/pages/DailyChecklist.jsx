@@ -9,12 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Calendar, TrendingUp, History, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react';
+import { CheckCircle, Calendar, TrendingUp, History, ChevronDown, ChevronUp, CheckCircle2, Briefcase } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as api from '@/lib/supabaseService';
+import { AdminSupervisorGerencialChecklistView } from '@/pages/GerencialChecklist';
+import StoreDailyChecklist from './StoreDailyChecklist';
 import {
   Dialog,
   DialogContent,
@@ -22,15 +24,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-// Cores para cada categoria
+// Cores para cada setor (mesmos do PPAD Gerencial)
 const sectorColors = {
-  ABERTURA: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-500', header: 'bg-gray-800' },
-  OPERACIONAL: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-500', header: 'bg-gray-800' },
-  'KPIS/RELATÓRIOS': { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-500', header: 'bg-gray-800' },
-  DIGITAL: { bg: 'bg-pink-500/10', border: 'border-pink-500/30', text: 'text-pink-500', header: 'bg-gray-800' },
-  CRM: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-500', header: 'bg-gray-800' },
-  'VISUAL MERCHANDISING': { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-500', header: 'bg-gray-800' },
-  ATENDIMENTO: { bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', text: 'text-yellow-500', header: 'bg-gray-800' },
+  PRODUTO: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-500', header: 'bg-gray-800' },
+  AMBIENTACAO: { bg: 'bg-blue-500/10', border: 'border-blue-500/30', text: 'text-blue-500', header: 'bg-gray-800' },
+  DIGITAL: { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-500', header: 'bg-gray-800' },
+  ADMINISTRATIVO: { bg: 'bg-green-500/10', border: 'border-green-500/30', text: 'text-green-500', header: 'bg-gray-800' },
+  PESSOAS: { bg: 'bg-orange-500/10', border: 'border-orange-500/30', text: 'text-orange-500', header: 'bg-gray-800' },
   OUTROS: { bg: 'bg-gray-500/10', border: 'border-gray-500/30', text: 'text-gray-500', header: 'bg-gray-800' },
 };
 
@@ -253,61 +253,8 @@ const StoreHistoryModal = ({ store, isOpen, onClose, dailyTasks }) => {
 };
 
 const StoreChecklistView = ({ storeId }) => {
-    const { dailyTasks, checklist, updateChecklist, stores } = useData();
-    
-    const storeName = stores.find(s => s.id === storeId)?.name || "sua loja";
-    
-    const storeTodayChecklist = checklist[storeId]?.tasks || {};
-    const totalTasks = dailyTasks.length;
-    const completedTasks = Object.values(storeTodayChecklist).filter(Boolean).length;
-    const completionPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
-
-    const handleCheckChange = (taskId, checked) => {
-        updateChecklist(storeId, taskId, checked);
-    };
-
-    return (
-        <Card className="bg-card border-border">
-            <CardHeader>
-                <CardTitle className="text-2xl font-bold text-foreground">Checklist Diário - {storeName}</CardTitle>
-                <div className="flex items-center gap-4 text-muted-foreground mt-2">
-                    <span>Progresso de Hoje:</span>
-                    <div className="w-full bg-secondary rounded-full h-2.5">
-                        <motion.div
-                            className="bg-primary h-2.5 rounded-full"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${completionPercentage}%` }}
-                            transition={{ duration: 0.5 }}
-                        />
-                    </div>
-                    <span className="font-bold text-primary">{completionPercentage.toFixed(0)}%</span>
-                </div>
-            </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
-                    {dailyTasks.map((task, index) => (
-                        <motion.div
-                            key={task.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                            className="flex items-center space-x-3 bg-secondary/50 p-4 rounded-lg"
-                        >
-                            <Checkbox
-                                id={task.id}
-                                checked={!!storeTodayChecklist[task.id]}
-                                onCheckedChange={(checked) => handleCheckChange(task.id, checked)}
-                                className="h-5 w-5"
-                            />
-                            <Label htmlFor={task.id} className="text-base font-medium text-foreground cursor-pointer flex-grow">
-                                {task.text}
-                            </Label>
-                        </motion.div>
-                    ))}
-                </div>
-            </CardContent>
-        </Card>
-    );
+    // Usar o componente StoreDailyChecklist que já tem setores implementados
+    return <StoreDailyChecklist storeId={storeId} />;
 };
 
 const AdminSupervisorChecklistView = () => {
@@ -640,6 +587,7 @@ const DailyChecklist = () => {
     const { user } = useAuth();
     const isLoja = user?.role === 'loja' || user?.role === 'loja_franquia';
     const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia';
+    const [activeTab, setActiveTab] = useState('diario');
 
     console.log('🔍 [DailyChecklist] Renderizando:', {
         userRole: user?.role,
@@ -661,7 +609,7 @@ const DailyChecklist = () => {
     return (
         <>
             <Helmet>
-                <title>Checklist Diário - MYFEET</title>
+                <title>Checklists - MYFEET</title>
             </Helmet>
             <div className="space-y-6">
                 {isLoja && user?.storeId && <StoreChecklistView storeId={user.storeId} />}
@@ -672,7 +620,28 @@ const DailyChecklist = () => {
                         </CardContent>
                     </Card>
                 )}
-                {isAdminOrSupervisor && <AdminSupervisorChecklistView />}
+                {isAdminOrSupervisor && (
+                    <div className="space-y-6">
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                            <TabsList className="grid w-full grid-cols-2 max-w-md mb-6">
+                                <TabsTrigger value="diario" className="gap-2">
+                                    <CheckCircle className="w-4 h-4" />
+                                    Checklist Diário
+                                </TabsTrigger>
+                                <TabsTrigger value="gerencial" className="gap-2">
+                                    <Briefcase className="w-4 h-4" />
+                                    PPAD Gerencial
+                                </TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="diario" className="mt-0">
+                                <AdminSupervisorChecklistView />
+                            </TabsContent>
+                            <TabsContent value="gerencial" className="mt-0">
+                                <AdminSupervisorGerencialChecklistView />
+                            </TabsContent>
+                        </Tabs>
+                    </div>
+                )}
                 {!isLoja && !isAdminOrSupervisor && (
                     <Card>
                         <CardContent className="py-8 text-center">

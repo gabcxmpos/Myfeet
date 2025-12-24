@@ -13,18 +13,14 @@ import { useToast } from '@/components/ui/use-toast';
 import { CheckSquare, Plus, Trash2, Edit2, Save, X } from 'lucide-react';
 import * as api from '@/lib/supabaseService';
 
+// Setores padronizados (mesmos do PPAD Gerencial)
 const SECTORS = [
-  'ABERTURA',
-  'OPERACIONAL',
-  'KPIS/RELATÓRIOS',
-  'DIGITAL',
-  'CRM',
-  'VISUAL MERCHANDISING',
-  'ATENDIMENTO',
-  'OUTROS',
+  'PRODUTO',
   'AMBIENTACAO',
+  'DIGITAL',
   'ADMINISTRATIVO',
-  'PESSOAS'
+  'PESSOAS',
+  'OUTROS'
 ];
 
 const ManageChecklists = () => {

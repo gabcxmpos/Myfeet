@@ -258,36 +258,62 @@ export const fetchDailyChecklist = async (storeId, date) => {
     .select('*')
     .eq('store_id', storeId)
     .eq('date', date)
-    .single();
+    .maybeSingle(); // Usa maybeSingle() ao invés de single() para evitar erros quando não há registro
   
-  // Ignorar erros quando não há registro
-  // PGRST116 = not found
-  // 406 = Cannot coerce the result to a single JSON object (quando não há registros)
+  // maybeSingle() retorna null quando não há registro, sem gerar erro
   if (error) {
-    if (error.code === 'PGRST116' || 
-        (error.message && error.message.includes('Cannot coerce'))) {
-      return null; // Não há registro para esta data
-    }
-    throw error; // Outro tipo de erro
+    throw error; // Apenas erros reais serão lançados
   }
-  return data;
+  return data; // Retorna null se não houver registro, ou o objeto se houver
 };
 
-export const upsertDailyChecklist = async (storeId, date, tasks) => {
-  const { data, error } = await supabase
-          .from('daily_checklists')
-    .upsert({
-          store_id: storeId,
-          date,
-      tasks
-    }, {
-      onConflict: 'store_id,date'
-    })
-    .select()
-      .single();
+export const upsertDailyChecklist = async (storeId, date, tasks, gerencialTasks = null) => {
+  // Primeiro, verificar se já existe um registro
+  const existing = await fetchDailyChecklist(storeId, date);
   
-  if (error) throw error;
-  return data;
+  // Preparar dados para update/insert
+  const updateData = { tasks };
+  if (gerencialTasks !== null) {
+    updateData.gerencialTasks = gerencialTasks;
+  }
+  
+  if (existing) {
+    // Se existe, fazer UPDATE
+    // Preservar gerencialTasks existente se não foi fornecido
+    if (gerencialTasks === null && existing.gerencialTasks) {
+      updateData.gerencialTasks = existing.gerencialTasks;
+    }
+    
+    const { data, error } = await supabase
+      .from('daily_checklists')
+      .update(updateData)
+      .eq('store_id', storeId)
+      .eq('date', date)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  } else {
+    // Se não existe, fazer INSERT
+    const insertData = {
+      store_id: storeId,
+      date,
+      tasks
+    };
+    if (gerencialTasks !== null) {
+      insertData.gerencialTasks = gerencialTasks;
+    }
+    
+    const { data, error } = await supabase
+      .from('daily_checklists')
+      .insert(insertData)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    return data;
+  }
 };
 
 export const fetchChecklistHistory = async (storeId, days = 7) => {
@@ -328,10 +354,10 @@ export const fetchAppSettings = async (key) => {
     .from('app_settings')
     .select('*')
     .eq('key', key)
-    .single();
+    .maybeSingle(); // Usa maybeSingle() para evitar erros quando não há registro
   
-  if (error && error.code !== 'PGRST116') throw error;
-  return data?.value;
+  if (error) throw error; // Apenas erros reais serão lançados
+  return data?.value; // Retorna undefined se não houver registro
 };
 
 export const upsertAppSettings = async (key, value) => {
@@ -538,4 +564,47 @@ export const createNonConversionRecord = async (recordData) => {
     console.error('Erro ao criar registro de não conversão:', error);
     throw error;
   }
+};
+
+// ============ RETURNS PLANNER ============
+export const fetchReturnsPlanner = async () => {
+  const { data, error } = await supabase
+    .from('returns_planner')
+    .select('*, stores(name, code)')
+    .order('created_at', { ascending: false });
+  
+  if (error) throw error;
+  return data || [];
+};
+
+export const createReturnsPlanner = async (plannerData) => {
+  const { data, error } = await supabase
+    .from('returns_planner')
+    .insert([plannerData])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateReturnsPlanner = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('returns_planner')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteReturnsPlanner = async (id) => {
+  const { error } = await supabase
+    .from('returns_planner')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
 };
