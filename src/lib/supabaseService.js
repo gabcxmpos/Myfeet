@@ -1,4 +1,4 @@
-﻿
+
 import { supabase } from '@/lib/customSupabaseClient';
 import { format } from 'date-fns';
 
@@ -607,4 +607,59 @@ export const deleteReturnsPlanner = async (id) => {
     .eq('id', id);
   
   if (error) throw error;
+};
+
+// ============ PHYSICAL MISSING ============
+export const fetchPhysicalMissing = async () => {
+  const { data, error } = await supabase
+    .from('physical_missing')
+    .select('*')
+    .order('created_at', { ascending: false });
+  
+  if (error) throw error;
+  return data || [];
+};
+
+export const createPhysicalMissing = async (missingData) => {
+  const { data, error } = await supabase
+    .from('physical_missing')
+    .insert([missingData])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updatePhysicalMissing = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('physical_missing')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deletePhysicalMissing = async (id, nfNumber = null, storeId = null) => {
+  // Se nfNumber e storeId foram fornecidos, deletar todos os registros com a mesma NF e store_id
+  if (nfNumber && storeId) {
+    const { error } = await supabase
+      .from('physical_missing')
+      .delete()
+      .eq('nf_number', nfNumber)
+      .eq('store_id', storeId);
+    
+    if (error) throw error;
+  } else {
+    // Caso contrário, deletar apenas o registro específico
+    const { error } = await supabase
+      .from('physical_missing')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+  }
 };
