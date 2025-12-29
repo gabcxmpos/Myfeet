@@ -119,10 +119,8 @@ const EvaluationScreen = ({ form, storeId, onComplete }) => {
 
         try {
             await addEvaluation({
-                storeId,
-                store_id: storeId,
-                form_id: form.id,
-                formId: form.id, // Manter para compatibilidade
+                store_id: storeId, // Usar apenas snake_case (padrão do banco)
+                form_id: form.id, // Usar apenas snake_case (padrão do banco)
                 score: finalScore,
                 answers,
                 pillar: form.pillar,
