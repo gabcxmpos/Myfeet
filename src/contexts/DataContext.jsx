@@ -60,6 +60,7 @@ export const DataProvider = ({ children }) => {
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
   const [chaveContent, setChaveContent] = useState('');
   const [menuVisibility, setMenuVisibility] = useState({});
+  const [jobRoles, setJobRoles] = useState([]);
   const [checklist, setChecklist] = useState({});
   const [gerencialTasks, setGerencialTasks] = useState([]);
   const [dailyTasks, setDailyTasks] = useState(defaultDailyTasks);
@@ -77,6 +78,7 @@ export const DataProvider = ({ children }) => {
         fetchedPatents,
         fetchedChave,
         fetchedMenu,
+        fetchedJobRoles,
         fetchedDailyTasks,
         fetchedGerencialTasks,
         fetchedReturnsPlanner,
@@ -91,6 +93,7 @@ export const DataProvider = ({ children }) => {
         api.fetchAppSettings('patent_settings'),
         api.fetchAppSettings('chave_content'),
         api.fetchAppSettings('menu_visibility'),
+        api.fetchAppSettings('job_roles'),
         api.fetchAppSettings('daily_tasks'),
         api.fetchAppSettings('gerencial_tasks'),
         api.fetchReturnsPlanner(),
@@ -109,6 +112,11 @@ export const DataProvider = ({ children }) => {
       if (fetchedPatents) setPatentSettings(fetchedPatents);
       if (fetchedChave) setChaveContent(fetchedChave.initialContent);
       if (fetchedMenu) setMenuVisibility(fetchedMenu);
+      if (fetchedJobRoles && Array.isArray(fetchedJobRoles)) {
+        setJobRoles(fetchedJobRoles);
+      } else {
+        setJobRoles([]);
+      }
       if (fetchedDailyTasks && Array.isArray(fetchedDailyTasks) && fetchedDailyTasks.length > 0) {
         setDailyTasks(fetchedDailyTasks);
       } else {
@@ -164,9 +172,17 @@ export const DataProvider = ({ children }) => {
   }, [toast, fetchData]);
 
   // Stores
-  const addStore = (store) => handleApiCall(() => api.createStore(store), 'Loja adicionada.');
-  const updateStore = (id, data) => handleApiCall(() => api.updateStore(id, data), 'Loja atualizada.');
-  const deleteStore = (id) => handleApiCall(() => api.deleteStore(id), 'Loja removida.');
+  const addStore = useCallback((store) => {
+    return handleApiCall(() => api.createStore(store), 'Loja adicionada.');
+  }, [handleApiCall]);
+  
+  const updateStore = useCallback((id, data) => {
+    return handleApiCall(() => api.updateStore(id, data), 'Loja atualizada.');
+  }, [handleApiCall]);
+  
+  const deleteStore = useCallback((id) => {
+    return handleApiCall(() => api.deleteStore(id), 'Loja removida.');
+  }, [handleApiCall]);
 
   // Users
   const addUser = useCallback((email, password, data) => {
@@ -184,7 +200,7 @@ export const DataProvider = ({ children }) => {
   const deleteUser = useCallback((id) => {
     return handleApiCall(() => api.deleteAppUser(id), 'Usuário removido.');
   }, [handleApiCall]);
-  const toggleUserStatus = async (id) => {
+  const toggleUserStatus = useCallback(async (id) => {
     try {
       const user = users.find(u => u.id === id);
       if (!user) {
@@ -197,9 +213,9 @@ export const DataProvider = ({ children }) => {
       toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Erro ao alterar status do usuário.' });
       throw error;
     }
-  };
+  }, [users, toast, handleApiCall]);
   
-  const resetUserPassword = async (email) => {
+  const resetUserPassword = useCallback(async (email) => {
     try {
       const { data, error } = await supabase.rpc('reset_user_password_to_default', {
         p_email: email.trim().toLowerCase()
@@ -229,39 +245,107 @@ export const DataProvider = ({ children }) => {
       toast({ variant: 'destructive', title: 'Erro ao resetar senha', description: error.message || 'Não foi possível resetar a senha.' });
       throw error;
     }
-  };
+  }, [toast]);
 
   // Forms
-  const saveForm = (form) => handleApiCall(() => api.createForm(form), 'Formulário salvo.');
-  const updateForm = (id, data) => handleApiCall(() => api.updateForm(id, data), 'Formulário atualizado.');
-  const deleteForm = (id) => handleApiCall(() => api.deleteForm(id), 'Formulário removido.');
+  const saveForm = useCallback((form) => {
+    return handleApiCall(() => api.createForm(form), 'Formulário salvo.');
+  }, [handleApiCall]);
+  
+  const updateForm = useCallback((id, data) => {
+    return handleApiCall(() => api.updateForm(id, data), 'Formulário atualizado.');
+  }, [handleApiCall]);
+  
+  const deleteForm = useCallback((id) => {
+    return handleApiCall(() => api.deleteForm(id), 'Formulário removido.');
+  }, [handleApiCall]);
 
   // Evaluations
-  const addEvaluation = (evalData) => handleApiCall(() => api.createEvaluation(evalData), 'Avaliação enviada.');
-  const updateEvaluationStatus = (id, status) => handleApiCall(() => api.updateEvaluation(id, { status }), 'Status da avaliação atualizado.');
-  const deleteEvaluation = (id) => handleApiCall(() => api.deleteEvaluation(id), 'Avaliação removida.');
+  const addEvaluation = useCallback((evalData) => {
+    return handleApiCall(() => api.createEvaluation(evalData), 'Avaliação enviada.');
+  }, [handleApiCall]);
+  
+  const updateEvaluationStatus = useCallback((id, status) => {
+    return handleApiCall(() => api.updateEvaluation(id, { status }), 'Status da avaliação atualizado.');
+  }, [handleApiCall]);
+  
+  const approveEvaluation = useCallback((id) => {
+    return handleApiCall(() => api.updateEvaluation(id, { status: 'approved' }), 'Avaliação aprovada.');
+  }, [handleApiCall]);
+  
+  const deleteEvaluation = useCallback((id) => {
+    return handleApiCall(() => api.deleteEvaluation(id), 'Avaliação removida.');
+  }, [handleApiCall]);
   
   // Collaborators
-  const addCollaborator = (collabData) => handleApiCall(() => api.createCollaborator(collabData), 'Colaborador adicionado.');
-  const deleteCollaborator = (id) => handleApiCall(() => api.deleteCollaborator(id), 'Colaborador removido.');
+  const addCollaborator = useCallback((collabData) => {
+    return handleApiCall(() => api.createCollaborator(collabData), 'Colaborador adicionado.');
+  }, [handleApiCall]);
+  
+  const updateCollaborator = useCallback((id, data) => {
+    return handleApiCall(() => api.updateCollaborator(id, data), 'Colaborador atualizado.');
+  }, [handleApiCall]);
+  
+  const deleteCollaborator = useCallback((id) => {
+    return handleApiCall(() => api.deleteCollaborator(id), 'Colaborador removido.');
+  }, [handleApiCall]);
 
   // Feedback
-  const addFeedback = (feedbackData) => handleApiCall(() => api.createFeedback(feedbackData), 'Feedback enviado.');
+  const addFeedback = useCallback((feedbackData) => {
+    return handleApiCall(() => api.createFeedback(feedbackData), 'Feedback enviado.');
+  }, [handleApiCall]);
 
   // Returns Planner
-  const addReturnsPlanner = (plannerData) => handleApiCall(() => api.createReturnsPlanner(plannerData), 'Registro do planner adicionado.');
-  const updateReturnsPlanner = (id, data) => handleApiCall(() => api.updateReturnsPlanner(id, data), 'Registro do planner atualizado.');
-  const deleteReturnsPlanner = (id) => handleApiCall(() => api.deleteReturnsPlanner(id), 'Registro do planner removido.');
+  const addReturnsPlanner = useCallback((plannerData) => {
+    return handleApiCall(() => api.createReturnsPlanner(plannerData), 'Registro do planner adicionado.');
+  }, [handleApiCall]);
+  
+  const updateReturnsPlanner = useCallback((id, data) => {
+    return handleApiCall(() => api.updateReturnsPlanner(id, data), 'Registro do planner atualizado.');
+  }, [handleApiCall]);
+  
+  const deleteReturnsPlanner = useCallback((id) => {
+    return handleApiCall(() => api.deleteReturnsPlanner(id), 'Registro do planner removido.');
+  }, [handleApiCall]);
 
   // Physical Missing
-  const addPhysicalMissing = (missingData) => handleApiCall(() => api.createPhysicalMissing(missingData), 'Falta física registrada.');
-  const updatePhysicalMissing = (id, data) => handleApiCall(() => api.updatePhysicalMissing(id, data), 'Falta física atualizada.');
-  const deletePhysicalMissing = (id, nfNumber = null, storeId = null) => handleApiCall(() => api.deletePhysicalMissing(id, nfNumber, storeId), 'Falta física removida.');
+  const addPhysicalMissing = useCallback((missingData) => {
+    return handleApiCall(() => api.createPhysicalMissing(missingData), 'Falta física registrada.');
+  }, [handleApiCall]);
+  
+  const updatePhysicalMissing = useCallback((id, data) => {
+    return handleApiCall(() => api.updatePhysicalMissing(id, data), 'Falta física atualizada.');
+  }, [handleApiCall]);
+  
+  const deletePhysicalMissing = useCallback((id, nfNumber = null, storeId = null) => {
+    return handleApiCall(() => api.deletePhysicalMissing(id, nfNumber, storeId), 'Falta física removida.');
+  }, [handleApiCall]);
 
   // Settings
-  const updatePatentSettings = (settings) => handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
-  const updateChaveContent = (content) => handleApiCall(() => api.upsertAppSettings('chave_content', { initialContent: content }), 'Conteúdo da CHAVE atualizado.');
-  const updateMenuVisibility = (visibility) => handleApiCall(() => api.upsertAppSettings('menu_visibility', visibility), 'Visibilidade do menu atualizada.');
+  const updatePatentSettings = useCallback((settings) => {
+    return handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
+  }, [handleApiCall]);
+  
+  const updateChaveContent = useCallback((content) => {
+    return handleApiCall(() => api.upsertAppSettings('chave_content', { initialContent: content }), 'Conteúdo da CHAVE atualizado.');
+  }, [handleApiCall]);
+  
+  const updateMenuVisibility = useCallback((visibility) => {
+    return handleApiCall(() => api.upsertAppSettings('menu_visibility', visibility), 'Visibilidade do menu atualizada.');
+  }, [handleApiCall]);
+  
+  const updateJobRoles = useCallback(async (roles) => {
+    try {
+      const result = await api.upsertAppSettings('job_roles', roles);
+      setJobRoles(roles);
+      toast({ title: 'Sucesso!', description: 'Cargos atualizados.' });
+      fetchData(); // Refresh all data
+      return result;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro na Operação', description: error.message });
+      throw error;
+    }
+  }, [toast, fetchData]);
 
   // Checklist
   const updateChecklist = async (storeId, taskId, isChecked) => {
@@ -342,6 +426,7 @@ export const DataProvider = ({ children }) => {
     evaluations,
     addEvaluation,
     updateEvaluationStatus,
+    approveEvaluation,
     deleteEvaluation,
     forms,
     saveForm,
@@ -351,11 +436,14 @@ export const DataProvider = ({ children }) => {
     updatePatentSettings,
     collaborators,
     addCollaborator,
+    updateCollaborator,
     deleteCollaborator,
     feedbacks,
     addFeedback,
     chaveContent,
     updateChaveContent,
+    jobRoles,
+    updateJobRoles,
     dailyTasks,
     checklist,
     updateChecklist,
