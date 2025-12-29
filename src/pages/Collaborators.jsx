@@ -72,7 +72,7 @@ const Collaborators = () => {
       await addCollaborator({ 
         name, 
         role, 
-        storeId: user.storeId,
+        store_id: user.storeId, // Usar snake_case (padrão do banco)
         cpf: cpf || null,
         email: email || null
       });

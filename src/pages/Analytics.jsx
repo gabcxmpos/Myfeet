@@ -71,7 +71,20 @@ const Analytics = () => {
       (filters.estado.length === 0 || filters.estado.includes(s.estado))
     );
     const filteredStoreIds = new Set(filteredStores.map(s => s.id));
-    let filteredEvaluations = evaluations.filter(e => filteredStoreIds.has(e.storeId) && e.status === 'approved');
+    let filteredEvaluations = evaluations.filter(e => {
+      const storeId = e.storeId || e.store_id;
+      return filteredStoreIds.has(storeId) && e.status === 'approved';
+    });
+    
+    // Debug: Log para verificar dados
+    console.log('📊 [Analytics] Dados filtrados:', {
+      totalStores: stores.length,
+      filteredStores: filteredStores.length,
+      totalEvaluations: evaluations.length,
+      approvedEvaluations: evaluations.filter(e => e.status === 'approved').length,
+      filteredEvaluations: filteredEvaluations.length,
+      forms: forms.length
+    });
     
     // Filtrar por período de data
     if (periodFilter.startDate) {
@@ -173,6 +186,10 @@ const Analytics = () => {
 
       questions.forEach(question => {
         if (question.type === 'text') return;
+        if (!question.id) {
+          console.warn('⚠️ [calculateDetailedGaps] Pergunta sem ID:', question);
+          return;
+        }
 
         const answer = answers[question.id];
         const questionScore = calculateQuestionScore(question, answer);
@@ -180,13 +197,16 @@ const Analytics = () => {
         if (questionScore === null) return;
 
         const pillar = form.pillar || evaluation.pillar;
-        if (!gapsByPillar[pillar]) return;
+        if (!pillar || !gapsByPillar[pillar]) {
+          console.warn('⚠️ [calculateDetailedGaps] Pilar inválido:', pillar, 'Form:', form.title);
+          return;
+        }
 
         const questionKey = question.id;
         if (!questionScores[pillar]) questionScores[pillar] = {};
         if (!questionScores[pillar][questionKey]) {
           questionScores[pillar][questionKey] = {
-            title: question.text || '',
+            title: question.text || question.question || 'Pergunta sem título',
             subtitle: question.subtitle || '',
             scores: [],
             formTitle: form.title || ''
@@ -323,15 +343,18 @@ const Analytics = () => {
       } else {
         // Para outros pilares, usar média de avaliações aprovadas
         const pillarEvals = filteredEvaluations.filter(e => e.pillar === pillar);
-        const avgScore = pillarEvals.length > 0 ? pillarEvals.reduce((acc, curr) => acc + curr.score, 0) / pillarEvals.length : 0;
-        return { subject: pillar, score: avgScore, fullMark: 100 };
+        const avgScore = pillarEvals.length > 0 ? pillarEvals.reduce((acc, curr) => acc + (curr.score || 0), 0) / pillarEvals.length : 0;
+        return { subject: pillar, score: Math.round(avgScore), fullMark: 100 };
       }
     });
 
     const getAvgScoreForStores = (storeSet) => {
         const storeIds = new Set(storeSet.map(s => s.id));
-        const relevantEvals = filteredEvaluations.filter(e => storeIds.has(e.storeId));
-        return relevantEvals.length > 0 ? relevantEvals.reduce((acc, curr) => acc + curr.score, 0) / relevantEvals.length : 0;
+        const relevantEvals = filteredEvaluations.filter(e => {
+          const storeId = e.storeId || e.store_id;
+          return storeIds.has(storeId);
+        });
+        return relevantEvals.length > 0 ? relevantEvals.reduce((acc, curr) => acc + (curr.score || 0), 0) / relevantEvals.length : 0;
     }
 
     const brands = [...new Set(filteredStores.map(s => s.bandeira).filter(Boolean))];
@@ -360,12 +383,17 @@ const Analytics = () => {
     // Calcular gaps com análises aprofundadas
     const detailedGaps = calculateDetailedGaps(filteredEvaluations, forms);
     
-    console.log('📊 [Analytics] Gaps calculados:', {
+    console.log('📊 [Analytics] Dados finais:', {
+      radarData: radarData,
+      brandPerformance: brandPerformance,
+      franchiseeRanking: franchiseeRanking.length,
+      patentDistribution: patentDistributionData,
       totalGaps: Object.values(detailedGaps).reduce((sum, pillarGaps) => sum + pillarGaps.length, 0),
       byPillar: Object.keys(detailedGaps).map(p => ({
         pillar: p,
         count: detailedGaps[p].length
-      }))
+      })),
+      sampleGap: detailedGaps.Pessoas?.[0] || detailedGaps.Performance?.[0] || null
     });
 
     return { radarData, brandPerformance, franchiseeRanking, patentDistributionData, gaps: detailedGaps };

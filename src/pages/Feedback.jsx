@@ -47,10 +47,10 @@ const Feedback = () => {
     
     try {
       await addFeedback({
-        storeId: user.storeId,
-        collaboratorId,
-        feedbackText,
-        developmentPoint,
+        store_id: user.storeId, // Usar snake_case (padrão do banco)
+        collaborator_id: collaboratorId,
+        feedback_text: feedbackText,
+        development_point: developmentPoint,
         satisfaction,
         managerSatisfaction,
         collaboratorSatisfaction,
