@@ -214,6 +214,18 @@ export const createCollaborator = async (collaboratorData) => {
   return data;
 };
 
+export const updateCollaborator = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('collaborators')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
 export const deleteCollaborator = async (id) => {
   const { error } = await supabase
     .from('collaborators')
