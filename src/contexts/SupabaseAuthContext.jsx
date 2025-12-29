@@ -178,9 +178,23 @@ export const AuthProvider = ({ children }) => {
       });
 
     // Listen for auth changes
+    let lastProcessedSessionId = null;
+    let lastProcessedEvent = null;
+    
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔔 Evento de autenticação:', event, session?.user?.id);
+        const sessionUserId = session?.user?.id;
+        const eventKey = `${event}_${sessionUserId}`;
+        
+        // Evitar processar o mesmo evento múltiplas vezes
+        if (eventKey === lastProcessedEvent && sessionUserId === lastProcessedSessionId) {
+          console.log('⚠️ Evento duplicado ignorado:', event, sessionUserId);
+          return;
+        }
+        
+        console.log('🔔 Evento de autenticação:', event, sessionUserId);
+        lastProcessedEvent = eventKey;
+        lastProcessedSessionId = sessionUserId;
         
         // Se o evento for de sessão expirada ou erro, limpar dados
         if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
@@ -193,14 +207,22 @@ export const AuthProvider = ({ children }) => {
           } catch (e) {
             console.warn('Erro ao limpar storage:', e);
           }
+          lastProcessedEvent = null;
+          lastProcessedSessionId = null;
           return;
         }
         
         // IMPORTANTE: Se o evento for SIGNED_IN e a sessão for de um usuário recém-criado,
         // verificar se é realmente um login legítimo ou se é apenas resultado de criar um usuário
         if (event === 'SIGNED_IN' && session) {
+          // Verificar se já temos uma sessão ativa para o mesmo usuário
+          if (session?.user?.id === lastProcessedSessionId && user?.id === session.user.id) {
+            console.log('⚠️ Evento SIGNED_IN ignorado - usuário já está autenticado');
+            return;
+          }
+          
           // Aguardar um pouco para verificar se é uma criação de usuário em andamento
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 500));
           
           // Verificar se o perfil existe - se não existir, pode ser criação de usuário
           try {
@@ -225,6 +247,8 @@ export const AuthProvider = ({ children }) => {
             if (error.status === 403 || error.status === 401) {
               setSession(null);
               setUser(null);
+              lastProcessedEvent = null;
+              lastProcessedSessionId = null;
               return;
             }
           }
@@ -241,7 +265,7 @@ export const AuthProvider = ({ children }) => {
       window.removeEventListener('supabase-session-expired', handleSessionExpired);
       subscription.unsubscribe();
     };
-  }, [loadUserProfile]);
+  }, []); // Removido loadUserProfile da dependência para evitar loops
 
   const signIn = useCallback(async (email, password) => {
     try {
