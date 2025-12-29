@@ -181,6 +181,7 @@ export const DataProvider = ({ children }) => {
       throw error;
     }
   };
+  
   const resetUserPassword = async (email) => {
     try {
       const { data, error } = await supabase.rpc('reset_user_password_to_default', {
