@@ -23,15 +23,47 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const UserManagement = () => {
-    const { users, addUser, stores, toggleUserStatus, deleteUser: contextDeleteUser, resetUserPassword } = useData();
+    const { users, addUser, stores, toggleUserStatus, deleteUser: contextDeleteUser, resetUserPassword, loading, isInitialized } = useData();
     const { toast } = useToast();
+    
+    // Aguardar inicialização do contexto
+    if (loading || !isInitialized) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Carregando...</p>
+                </div>
+            </div>
+        );
+    }
+    
+    // Verificar se as funções necessárias estão disponíveis
+    if (!addUser || typeof addUser !== 'function') {
+        console.error('❌ [UserManagement] addUser não está disponível ou não é uma função', {
+            addUser,
+            type: typeof addUser,
+            isInitialized,
+            loading
+        });
+        return (
+            <div className="p-4 bg-destructive/10 border border-destructive rounded-lg">
+                <p className="text-destructive font-semibold">Erro: Função addUser não está disponível.</p>
+                <p className="text-sm text-muted-foreground mt-2">Por favor, recarregue a página ou entre em contato com o suporte.</p>
+                <p className="text-xs text-muted-foreground mt-2">Status: {isInitialized ? 'Inicializado' : 'Não inicializado'}, Loading: {loading ? 'Sim' : 'Não'}</p>
+            </div>
+        );
+    }
     
     // Debug: Verificar dados recebidos
     console.log('👥 [UserManagement] Dados recebidos:', {
         usersCount: users?.length || 0,
         users: users,
         isArray: Array.isArray(users),
-        storesCount: stores?.length || 0
+        storesCount: stores?.length || 0,
+        addUserAvailable: typeof addUser === 'function',
+        toggleUserStatusAvailable: typeof toggleUserStatus === 'function',
+        resetUserPasswordAvailable: typeof resetUserPassword === 'function'
     });
     const [email, setEmail] = useState('');
     const [username, setUsername] = useState('');
@@ -84,11 +116,25 @@ const UserManagement = () => {
             });
             
             // Senha é opcional - se não fornecida, será usada a senha padrão "afeet10"
-            await addUser(email, password || '', { 
+            const userData = { 
                 username, 
                 role: role, // Garantir que o role seja passado explicitamente
                 store_id: (role === 'loja' || role === 'loja_franquia' || role === 'colaborador' || role === 'admin_loja') ? storeId : null 
+            };
+            
+            console.log('🔍 [UserManagement] Chamando addUser com:', {
+                email,
+                passwordLength: (password || '').length,
+                userData,
+                addUserType: typeof addUser,
+                addUserIsFunction: typeof addUser === 'function'
             });
+            
+            if (!addUser || typeof addUser !== 'function') {
+                throw new Error('Função addUser não está disponível. Por favor, recarregue a página.');
+            }
+            
+            await addUser(email, password || '', userData);
             
             // Limpar formulário apenas se a criação foi bem-sucedida
             setEmail('');
