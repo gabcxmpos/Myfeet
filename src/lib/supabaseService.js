@@ -155,10 +155,27 @@ export const fetchEvaluations = async () => {
 };
 
 export const createEvaluation = async (evaluationData) => {
+  // Remover campos camelCase que não existem no banco (manter apenas snake_case)
+  const cleanData = {
+    store_id: evaluationData.store_id || evaluationData.storeId,
+    form_id: evaluationData.form_id || evaluationData.formId,
+    score: evaluationData.score,
+    answers: evaluationData.answers,
+    pillar: evaluationData.pillar,
+    status: evaluationData.status,
+  };
+  
+  // Remover campos undefined/null
+  Object.keys(cleanData).forEach(key => {
+    if (cleanData[key] === undefined || cleanData[key] === null) {
+      delete cleanData[key];
+    }
+  });
+  
   const { data, error } = await supabase
     .from('evaluations')
-    .insert([evaluationData])
-    .select()
+    .insert([cleanData])
+    .select('*')
     .single();
   
   if (error) throw error;
