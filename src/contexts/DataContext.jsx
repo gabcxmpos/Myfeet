@@ -167,6 +167,51 @@ export const DataProvider = ({ children }) => {
   const addUser = (email, password, data) => handleApiCall(() => api.createAppUser(email, password, data), 'Usuário criado.');
   const updateUser = (id, data) => handleApiCall(() => api.updateAppUser(id, data), 'Usuário atualizado.');
   const deleteUser = (id) => handleApiCall(() => api.deleteAppUser(id), 'Usuário removido.');
+  const toggleUserStatus = async (id) => {
+    try {
+      const user = users.find(u => u.id === id);
+      if (!user) {
+        toast({ variant: 'destructive', title: 'Erro', description: 'Usuário não encontrado.' });
+        return;
+      }
+      const newStatus = user.status === 'active' ? 'blocked' : 'active';
+      await handleApiCall(() => api.updateAppUser(id, { status: newStatus }), `Usuário ${newStatus === 'active' ? 'ativado' : 'bloqueado'}.`);
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro', description: error.message || 'Erro ao alterar status do usuário.' });
+      throw error;
+    }
+  };
+  const resetUserPassword = async (email) => {
+    try {
+      const { data, error } = await supabase.rpc('reset_user_password_to_default', {
+        p_email: email.trim().toLowerCase()
+      });
+      
+      if (error) {
+        if (error.code === 'PGRST202' || error.message?.includes('not found')) {
+          const errorMsg = 'A função RPC não está disponível. Execute o script SQL no Supabase para criar a função necessária.';
+          toast({ variant: 'destructive', title: 'Erro ao resetar senha', description: errorMsg, duration: 10000 });
+          throw new Error(errorMsg);
+        }
+        throw error;
+      }
+      
+      if (data && data.success) {
+        toast({ title: 'Senha Resetada!', description: 'A senha foi resetada para a senha padrão "afeet10".' });
+        return data;
+      } else if (data && !data.success) {
+        const errorMsg = data.error || 'Erro ao resetar senha';
+        toast({ variant: 'destructive', title: 'Erro ao resetar senha', description: errorMsg });
+        throw new Error(errorMsg);
+      }
+      
+      toast({ title: 'Senha Resetada!', description: 'A senha foi resetada para a senha padrão "afeet10".' });
+      return data;
+    } catch (error) {
+      toast({ variant: 'destructive', title: 'Erro ao resetar senha', description: error.message || 'Não foi possível resetar a senha.' });
+      throw error;
+    }
+  };
 
   // Forms
   const saveForm = (form) => handleApiCall(() => api.createForm(form), 'Formulário salvo.');
@@ -269,6 +314,8 @@ export const DataProvider = ({ children }) => {
     addUser,
     updateUser,
     deleteUser,
+    toggleUserStatus,
+    resetUserPassword,
     stores,
     addStore,
     updateStore,
