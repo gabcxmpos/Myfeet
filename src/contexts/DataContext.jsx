@@ -53,6 +53,7 @@ export const DataProvider = ({ children }) => {
   const [collaborators, setCollaborators] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
   const [returnsPlanner, setReturnsPlanner] = useState([]);
+  const [physicalMissing, setPhysicalMissing] = useState([]);
   
   // App Settings
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
@@ -78,6 +79,7 @@ export const DataProvider = ({ children }) => {
         fetchedDailyTasks,
         fetchedGerencialTasks,
         fetchedReturnsPlanner,
+        fetchedPhysicalMissing,
       ] = await Promise.all([
         api.fetchStores(),
         api.fetchAppUsers(),
@@ -91,6 +93,7 @@ export const DataProvider = ({ children }) => {
         api.fetchAppSettings('daily_tasks'),
         api.fetchAppSettings('gerencial_tasks'),
         api.fetchReturnsPlanner(),
+        api.fetchPhysicalMissing(),
       ]);
 
       setStores(fetchedStores);
@@ -100,6 +103,7 @@ export const DataProvider = ({ children }) => {
       setCollaborators(fetchedCollaborators);
       setFeedbacks(fetchedFeedbacks);
       setReturnsPlanner(fetchedReturnsPlanner || []);
+      setPhysicalMissing(fetchedPhysicalMissing || []);
       
       if (fetchedPatents) setPatentSettings(fetchedPatents);
       if (fetchedChave) setChaveContent(fetchedChave.initialContent);
@@ -137,6 +141,7 @@ export const DataProvider = ({ children }) => {
       setCollaborators([]);
       setFeedbacks([]);
       setReturnsPlanner([]);
+      setPhysicalMissing([]);
     }
   }, [isAuthenticated, fetchData]);
   
@@ -184,6 +189,11 @@ export const DataProvider = ({ children }) => {
   const addReturnsPlanner = (plannerData) => handleApiCall(() => api.createReturnsPlanner(plannerData), 'Registro do planner adicionado.');
   const updateReturnsPlanner = (id, data) => handleApiCall(() => api.updateReturnsPlanner(id, data), 'Registro do planner atualizado.');
   const deleteReturnsPlanner = (id) => handleApiCall(() => api.deleteReturnsPlanner(id), 'Registro do planner removido.');
+
+  // Physical Missing
+  const addPhysicalMissing = (missingData) => handleApiCall(() => api.createPhysicalMissing(missingData), 'Falta física registrada.');
+  const updatePhysicalMissing = (id, data) => handleApiCall(() => api.updatePhysicalMissing(id, data), 'Falta física atualizada.');
+  const deletePhysicalMissing = (id, nfNumber = null, storeId = null) => handleApiCall(() => api.deletePhysicalMissing(id, nfNumber, storeId), 'Falta física removida.');
 
   // Settings
   const updatePatentSettings = (settings) => handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
@@ -293,6 +303,10 @@ export const DataProvider = ({ children }) => {
     addReturnsPlanner,
     updateReturnsPlanner,
     deleteReturnsPlanner,
+    physicalMissing,
+    addPhysicalMissing,
+    updatePhysicalMissing,
+    deletePhysicalMissing,
     fetchData,
   };
 
