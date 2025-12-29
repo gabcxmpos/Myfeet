@@ -44,6 +44,7 @@ export const DataProvider = ({ children }) => {
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // States
   const [users, setUsers] = useState([]);
@@ -125,6 +126,7 @@ export const DataProvider = ({ children }) => {
       toast({ variant: 'destructive', title: 'Erro ao carregar dados', description: error.message });
     } finally {
       setLoading(false);
+      setIsInitialized(true);
     }
   }, [toast]);
 
@@ -146,8 +148,11 @@ export const DataProvider = ({ children }) => {
   }, [isAuthenticated, fetchData]);
   
   // Wrapper for API calls to refresh local state
-  const handleApiCall = async (apiCall, successMsg) => {
+  const handleApiCall = useCallback(async (apiCall, successMsg) => {
     try {
+      if (!apiCall || typeof apiCall !== 'function') {
+        throw new Error('Função de API inválida');
+      }
       const result = await apiCall();
       toast({ title: 'Sucesso!', description: successMsg });
       fetchData(); // Refresh all data
@@ -156,7 +161,7 @@ export const DataProvider = ({ children }) => {
       toast({ variant: 'destructive', title: 'Erro na Operação', description: error.message });
       throw error;
     }
-  };
+  }, [toast, fetchData]);
 
   // Stores
   const addStore = (store) => handleApiCall(() => api.createStore(store), 'Loja adicionada.');
@@ -164,9 +169,21 @@ export const DataProvider = ({ children }) => {
   const deleteStore = (id) => handleApiCall(() => api.deleteStore(id), 'Loja removida.');
 
   // Users
-  const addUser = (email, password, data) => handleApiCall(() => api.createAppUser(email, password, data), 'Usuário criado.');
-  const updateUser = (id, data) => handleApiCall(() => api.updateAppUser(id, data), 'Usuário atualizado.');
-  const deleteUser = (id) => handleApiCall(() => api.deleteAppUser(id), 'Usuário removido.');
+  const addUser = useCallback((email, password, data) => {
+    if (!handleApiCall || typeof handleApiCall !== 'function') {
+      console.error('❌ [DataContext] handleApiCall não está disponível');
+      return Promise.reject(new Error('Sistema não inicializado corretamente'));
+    }
+    return handleApiCall(() => api.createAppUser(email, password, data), 'Usuário criado.');
+  }, [handleApiCall]);
+  
+  const updateUser = useCallback((id, data) => {
+    return handleApiCall(() => api.updateAppUser(id, data), 'Usuário atualizado.');
+  }, [handleApiCall]);
+  
+  const deleteUser = useCallback((id) => {
+    return handleApiCall(() => api.deleteAppUser(id), 'Usuário removido.');
+  }, [handleApiCall]);
   const toggleUserStatus = async (id) => {
     try {
       const user = users.find(u => u.id === id);
@@ -310,7 +327,8 @@ export const DataProvider = ({ children }) => {
   };
 
   const value = {
-    loading,
+    loading: loading || !isInitialized,
+    isInitialized,
     users,
     addUser,
     updateUser,
