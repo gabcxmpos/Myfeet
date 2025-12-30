@@ -437,52 +437,35 @@ const PhysicalMissing = () => {
     }
 
     try {
-      // Para FALTA FISICA e SOBRA, salvar todos os itens em um único registro
+      // Para FALTA FISICA e SOBRA, criar um registro SEPARADO para cada item
       if (missingFormData.missing_type.includes('FALTA FISICA') || missingFormData.missing_type.includes('SOBRA')) {
-        // Preparar array de itens
-        const items = missingFormData.items.map((item) => {
+        // Criar um registro para cada item
+        const promises = missingFormData.items.map(async (item) => {
           const costValue = parseFloat(item.cost_value) || 0;
           const quantity = parseInt(item.quantity) || 0;
-          return {
+          const totalValue = costValue * quantity;
+
+          const missingData = {
+            nf_number: missingFormData.nf_number.trim(),
+            moved_to_defect: missingFormData.moved_to_defect,
+            store_id: user.storeId,
+            status: missingFormData.moved_to_defect ? 'estoque_falta_fisica' : 'processo_aberto',
+            missing_type: missingFormData.missing_type,
             brand: item.brand.trim(),
             sku: item.sku.trim(),
             color: item.color.trim(),
             size: item.size.trim(),
+            sku_info: `${item.sku.trim()} - ${item.color.trim()} - ${item.size.trim()}`,
             cost_value: costValue,
             quantity: quantity,
-            total_value: costValue * quantity
+            total_value: totalValue
           };
+
+          return await addPhysicalMissing(missingData);
         });
 
-        // Calcular valores totais
-        const totalValue = items.reduce((sum, item) => sum + item.total_value, 0);
-        const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-
-        // Usar o primeiro item para campos principais (compatibilidade)
-        const firstItem = items[0];
-        const sku_info = items.length === 1 
-          ? `${firstItem.sku} - ${firstItem.color} - ${firstItem.size}`
-          : `${items.length} itens diferentes`;
-
-        const missingData = {
-          nf_number: missingFormData.nf_number.trim(),
-          moved_to_defect: missingFormData.moved_to_defect,
-          store_id: user.storeId,
-          status: missingFormData.moved_to_defect ? 'estoque_falta_fisica' : 'processo_aberto',
-          missing_type: missingFormData.missing_type,
-          brand: firstItem.brand,
-          sku: firstItem.sku,
-          color: firstItem.color,
-          size: firstItem.size,
-          sku_info: sku_info,
-          cost_value: firstItem.cost_value,
-          quantity: totalQuantity,
-          total_value: totalValue
-          // Nota: Campo 'items' removido pois não existe na tabela physical_missing
-          // Os dados dos itens estão sendo salvos nos campos principais acima
-        };
-
-        await addPhysicalMissing(missingData);
+        // Aguardar todos os registros serem criados
+        await Promise.all(promises);
 
         toast({
           title: 'Sucesso!',
@@ -814,7 +797,7 @@ const PhysicalMissing = () => {
                           onChange={(e) => handleUpdateItem(item.id, 'color', e.target.value)}
                           required
                           className="bg-secondary"
-                          placeholder="Ex: PRETO"
+                          placeholder="Ex: 111"
                         />
                       </div>
                       <div className="space-y-2">
@@ -943,7 +926,7 @@ const PhysicalMissing = () => {
                           onChange={(e) => handleUpdateItem(item.id, 'color', e.target.value)}
                           required
                           className="bg-secondary"
-                          placeholder="Ex: PRETO"
+                          placeholder="Ex: 111"
                         />
                       </div>
                       <div className="space-y-2">
@@ -1057,7 +1040,7 @@ const PhysicalMissing = () => {
                     onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_color: e.target.value })}
                     required
                     className="bg-secondary"
-                    placeholder="Ex: PRETO"
+                    placeholder="Ex: 111"
                   />
                 </div>
                 <div className="space-y-2">
@@ -1140,7 +1123,7 @@ const PhysicalMissing = () => {
                     onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_color: e.target.value })}
                     required
                     className="bg-secondary"
-                    placeholder="Ex: BRANCO"
+                    placeholder="Ex: 222"
                   />
                 </div>
                 <div className="space-y-2">
