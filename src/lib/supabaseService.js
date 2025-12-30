@@ -221,10 +221,35 @@ export const fetchCollaborators = async (storeId = null) => {
 };
 
 export const createCollaborator = async (collaboratorData) => {
+  // Criar objeto limpo apenas com campos válidos (snake_case)
+  const cleanData = {};
+  
+  // Mapear campos para snake_case
+  if (collaboratorData.name !== undefined && collaboratorData.name !== null) {
+    cleanData.name = collaboratorData.name;
+  }
+  if (collaboratorData.role !== undefined && collaboratorData.role !== null) {
+    cleanData.role = collaboratorData.role;
+  }
+  // Sempre usar store_id (snake_case)
+  const storeId = collaboratorData.store_id || collaboratorData.storeId;
+  if (storeId !== undefined && storeId !== null) {
+    cleanData.store_id = storeId;
+  }
+  if (collaboratorData.cpf !== undefined && collaboratorData.cpf !== null) {
+    cleanData.cpf = collaboratorData.cpf;
+  }
+  if (collaboratorData.email !== undefined && collaboratorData.email !== null) {
+    cleanData.email = collaboratorData.email;
+  }
+  if (collaboratorData.status !== undefined && collaboratorData.status !== null) {
+    cleanData.status = collaboratorData.status;
+  }
+  
   const { data, error } = await supabase
     .from('collaborators')
-    .insert([collaboratorData])
-    .select()
+    .insert([cleanData])
+    .select('id, name, role, store_id, cpf, email, status, created_at, updated_at')
     .single();
   
   if (error) throw error;
@@ -270,10 +295,26 @@ export const fetchFeedbacks = async (storeId = null) => {
 };
 
 export const createFeedback = async (feedbackData) => {
+  // Normalizar campos camelCase para snake_case
+  const cleanData = {
+    store_id: feedbackData.store_id || feedbackData.storeId,
+    collaborator_id: feedbackData.collaborator_id || feedbackData.collaboratorId,
+    feedback_text: feedbackData.feedback_text || feedbackData.feedbackText,
+    development_point: feedbackData.development_point || feedbackData.developmentPoint,
+    satisfaction: feedbackData.satisfaction,
+  };
+  
+  // Remover campos undefined/null
+  Object.keys(cleanData).forEach(key => {
+    if (cleanData[key] === undefined || cleanData[key] === null) {
+      delete cleanData[key];
+    }
+  });
+  
   const { data, error } = await supabase
       .from('feedbacks')
-    .insert([feedbackData])
-    .select()
+    .insert([cleanData])
+    .select('*')
       .single();
     
   if (error) throw error;
@@ -607,10 +648,26 @@ export const fetchReturnsPlanner = async () => {
 };
 
 export const createReturnsPlanner = async (plannerData) => {
+  // Normalizar campos camelCase para snake_case
+  const cleanData = {
+    store_id: plannerData.store_id || plannerData.storeId,
+    nf_number: plannerData.nf_number || plannerData.nfNumber,
+    date: plannerData.date,
+    status: plannerData.status,
+    notes: plannerData.notes,
+  };
+  
+  // Remover campos undefined/null
+  Object.keys(cleanData).forEach(key => {
+    if (cleanData[key] === undefined || cleanData[key] === null) {
+      delete cleanData[key];
+    }
+  });
+  
   const { data, error } = await supabase
     .from('returns_planner')
-    .insert([plannerData])
-    .select()
+    .insert([cleanData])
+    .select('*')
     .single();
   
   if (error) throw error;
@@ -650,10 +707,53 @@ export const fetchPhysicalMissing = async () => {
 };
 
 export const createPhysicalMissing = async (missingData) => {
+  // Normalizar campos camelCase para snake_case e incluir todos os campos possíveis
+  const cleanData = {
+    store_id: missingData.store_id || missingData.storeId,
+    nf_number: missingData.nf_number || missingData.nfNumber,
+    product_code: missingData.product_code || missingData.productCode,
+    product_name: missingData.product_name || missingData.productName,
+    quantity: missingData.quantity,
+    value: missingData.value,
+    type: missingData.type,
+    emission_date: missingData.emission_date || missingData.emissionDate,
+    // Campos adicionais para falta física
+    brand: missingData.brand,
+    sku: missingData.sku,
+    color: missingData.color,
+    size: missingData.size,
+    sku_info: missingData.sku_info || missingData.skuInfo,
+    cost_value: missingData.cost_value || missingData.costValue,
+    total_value: missingData.total_value || missingData.totalValue,
+    missing_type: missingData.missing_type || missingData.missingType,
+    moved_to_defect: missingData.moved_to_defect !== undefined ? missingData.moved_to_defect : missingData.movedToDefect,
+    status: missingData.status,
+    // Campos de divergência
+    divergence_missing_brand: missingData.divergence_missing_brand || missingData.divergenceMissingBrand,
+    divergence_missing_sku: missingData.divergence_missing_sku || missingData.divergenceMissingSku,
+    divergence_missing_color: missingData.divergence_missing_color || missingData.divergenceMissingColor,
+    divergence_missing_size: missingData.divergence_missing_size || missingData.divergenceMissingSize,
+    divergence_missing_quantity: missingData.divergence_missing_quantity || missingData.divergenceMissingQuantity,
+    divergence_missing_cost_value: missingData.divergence_missing_cost_value || missingData.divergenceMissingCostValue,
+    divergence_surplus_brand: missingData.divergence_surplus_brand || missingData.divergenceSurplusBrand,
+    divergence_surplus_sku: missingData.divergence_surplus_sku || missingData.divergenceSurplusSku,
+    divergence_surplus_color: missingData.divergence_surplus_color || missingData.divergenceSurplusColor,
+    divergence_surplus_size: missingData.divergence_surplus_size || missingData.divergenceSurplusSize,
+    divergence_surplus_quantity: missingData.divergence_surplus_quantity || missingData.divergenceSurplusQuantity,
+    divergence_surplus_cost_value: missingData.divergence_surplus_cost_value || missingData.divergenceSurplusCostValue,
+  };
+  
+  // Remover campos undefined/null
+  Object.keys(cleanData).forEach(key => {
+    if (cleanData[key] === undefined || cleanData[key] === null) {
+      delete cleanData[key];
+    }
+  });
+  
   const { data, error } = await supabase
     .from('physical_missing')
-    .insert([missingData])
-    .select()
+    .insert([cleanData])
+    .select('*')
     .single();
   
   if (error) throw error;
