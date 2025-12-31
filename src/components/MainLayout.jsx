@@ -1,161 +1,216 @@
-import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import Sidebar from '@/components/Sidebar';
-import Header from '@/components/Header';
+import React from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
-import { Loader2 } from 'lucide-react';
+import { useData } from '@/contexts/DataContext';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, GraduationCap, RotateCcw, X, Menu, FileCheck, Calendar, Route, Settings, MessageCircle, AlertCircle, TrendingUp, Calculator, XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-const MainLayout = () => {
-  const { loading: authLoading } = useAuth();
-  
-  // Estado para detectar se é desktop de forma reativa
-  const [isDesktop, setIsDesktop] = useState(() => {
+const allMenuItems = [
+    // Dashboard e Ranking primeiro
+    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação', 'financeiro', 'digital'] },
+    { path: '/ranking', icon: Trophy, label: 'Ranking PPAD', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'financeiro', 'digital'] },
+    { path: '/painel-excelencia', icon: Trophy, label: 'Painel Excelência', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital'] },
+    // Checklists logo após Painel Excelência (para admin)
+    { path: '/checklists', icon: CheckSquare, label: 'Checklists', roles: ['admin', 'devoluções', 'motorista', 'comunicação', 'digital'] },
+    { path: '/manage-checklists', icon: CheckSquare, label: 'Gerenciar Checklists', roles: ['admin'] },
+    // Seção Análises (página principal com subpáginas)
+    { path: '/analises', icon: BarChart3, label: 'Análises', roles: ['admin', 'supervisor', 'supervisor_franquia', 'financeiro', 'digital'] },
+    // Demais itens
+    { path: '/chave', icon: KeyRound, label: 'CHAVE', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação', 'financeiro', 'digital'] },
+    { path: '/checklist', icon: CheckSquare, label: 'Checklist Diário', roles: ['supervisor', 'supervisor_franquia', 'digital'] },
+    { path: '/store-checklists', icon: CheckSquare, label: 'Checklists', roles: ['loja', 'loja_franquia'] },
+    { path: '/non-conversion-report', icon: XCircle, label: 'Relatório de Não Conversão', roles: ['loja', 'loja_franquia'] },
+    // Gestão e Metas (página principal com subpáginas)
+    { path: '/gestao-metas', icon: BarChart3, label: 'Gestão e Metas', roles: ['admin', 'supervisor', 'supervisor_franquia', 'financeiro'] },
+    { path: '/evaluation', icon: ClipboardCheck, label: 'Nova Avaliação', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação', 'digital'] },
+    { path: '/stores', icon: Store, label: 'Lojas', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital'] },
+    { path: '/store-results', icon: TrendingUp, label: 'Resultados da Loja', roles: ['loja', 'loja_franquia'] },
+    { path: '/stores-cto', icon: Calculator, label: 'CTO', roles: ['admin', 'supervisor', 'supervisor_franquia', 'financeiro'] },
+    { path: '/acionamentos', icon: AlertCircle, label: 'Acionamentos', roles: ['comunicação'] },
+    { path: '/forms', icon: FileText, label: 'Criar Formulário', roles: ['admin'] },
+    { path: '/collaborators', icon: Users2, label: 'Colaboradores', roles: ['loja', 'loja_franquia'] },
+    { path: '/feedback', icon: MessageSquareQuote, label: 'Dar Feedback', roles: ['loja', 'loja_franquia'] },
+    { path: '/feedback-management', icon: BookUser, label: 'Gestão de Feedbacks', roles: ['admin', 'supervisor', 'supervisor_franquia'] },
+    { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital'] },
+    { path: '/training', icon: GraduationCap, label: 'Treinamentos', roles: ['loja', 'loja_franquia'] },
+    { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja', 'devoluções', 'financeiro'] }, // SEM loja_franquia e supervisor_franquia
+    // Planner de Devoluções ainda aparece separado para perfil devoluções (não admin)
+    { path: '/returns-planner', icon: Calendar, label: 'Planner de Devoluções', roles: ['devoluções'] },
+];
+
+const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: isDesktopProp }) => {
+  const { user } = useAuth();
+  const { menuVisibility } = useData();
+  const location = useLocation();
+
+  const menuItems = allMenuItems.filter(item => {
+    // Check if user has the role for the item
+    if (!user?.role || !item.roles.includes(user.role)) {
+      return false;
+    }
+    // Check visibility settings
+    const visibilitySettings = menuVisibility[item.path];
+    if (visibilitySettings && visibilitySettings[user.role] === false) {
+      return false;
+    }
+    return true;
+  });
+
+  // Usar isDesktop do prop se fornecido, senão detectar localmente
+  const [isDesktopLocal, setIsDesktopLocal] = React.useState(() => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth >= 1024;
   });
 
-  // Estado da sidebar: fechada em mobile por padrão, aberta em desktop
-  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    const isDesktopInitial = window.innerWidth >= 1024;
-    // Em mobile, SEMPRE começar fechada (não usar localStorage)
-    if (!isDesktopInitial) {
-      return false;
-    }
-    // Em desktop, carregar preferência do localStorage ou padrão (aberta)
-    const saved = localStorage.getItem('sidebarOpen');
-    if (saved !== null) {
-      return saved === 'true';
-    }
-    return true; // Desktop padrão: aberta
-  });
+  const isDesktop = isDesktopProp !== undefined ? isDesktopProp : isDesktopLocal;
 
-  // Estado para sidebar minimizada/maximizada (apenas desktop)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebarCollapsed');
-    if (saved !== null) return saved === 'true';
-    return false; // Começar maximizada
-  });
-
-  // Atualizar isDesktop quando redimensionar
-  useEffect(() => {
-    const handleResize = () => {
-      const desktop = window.innerWidth >= 1024;
-      const wasDesktop = isDesktop;
-      setIsDesktop(desktop);
-      
-      // Se mudou de desktop para mobile, resetar estado colapsado
-      if (!desktop && wasDesktop) {
-        // Mudou de desktop para mobile - resetar colapsado para garantir labels visíveis
-        setIsSidebarCollapsed(false);
-      }
-      
-      // Se mudou de mobile para desktop, não fechar automaticamente
-      // Deixar o usuário controlar manualmente
-      if (desktop && !wasDesktop) {
-        // Mudou de mobile para desktop - abrir se não houver preferência salva
-        if (localStorage.getItem('sidebarOpen') === null) {
-          setIsSidebarOpen(true);
-        }
-      }
-      // Não fechar automaticamente ao mudar para mobile - deixar o usuário controlar
-    };
-
-    // Verificar tamanho inicial
-    handleResize();
+  // Atualizar quando redimensionar (apenas se não receber prop)
+  React.useEffect(() => {
+    if (isDesktopProp !== undefined) return; // Não atualizar se receber prop
     
+    const handleResize = () => {
+      setIsDesktopLocal(window.innerWidth >= 1024);
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isDesktop]);
+  }, [isDesktopProp]);
 
-  // Salvar preferência no localStorage apenas para desktop
-  useEffect(() => {
-    // Só salvar preferência se for desktop
-    // Em mobile, sempre começar fechada, então não salvar
-    if (isDesktop) {
-      localStorage.setItem('sidebarOpen', String(isSidebarOpen));
+  // Fechar sidebar ao navegar em mobile (apenas quando pathname realmente mudar)
+  React.useEffect(() => {
+    if (!isDesktop && isOpen && onClose) {
+      // Usar requestAnimationFrame para garantir que a navegação aconteça antes de fechar
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          onClose();
+        });
+      });
     }
-  }, [isSidebarOpen, isDesktop]);
+  }, [location.pathname, isDesktop, isOpen, onClose]);
 
-  useEffect(() => {
-    localStorage.setItem('sidebarCollapsed', String(isSidebarCollapsed));
-  }, [isSidebarCollapsed]);
-
-  const toggleSidebar = () => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 [MainLayout] toggleSidebar chamado. Estado atual:', isSidebarOpen, 'isDesktop:', isDesktop);
-    }
-    setIsSidebarOpen(prev => {
-      const newState = !prev;
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔄 [MainLayout] Novo estado da sidebar:', newState);
-      }
-      return newState;
-    });
-  };
-
-  const toggleSidebarCollapse = () => {
-    setIsSidebarCollapsed(!isSidebarCollapsed);
-  };
-
-  const closeSidebar = () => {
-    // Em mobile, sempre fechar
-    if (!isDesktop) {
-      setIsSidebarOpen(false);
-    }
-  };
-
-  if (authLoading) {
-    return (
-       <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
+  // Usar AnimatePresence para animar entrada/saída
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🎯 [Sidebar] Renderizando. isOpen:', isOpen, 'isDesktop:', isDesktop);
   }
-
+  
+  // Se não estiver aberta, não renderizar nada
+  if (!isOpen) {
+    return null;
+  }
+  
   return (
-    <div className="flex h-screen bg-background text-foreground relative overflow-hidden">
-      {/* Overlay para mobile quando sidebar está aberta */}
-      {isSidebarOpen && !isDesktop && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-black/50 z-[50]"
-          style={{ zIndex: 50 }}
-          onClick={(e) => {
-            // Só fechar se clicar diretamente no overlay (não em elementos filhos)
-            // A sidebar está em z-60, então cliques nela não chegam aqui
-            if (e.target === e.currentTarget) {
-              closeSidebar();
-            }
-          }}
-          aria-hidden="true"
-        />
-      )}
-      
-      {/* Sidebar */}
-      <Sidebar 
-        isOpen={isSidebarOpen} 
-        onClose={closeSidebar}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={toggleSidebarCollapse}
-        isDesktop={isDesktop}
-      />
-      
-      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${isSidebarOpen && isDesktop ? (isSidebarCollapsed ? 'lg:ml-[80px]' : 'lg:ml-[256px]') : 'lg:ml-0'}`}>
-        <Header onToggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} isDesktop={isDesktop} />
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 overscroll-contain">
-          <Outlet />
-        </main>
-        <footer className="bg-card border-t border-border py-4 px-6 text-center text-xs text-muted-foreground">
-            MYFEET Painel PPAD — © {new Date().getFullYear()} Grupo Afeet
-        </footer>
-      </div>
-    </div>
+    <AnimatePresence>
+      <motion.aside
+        initial={!isDesktop ? { x: '-100%', opacity: 0 } : { opacity: 0 }}
+        animate={{ 
+          x: 0, 
+          opacity: 1,
+          width: isDesktop && isCollapsed ? 80 : 256
+        }}
+        exit={!isDesktop ? { x: '-100%', opacity: 0 } : { opacity: 0 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className={`${
+          isDesktop 
+            ? 'fixed z-40' 
+            : 'fixed z-[60]'
+        } inset-y-0 left-0 bg-card border-r border-border flex flex-col shadow-2xl lg:shadow-none overflow-hidden`}
+        style={{ 
+          pointerEvents: 'auto',
+          width: !isDesktop ? '280px' : (isCollapsed ? '80px' : '256px'),
+          maxWidth: !isDesktop ? '85vw' : undefined,
+          zIndex: !isDesktop ? 60 : 40
+        }}
+      >
+          {/* Header com botão de fechar em mobile e toggle de minimizar em desktop */}
+          <div className={`border-b border-border flex items-center justify-between ${isCollapsed && isDesktop ? 'p-4 justify-center' : 'p-6'}`}>
+            {!isCollapsed || !isDesktop ? (
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
+                  MYFEET
+                </h1>
+                <p className="text-xs text-muted-foreground mt-1">Painel PPAD</p>
+              </div>
+            ) : (
+              <div className="w-full flex justify-center">
+                <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
+                  MF
+                </h1>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              {/* Botão de minimizar/maximizar - apenas em desktop e quando expandido */}
+              {/* Quando colapsado em desktop, não mostrar botão (Header já tem o Menu) */}
+              {isDesktop && onToggleCollapse && !isCollapsed && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onToggleCollapse}
+                  aria-label="Minimizar menu"
+                  className="hidden lg:flex"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              )}
+              {/* Botão de fechar - apenas em mobile, e apenas quando sidebar está aberta */}
+              {!isDesktop && isOpen && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="lg:hidden"
+                  onClick={onClose}
+                  aria-label="Fechar menu"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              )}
+            </div>
+          </div>
+          
+          {/* Menu de navegação */}
+          <nav className="flex-1 overflow-y-auto py-4">
+            {menuItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 py-3 text-sm font-medium transition-all relative ${
+                    isCollapsed && isDesktop 
+                      ? 'px-4 justify-center' 
+                      : 'px-6'
+                  } ${
+                    isActive
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                  }`
+                }
+                title={isCollapsed && isDesktop ? item.label : undefined}
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && !isCollapsed && (
+                      <motion.div layoutId="active-menu" className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r-full" />
+                    )}
+                    {isActive && isCollapsed && isDesktop && (
+                      <motion.div 
+                        layoutId="active-menu-mobile" 
+                        className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-r-full" 
+                      />
+                    )}
+                    <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-primary' : ''}`} />
+                    {/* Sempre mostrar labels quando não for desktop, ou quando não estiver colapsado em desktop */}
+                    {!isDesktop ? (
+                      <span className="truncate">{item.label}</span>
+                    ) : (
+                      !isCollapsed && <span className="truncate">{item.label}</span>
+                    )}
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </nav>
+        </motion.aside>
+    </AnimatePresence>
   );
 };
 
-export default MainLayout;
+export default Sidebar;
