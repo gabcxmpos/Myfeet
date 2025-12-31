@@ -45,7 +45,13 @@ const MainLayout = () => {
       const wasDesktop = isDesktop;
       setIsDesktop(desktop);
       
-      // Se mudou de desktop para mobile, não fechar automaticamente
+      // Se mudou de desktop para mobile, resetar estado colapsado
+      if (!desktop && wasDesktop) {
+        // Mudou de desktop para mobile - resetar colapsado para garantir labels visíveis
+        setIsSidebarCollapsed(false);
+      }
+      
+      // Se mudou de mobile para desktop, não fechar automaticamente
       // Deixar o usuário controlar manualmente
       if (desktop && !wasDesktop) {
         // Mudou de mobile para desktop - abrir se não houver preferência salva
