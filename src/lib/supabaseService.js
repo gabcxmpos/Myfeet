@@ -56,6 +56,18 @@ export const fetchAppUsers = async () => {
   return data || [];
 };
 
+export const updateLastLogin = async (userId) => {
+  const { error } = await supabase
+    .from('app_users')
+    .update({ last_login: new Date().toISOString() })
+    .eq('id', userId);
+  
+  if (error) {
+    console.error('Erro ao atualizar último login:', error);
+    // Não lançar erro para não interromper o fluxo de login
+  }
+};
+
 export const createAppUser = async (email, password, userData) => {
   // Create auth user
   const { data: authData, error: authError } = await supabase.auth.signUp({
