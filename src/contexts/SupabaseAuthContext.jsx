@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/customSupabaseClient';
-import { fetchCurrentUserProfile } from '@/lib/supabaseService';
+import { fetchCurrentUserProfile, updateLastLogin } from '@/lib/supabaseService';
 import { useToast } from '@/components/ui/use-toast';
 
 const AuthContext = createContext(undefined);
@@ -240,6 +240,13 @@ export const AuthProvider = ({ children }) => {
               // O processo de criação de usuário vai gerenciar a sessão
               return;
             }
+            
+            // Se o perfil existe, é um login legítimo - atualizar último login
+            try {
+              await updateLastLogin(session.user.id);
+            } catch (loginUpdateError) {
+              console.warn('Aviso: Não foi possível atualizar o último login:', loginUpdateError);
+            }
           } catch (error) {
             // Se houver erro ao verificar, processar normalmente
             console.warn('Erro ao verificar perfil durante SIGNED_IN:', error);
@@ -356,6 +363,14 @@ export const AuthProvider = ({ children }) => {
           description: "Sua conta foi bloqueada. Entre em contato com o administrador.",
         });
         return { success: false, error: { message: 'User blocked' } };
+      }
+
+      // Atualizar último login após login bem-sucedido
+      try {
+        await updateLastLogin(data.user.id);
+      } catch (loginUpdateError) {
+        // Não interromper o fluxo de login se houver erro ao atualizar último login
+        console.warn('Aviso: Não foi possível atualizar o último login:', loginUpdateError);
       }
 
       // Verificar se o usuário está usando a senha padrão "afeet10"
