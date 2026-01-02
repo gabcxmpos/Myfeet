@@ -43,6 +43,17 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: is
   const { user } = useAuth();
   const { menuVisibility } = useData();
   const location = useLocation();
+  
+  // Debug: Log para verificar estados
+  if (process.env.NODE_ENV === 'development') {
+    React.useEffect(() => {
+      console.log('🔍 [Sidebar] Estados:', {
+        isDesktop: isDesktopProp,
+        isCollapsed,
+        shouldShowLabels: !isDesktopProp || (isDesktopProp && !isCollapsed)
+      });
+    }, [isDesktopProp, isCollapsed]);
+  }
 
   const menuItems = allMenuItems.filter(item => {
     // Check if user has the role for the item
@@ -197,12 +208,20 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: is
                       />
                     )}
                     <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-primary' : ''}`} />
-                    {/* Sempre mostrar labels quando não for desktop, ou quando não estiver colapsado em desktop */}
-                    {!isDesktop ? (
-                      <span className="truncate">{item.label}</span>
-                    ) : (
-                      !isCollapsed && <span className="truncate">{item.label}</span>
-                    )}
+                    {/* IMPORTANTE: Sempre mostrar labels quando não for desktop */}
+                    {/* Em desktop, mostrar apenas se não estiver colapsado */}
+                    {(() => {
+                      // Se não for desktop, SEMPRE mostrar labels
+                      if (!isDesktop) {
+                        return <span className="truncate">{item.label}</span>;
+                      }
+                      // Se for desktop, mostrar apenas se não estiver colapsado
+                      if (isDesktop && !isCollapsed) {
+                        return <span className="truncate">{item.label}</span>;
+                      }
+                      // Se for desktop e estiver colapsado, não mostrar
+                      return null;
+                    })()}
                   </>
                 )}
               </NavLink>
