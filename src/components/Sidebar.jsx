@@ -208,20 +208,8 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: is
                       />
                     )}
                     <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-primary' : ''}`} />
-                    {/* IMPORTANTE: Sempre mostrar labels quando não for desktop */}
-                    {/* Em desktop, mostrar apenas se não estiver colapsado */}
-                    {(() => {
-                      // Se não for desktop, SEMPRE mostrar labels
-                      if (!isDesktop) {
-                        return <span className="truncate">{item.label}</span>;
-                      }
-                      // Se for desktop, mostrar apenas se não estiver colapsado
-                      if (isDesktop && !isCollapsed) {
-                        return <span className="truncate">{item.label}</span>;
-                      }
-                      // Se for desktop e estiver colapsado, não mostrar
-                      return null;
-                    })()}
+                    {/* Mostrar labels sempre quando não for desktop, ou quando não estiver colapsada em desktop */}
+                    {(!isDesktop || !isCollapsed) && <span className="truncate">{item.label}</span>}
                   </>
                 )}
               </NavLink>
