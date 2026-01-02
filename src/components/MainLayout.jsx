@@ -86,13 +86,18 @@ const MainLayout = () => {
     if (process.env.NODE_ENV === 'development') {
       console.log('🔄 [MainLayout] toggleSidebar chamado. Estado atual:', isSidebarOpen, 'isDesktop:', isDesktop);
     }
-    setIsSidebarOpen(prev => {
-      const newState = !prev;
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔄 [MainLayout] Novo estado da sidebar:', newState);
+    
+    // Em desktop, o hambúrguer controla o estado colapsado (minimalista)
+    if (isDesktop) {
+      setIsSidebarCollapsed(prev => !prev);
+      // Se estiver fechada, abrir ao clicar
+      if (!isSidebarOpen) {
+        setIsSidebarOpen(true);
       }
-      return newState;
-    });
+    } else {
+      // Em mobile, o hambúrguer controla apenas abrir/fechar
+      setIsSidebarOpen(prev => !prev);
+    }
   };
 
   const toggleSidebarCollapse = () => {
