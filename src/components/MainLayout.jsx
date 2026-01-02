@@ -140,7 +140,7 @@ const MainLayout = () => {
       <Sidebar 
         isOpen={isSidebarOpen} 
         onClose={closeSidebar}
-        isCollapsed={isSidebarCollapsed}
+        isCollapsed={isDesktop ? isSidebarCollapsed : false}
         onToggleCollapse={toggleSidebarCollapse}
         isDesktop={isDesktop}
       />
