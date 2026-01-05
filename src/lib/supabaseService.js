@@ -57,14 +57,33 @@ export const fetchAppUsers = async () => {
 };
 
 export const updateLastLogin = async (userId) => {
-  const { error } = await supabase
-    .from('app_users')
-    .update({ last_login: new Date().toISOString() })
-    .eq('id', userId);
-  
-  if (error) {
-    console.error('Erro ao atualizar último login:', error);
-    // Não lançar erro para não interromper o fluxo de login
+  try {
+    const { data, error } = await supabase
+      .from('app_users')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', userId)
+      .select('id, last_login')
+      .single();
+    
+    if (error) {
+      console.error('❌ Erro ao atualizar último login:', error);
+      console.error('   User ID:', userId);
+      console.error('   Error code:', error.code);
+      console.error('   Error message:', error.message);
+      return { success: false, error };
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ Último login atualizado com sucesso:', {
+        userId,
+        lastLogin: data?.last_login
+      });
+    }
+    
+    return { success: true, data };
+  } catch (err) {
+    console.error('❌ Exceção ao atualizar último login:', err);
+    return { success: false, error: err };
   }
 };
 
@@ -660,18 +679,25 @@ export const fetchReturnsPlanner = async () => {
 };
 
 export const createReturnsPlanner = async (plannerData) => {
-  // Normalizar campos camelCase para snake_case
+  // Aceitar todos os campos enviados do ReturnsPlanner
   const cleanData = {
-    store_id: plannerData.store_id || plannerData.storeId,
-    nf_number: plannerData.nf_number || plannerData.nfNumber,
-    date: plannerData.date,
+    store_id: plannerData.store_id,
+    supervisor: plannerData.supervisor || null,
+    return_type: plannerData.return_type,
+    opening_date: plannerData.opening_date,
+    brand: plannerData.brand,
+    case_number: plannerData.case_number || null,
+    invoice_number: plannerData.invoice_number || null,
+    invoice_issue_date: plannerData.invoice_issue_date || null,
+    return_value: plannerData.return_value || null,
+    items_quantity: plannerData.items_quantity || null,
     status: plannerData.status,
-    notes: plannerData.notes,
+    responsible_user_id: plannerData.responsible_user_id || null,
   };
   
-  // Remover campos undefined/null
+  // Remover campos undefined (mas manter null)
   Object.keys(cleanData).forEach(key => {
-    if (cleanData[key] === undefined || cleanData[key] === null) {
+    if (cleanData[key] === undefined) {
       delete cleanData[key];
     }
   });
