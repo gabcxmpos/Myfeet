@@ -55,6 +55,8 @@ export const DataProvider = ({ children }) => {
   const [feedbacks, setFeedbacks] = useState([]);
   const [returnsPlanner, setReturnsPlanner] = useState([]);
   const [physicalMissing, setPhysicalMissing] = useState([]);
+  const [trainings, setTrainings] = useState([]);
+  const [trainingRegistrations, setTrainingRegistrations] = useState([]);
   
   // App Settings
   const [patentSettings, setPatentSettings] = useState({ bronze: 0, prata: 70, ouro: 85, platina: 95 });
@@ -83,6 +85,8 @@ export const DataProvider = ({ children }) => {
         fetchedGerencialTasks,
         fetchedReturnsPlanner,
         fetchedPhysicalMissing,
+        fetchedTrainings,
+        fetchedTrainingRegistrations,
       ] = await Promise.all([
         api.fetchStores(),
         api.fetchAppUsers(),
@@ -98,6 +102,8 @@ export const DataProvider = ({ children }) => {
         api.fetchAppSettings('gerencial_tasks'),
         api.fetchReturnsPlanner(),
         api.fetchPhysicalMissing(),
+        api.fetchTrainings(),
+        api.fetchTrainingRegistrations(),
       ]);
 
       setStores(fetchedStores);
@@ -108,6 +114,8 @@ export const DataProvider = ({ children }) => {
       setFeedbacks(fetchedFeedbacks);
       setReturnsPlanner(fetchedReturnsPlanner || []);
       setPhysicalMissing(fetchedPhysicalMissing || []);
+      setTrainings(fetchedTrainings || []);
+      setTrainingRegistrations(fetchedTrainingRegistrations || []);
       
       if (fetchedPatents) setPatentSettings(fetchedPatents);
       if (fetchedChave) setChaveContent(fetchedChave.initialContent);
@@ -152,6 +160,8 @@ export const DataProvider = ({ children }) => {
       setFeedbacks([]);
       setReturnsPlanner([]);
       setPhysicalMissing([]);
+      setTrainings([]);
+      setTrainingRegistrations([]);
     }
   }, [isAuthenticated, fetchData]);
   
@@ -321,6 +331,32 @@ export const DataProvider = ({ children }) => {
     return handleApiCall(() => api.deletePhysicalMissing(id, nfNumber, storeId), 'Falta física removida.');
   }, [handleApiCall]);
 
+  // Trainings
+  const addTraining = useCallback((trainingData) => {
+    return handleApiCall(() => api.createTraining(trainingData), 'Treinamento criado.');
+  }, [handleApiCall]);
+  
+  const updateTraining = useCallback((id, data) => {
+    return handleApiCall(() => api.updateTraining(id, data), 'Treinamento atualizado.');
+  }, [handleApiCall]);
+  
+  const deleteTraining = useCallback((id) => {
+    return handleApiCall(() => api.deleteTraining(id), 'Treinamento removido.');
+  }, [handleApiCall]);
+
+  // Training Registrations
+  const addTrainingRegistration = useCallback((registrationData) => {
+    return handleApiCall(() => api.createTrainingRegistration(registrationData), 'Colaborador inscrito.');
+  }, [handleApiCall]);
+  
+  const updateTrainingRegistration = useCallback((id, data) => {
+    return handleApiCall(() => api.updateTrainingRegistration(id, data), 'Inscrição atualizada.');
+  }, [handleApiCall]);
+  
+  const deleteTrainingRegistration = useCallback((id) => {
+    return handleApiCall(() => api.deleteTrainingRegistration(id), 'Inscrição removida.');
+  }, [handleApiCall]);
+
   // Settings
   const updatePatentSettings = useCallback((settings) => {
     return handleApiCall(() => api.upsertAppSettings('patent_settings', settings), 'Patamares de patente atualizados.');
@@ -461,6 +497,14 @@ export const DataProvider = ({ children }) => {
     addPhysicalMissing,
     updatePhysicalMissing,
     deletePhysicalMissing,
+    trainings,
+    addTraining,
+    updateTraining,
+    deleteTraining,
+    trainingRegistrations,
+    addTrainingRegistration,
+    updateTrainingRegistration,
+    deleteTrainingRegistration,
     fetchData,
   };
 
