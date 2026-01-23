@@ -21,7 +21,7 @@ const ReturnsConsolidated = () => {
     if (location.pathname === '/returns-planner') return 'planner';
     if (!user) return 'pending';
     if (user?.role === 'devoluções') return 'planner';
-    if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'loja') return 'pending';
+    if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'loja' || user?.role === 'loja_franquia' || user?.role === 'financeiro') return 'pending';
     return 'pending';
   };
 
@@ -42,10 +42,21 @@ const ReturnsConsolidated = () => {
       setActiveTab('planner');
     } else if (user?.role === 'devoluções') {
       setActiveTab('planner');
-    } else if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'loja') {
+    } else if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'loja' || user?.role === 'financeiro') {
       setActiveTab('pending');
     }
   }, [user, location.pathname, tabFromUrl]);
+
+  if (!user) {
+    return null;
+  }
+
+  // Definir variáveis de perfil ANTES de usar
+  const isAdmin = user?.role === 'admin';
+  const isDevolucoes = user?.role === 'devoluções';
+  const isSupervisor = user?.role === 'supervisor' || user?.role === 'supervisor_franquia';
+  const isFinanceiro = user?.role === 'financeiro';
+  const isLoja = user?.role === 'loja' || user?.role === 'admin_loja' || user?.role === 'loja_franquia';
 
   // Atualizar URL quando a aba mudar
   const handleTabChange = (value) => {
@@ -65,16 +76,7 @@ const ReturnsConsolidated = () => {
       setActiveTab('pending');
       setSearchParams({ tab: 'pending' });
     }
-  }, [isLoja, activeTab]);
-
-  if (!user) {
-    return null;
-  }
-
-  const isAdmin = user?.role === 'admin';
-  const isDevolucoes = user?.role === 'devoluções';
-  const isSupervisor = user?.role === 'supervisor';
-  const isLoja = user?.role === 'loja' || user?.role === 'admin_loja' || user?.role === 'loja_franquia';
+  }, [isLoja, activeTab, setSearchParams]);
 
 
   return (
@@ -98,7 +100,7 @@ const ReturnsConsolidated = () => {
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="w-full flex flex-wrap gap-2 h-auto overflow-x-auto scrollbar-hide">
             {/* Aba Devoluções (Pendentes) - Comunicativo com loja */}
-            {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
+            {(isAdmin || isSupervisor || isLoja || isDevolucoes || isFinanceiro) && (
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 <RotateCcw className="w-4 h-4" />
                 <span>Devoluções</span>
@@ -106,23 +108,23 @@ const ReturnsConsolidated = () => {
             )}
 
             {/* Aba Planner - Registro do time de devoluções */}
-            {(isAdmin || isDevolucoes) && (
+            {(isAdmin || isDevolucoes || isSupervisor) && (
               <TabsTrigger value="planner" className="flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
                 <span>Planner</span>
               </TabsTrigger>
             )}
 
-            {/* Aba Falta Física - Apenas para admin e devoluções (loja tem aba dedicada) */}
-            {(isAdmin || isDevolucoes) && (
+            {/* Aba Falta Física - Apenas para admin, devoluções e supervisor (loja tem aba dedicada) */}
+            {(isAdmin || isDevolucoes || isSupervisor) && (
               <TabsTrigger value="missing" className="flex items-center gap-2">
                 <Package className="w-4 h-4" />
                 <span>Falta Física</span>
               </TabsTrigger>
             )}
 
-            {/* Aba Capacidade de Processamento - Apenas para admin e devoluções */}
-            {(isAdmin || isDevolucoes) && (
+            {/* Aba Capacidade de Processamento - Apenas para admin, devoluções e supervisor */}
+            {(isAdmin || isDevolucoes || isSupervisor) && (
               <TabsTrigger value="capacity" className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4" />
                 <span>Capacidade</span>
@@ -131,27 +133,27 @@ const ReturnsConsolidated = () => {
           </TabsList>
 
           {/* Conteúdo das Abas */}
-          {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
+          {(isAdmin || isSupervisor || isLoja || isDevolucoes || isFinanceiro) && (
             <TabsContent value="pending" className="mt-6">
               {activeTab === 'pending' && <ReturnsPending />}
             </TabsContent>
           )}
 
-          {(isAdmin || isDevolucoes) && (
+          {(isAdmin || isDevolucoes || isSupervisor) && (
             <TabsContent value="planner" className="mt-6">
               {activeTab === 'planner' && <ReturnsPlanner />}
             </TabsContent>
           )}
 
-          {/* Aba Falta Física - Apenas para admin e devoluções (loja tem aba dedicada) */}
-          {(isAdmin || isDevolucoes) && (
+          {/* Aba Falta Física - Apenas para admin, devoluções e supervisor (loja tem aba dedicada) */}
+          {(isAdmin || isDevolucoes || isSupervisor) && (
             <TabsContent value="missing" className="mt-6">
               {activeTab === 'missing' && <PhysicalMissing />}
             </TabsContent>
           )}
 
-          {/* Aba Capacidade - Apenas para admin e devoluções */}
-          {(isAdmin || isDevolucoes) && (
+          {/* Aba Capacidade - Apenas para admin, devoluções e supervisor */}
+          {(isAdmin || isDevolucoes || isSupervisor) && (
             <TabsContent value="capacity" className="mt-6">
               {activeTab === 'capacity' && <ReturnsCapacity />}
             </TabsContent>
