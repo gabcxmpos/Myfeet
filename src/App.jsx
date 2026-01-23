@@ -42,6 +42,9 @@ import NonConversionReport from '@/pages/NonConversionReport';
 import AnalisesPage from '@/pages/AnalisesPage';
 import ManageChecklists from '@/pages/ManageChecklists';
 import GestaoMetasPage from '@/pages/GestaoMetasPage';
+import PatrimonyManagement from '@/pages/PatrimonyManagement';
+import StorePatrimony from '@/pages/StorePatrimony';
+import PhysicalMissing from '@/pages/PhysicalMissing';
 
 function App() {
   return (
@@ -101,6 +104,11 @@ function App() {
                 <Route path="store-results" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><StoreResults /></ProtectedRoute>} />
                 {/* Relatório de Não Conversão */}
                 <Route path="non-conversion-report" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><NonConversionReport /></ProtectedRoute>} />
+                {/* Controle de Patrimônio */}
+                <Route path="patrimony" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia']}><PatrimonyManagement /></ProtectedRoute>} />
+                <Route path="store-patrimony" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><StorePatrimony /></ProtectedRoute>} />
+                {/* Falta Física */}
+                <Route path="physical-missing" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia', 'admin', 'supervisor', 'supervisor_franquia', 'devoluções']}><PhysicalMissing /></ProtectedRoute>} />
               </Route>
             </Routes>
             </Router>
