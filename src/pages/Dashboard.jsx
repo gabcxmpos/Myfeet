@@ -324,7 +324,10 @@ const Dashboard = () => {
     const isDigital = user.role === 'digital';
     const isSupervisor = user.role === 'supervisor' || user.role === 'supervisor_franquia';
     
-    const relevantFeedbacks = isLoja ? feedbacks.filter(fb => fb.storeId === user.storeId) : filteredFeedbacks;
+    // Para loja, filtrar feedbacks por storeId E por período
+    const relevantFeedbacks = isLoja 
+      ? filteredFeedbacks.filter(fb => fb.storeId === user.storeId)
+      : filteredFeedbacks;
     const feedbackSummary = relevantFeedbacks.reduce((acc, fb) => {
         acc[fb.satisfaction] = (acc[fb.satisfaction] || 0) + 1;
         if(fb.isPromotionCandidate) {
@@ -456,6 +459,32 @@ const Dashboard = () => {
                     <Button onClick={handleExport} variant="outline" className="gap-2">
                         <Download className="w-4 h-4" /> Extrair PDF
                     </Button>
+                </div>
+                {/* Filtros de Período para Loja */}
+                <div className="flex flex-wrap items-center gap-4 bg-card p-4 rounded-lg border border-border/50">
+                    <div className="space-y-1">
+                        <Label htmlFor="dateStartLoja" className="text-xs text-muted-foreground">Data Início</Label>
+                        <Input
+                            id="dateStartLoja"
+                            type="date"
+                            value={dateStart}
+                            onChange={(e) => setDateStart(e.target.value)}
+                            max={dateEnd}
+                            className="w-36 bg-secondary h-9 text-sm"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="dateEndLoja" className="text-xs text-muted-foreground">Data Fim</Label>
+                        <Input
+                            id="dateEndLoja"
+                            type="date"
+                            value={dateEnd}
+                            onChange={(e) => setDateEnd(e.target.value)}
+                            min={dateStart}
+                            className="w-36 bg-secondary h-9 text-sm"
+                        />
+                    </div>
+                    <div className="flex-1" />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     <KpiCard title="Pontuação Geral" score={dashboardData.overallScore} icon={Award} color="text-yellow-400" className="lg:col-span-1" />
