@@ -893,14 +893,15 @@ export const createTraining = async (trainingData) => {
 
 export const updateTraining = async (id, updates) => {
   const updateData = {};
+  const trainingFormat = updates.format !== undefined ? updates.format : null;
   
   if (updates.title !== undefined) updateData.title = updates.title;
   if (updates.description !== undefined) updateData.description = updates.description;
   if (updates.trainingDate !== undefined) updateData.training_date = updates.trainingDate;
   if (updates.time !== undefined) updateData.time = updates.time;
   if (updates.format !== undefined) updateData.format = updates.format;
-  if (updates.link !== undefined) updateData.link = updates.format === 'online' ? updates.link : null;
-  if (updates.location !== undefined) updateData.location = updates.format === 'presencial' ? updates.location : null;
+  if (updates.link !== undefined) updateData.link = trainingFormat === 'online' ? updates.link : null;
+  if (updates.location !== undefined) updateData.location = trainingFormat === 'presencial' ? updates.location : null;
   if (updates.brand !== undefined) updateData.brand = updates.brand;
   if (updates.storeIds !== undefined) {
     updateData.store_ids = updates.storeIds && updates.storeIds.length > 0 ? JSON.stringify(updates.storeIds) : null;
