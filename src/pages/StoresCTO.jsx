@@ -349,7 +349,8 @@ const StoresCTO = () => {
                     const monthDate = new Date(monthKey + '-01');
                     const isDecember = monthDate.getMonth() === 11;
                     const expectedAMM = isDecember ? aluguelMin * 2 : aluguelMin;
-                    const expectedCTO = expectedAMM + expectedFPP + expectedCond;
+                    // CTO Total Esperado deve incluir custos adicionais também
+                    const expectedCTO = expectedAMM + expectedFPP + expectedCond + additionalCosts;
                     
                     // Calcular valor complementar (baseado nas vendas totais)
                     const aluguelPercentual = yearBasicInfo.aluguelPercentual || parseFloat(ctoData.aluguelPercentual) || 0;
@@ -367,7 +368,8 @@ const StoresCTO = () => {
                     totalCondEsperado += expectedCond;
                     totalCondPago += cond;
                     totalCTOEsperado += expectedCTO;
-                    totalCTOPago += ctoBoleto;
+                    // CTO Total Pago deve incluir custos adicionais também
+                    totalCTOPago += ctoTotal;
                     totalComplementar += valorComplementar;
                     totalValoresAdicionais += additionalCosts;
                     
