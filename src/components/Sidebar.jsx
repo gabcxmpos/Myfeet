@@ -28,7 +28,7 @@ const allMenuItems = [
     { path: '/store-results', icon: TrendingUp, label: 'Resultados da Loja', roles: ['loja', 'loja_franquia'] },
     { path: '/patrimony', icon: Package, label: 'Controle de Patrimônio', roles: ['admin', 'supervisor', 'supervisor_franquia'] },
     { path: '/store-patrimony', icon: Package, label: 'Patrimônio', roles: ['loja', 'loja_franquia'] },
-    { path: '/physical-missing', icon: AlertTriangle, label: 'Falta Física', roles: ['loja', 'loja_franquia', 'admin', 'supervisor', 'supervisor_franquia', 'devoluções'] },
+    { path: '/physical-missing', icon: AlertTriangle, label: 'Falta Física', roles: ['loja', 'loja_franquia'] }, // Apenas loja (admin e devoluções têm dentro de Devoluções)
     { path: '/stores-cto', icon: Calculator, label: 'CTO', roles: ['admin', 'supervisor', 'supervisor_franquia', 'financeiro'] },
     { path: '/acionamentos', icon: AlertCircle, label: 'Acionamentos', roles: ['comunicação'] },
     { path: '/forms', icon: FileText, label: 'Criar Formulário', roles: ['admin'] },
