@@ -846,8 +846,11 @@ const StoresCTO = () => {
                                 
                                 if (totalSales === 0 || totalCTOBoleto === 0) return null;
                                 
-                                const totalCTOEsperado = totalAMMEsperado + totalFPPEsperado + totalCondEsperado;
-                                const diffCTO = totalCTOBoleto - totalCTOEsperado;
+                                // CTO Total Esperado deve incluir custos adicionais
+                                const totalCTOEsperado = totalAMMEsperado + totalFPPEsperado + totalCondEsperado + totalValoresAdicionais;
+                                // CTO Total Pago = CTO Boleto + Custos Adicionais
+                                const totalCTOPago = totalCTOBoleto + totalValoresAdicionais;
+                                const diffCTO = totalCTOPago - totalCTOEsperado;
                                 
                                 return (
                                   <div key={store.id} className="p-4 bg-secondary/50 rounded-lg border border-border/50">
