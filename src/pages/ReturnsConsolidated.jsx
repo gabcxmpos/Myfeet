@@ -49,9 +49,23 @@ const ReturnsConsolidated = () => {
 
   // Atualizar URL quando a aba mudar
   const handleTabChange = (value) => {
+    // Se for loja, não permitir acessar abas de Falta Física ou Capacidade
+    if (isLoja && (value === 'missing' || value === 'capacity')) {
+      setActiveTab('pending');
+      setSearchParams({ tab: 'pending' });
+      return;
+    }
     setActiveTab(value);
     setSearchParams({ tab: value });
   };
+
+  // Garantir que loja não fique em aba inválida
+  React.useEffect(() => {
+    if (isLoja && (activeTab === 'missing' || activeTab === 'capacity')) {
+      setActiveTab('pending');
+      setSearchParams({ tab: 'pending' });
+    }
+  }, [isLoja, activeTab]);
 
   if (!user) {
     return null;
@@ -60,7 +74,7 @@ const ReturnsConsolidated = () => {
   const isAdmin = user?.role === 'admin';
   const isDevolucoes = user?.role === 'devoluções';
   const isSupervisor = user?.role === 'supervisor';
-  const isLoja = user?.role === 'loja' || user?.role === 'admin_loja';
+  const isLoja = user?.role === 'loja' || user?.role === 'admin_loja' || user?.role === 'loja_franquia';
 
 
   return (
@@ -73,7 +87,10 @@ const ReturnsConsolidated = () => {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Devoluções</h1>
           <p className="text-muted-foreground mt-2">
-            Gerencie devoluções, planner e falta física
+            {isLoja 
+              ? 'Gerencie devoluções pendentes'
+              : 'Gerencie devoluções, planner e falta física'
+            }
           </p>
         </div>
 
@@ -96,16 +113,16 @@ const ReturnsConsolidated = () => {
               </TabsTrigger>
             )}
 
-            {/* Aba Falta Física - Preenchimento das lojas */}
-            {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
+            {/* Aba Falta Física - Apenas para admin e devoluções (loja tem aba dedicada) */}
+            {(isAdmin || isDevolucoes) && (
               <TabsTrigger value="missing" className="flex items-center gap-2">
                 <Package className="w-4 h-4" />
                 <span>Falta Física</span>
               </TabsTrigger>
             )}
 
-            {/* Aba Capacidade de Processamento */}
-            {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
+            {/* Aba Capacidade de Processamento - Apenas para admin e devoluções */}
+            {(isAdmin || isDevolucoes) && (
               <TabsTrigger value="capacity" className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4" />
                 <span>Capacidade</span>
@@ -126,13 +143,15 @@ const ReturnsConsolidated = () => {
             </TabsContent>
           )}
 
-          {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
+          {/* Aba Falta Física - Apenas para admin e devoluções (loja tem aba dedicada) */}
+          {(isAdmin || isDevolucoes) && (
             <TabsContent value="missing" className="mt-6">
               {activeTab === 'missing' && <PhysicalMissing />}
             </TabsContent>
           )}
 
-          {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
+          {/* Aba Capacidade - Apenas para admin e devoluções */}
+          {(isAdmin || isDevolucoes) && (
             <TabsContent value="capacity" className="mt-6">
               {activeTab === 'capacity' && <ReturnsCapacity />}
             </TabsContent>
