@@ -857,3 +857,122 @@ export const deletePhysicalMissing = async (id, nfNumber = null, storeId = null)
   
   if (error) throw error;
 };
+
+// ============ TRAININGS ============
+export const fetchTrainings = async () => {
+  const { data, error } = await supabase
+    .from('trainings')
+    .select('*')
+    .order('training_date', { ascending: true });
+  
+  if (error) throw error;
+  return data || [];
+};
+
+export const createTraining = async (trainingData) => {
+  const { data, error } = await supabase
+    .from('trainings')
+    .insert([{
+      title: trainingData.title,
+      description: trainingData.description || null,
+      training_date: trainingData.trainingDate,
+      time: trainingData.time || null,
+      format: trainingData.format,
+      link: trainingData.format === 'online' ? trainingData.link : null,
+      location: trainingData.format === 'presencial' ? trainingData.location : null,
+      brand: trainingData.brand || null,
+      store_ids: trainingData.storeIds && trainingData.storeIds.length > 0 ? JSON.stringify(trainingData.storeIds) : null,
+      max_participants: trainingData.maxParticipants ? parseInt(trainingData.maxParticipants) : null,
+    }])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateTraining = async (id, updates) => {
+  const updateData = {};
+  
+  if (updates.title !== undefined) updateData.title = updates.title;
+  if (updates.description !== undefined) updateData.description = updates.description;
+  if (updates.trainingDate !== undefined) updateData.training_date = updates.trainingDate;
+  if (updates.time !== undefined) updateData.time = updates.time;
+  if (updates.format !== undefined) updateData.format = updates.format;
+  if (updates.link !== undefined) updateData.link = updates.format === 'online' ? updates.link : null;
+  if (updates.location !== undefined) updateData.location = updates.format === 'presencial' ? updates.location : null;
+  if (updates.brand !== undefined) updateData.brand = updates.brand;
+  if (updates.storeIds !== undefined) {
+    updateData.store_ids = updates.storeIds && updates.storeIds.length > 0 ? JSON.stringify(updates.storeIds) : null;
+  }
+  if (updates.maxParticipants !== undefined) {
+    updateData.max_participants = updates.maxParticipants ? parseInt(updates.maxParticipants) : null;
+  }
+  
+  const { data, error } = await supabase
+    .from('trainings')
+    .update(updateData)
+    .eq('id', id)
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteTraining = async (id) => {
+  const { error } = await supabase
+    .from('trainings')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
+
+// ============ TRAINING REGISTRATIONS ============
+export const fetchTrainingRegistrations = async () => {
+  const { data, error } = await supabase
+    .from('training_registrations')
+    .select('*, trainings(*), collaborators(*), stores(*)')
+    .order('registered_at', { ascending: false });
+  
+  if (error) throw error;
+  return data || [];
+};
+
+export const createTrainingRegistration = async (registrationData) => {
+  const { data, error } = await supabase
+    .from('training_registrations')
+    .insert([{
+      training_id: registrationData.trainingId,
+      collaborator_id: registrationData.collaboratorId,
+      store_id: registrationData.storeId,
+      status: registrationData.status || 'pending',
+    }])
+    .select('*, trainings(*), collaborators(*), stores(*)')
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const updateTrainingRegistration = async (id, updates) => {
+  const { data, error } = await supabase
+    .from('training_registrations')
+    .update(updates)
+    .eq('id', id)
+    .select('*, trainings(*), collaborators(*), stores(*)')
+    .single();
+  
+  if (error) throw error;
+  return data;
+};
+
+export const deleteTrainingRegistration = async (id) => {
+  const { error } = await supabase
+    .from('training_registrations')
+    .delete()
+    .eq('id', id);
+  
+  if (error) throw error;
+};
