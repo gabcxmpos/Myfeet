@@ -79,8 +79,8 @@ function App() {
                 <Route path="feedback-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia']}><FeedbackManagement /></ProtectedRoute>} />
                 <Route path="training-management" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'comunicação']}><TrainingManagement /></ProtectedRoute>} />
                 <Route path="training" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><Training /></ProtectedRoute>} />
-                {/* Devoluções Consolidada (admin, supervisor, loja, devoluções) - SEM franquia */}
-                <Route path="returns" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'loja', 'devoluções']}><ReturnsConsolidated /></ProtectedRoute>} />
+                {/* Devoluções Consolidada (admin, supervisor, supervisor_franquia, loja, devoluções, financeiro) */}
+                <Route path="returns" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'devoluções', 'financeiro']}><ReturnsConsolidated /></ProtectedRoute>} />
                 {/* Rota alternativa para planner (compatibilidade) */}
                 <Route path="returns-planner" element={<ProtectedRoute allowedRoles={['devoluções', 'admin']}><ReturnsConsolidated /></ProtectedRoute>} />
                 <Route path="chave" element={<Chave />} />
