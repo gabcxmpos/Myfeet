@@ -72,18 +72,25 @@ const PhysicalMissing = () => {
       cost_value: '',
       quantity: ''
     }],
-    divergence_missing_brand: '',
-    divergence_missing_sku: '',
-    divergence_missing_color: '',
-    divergence_missing_size: '',
-    divergence_missing_quantity: '',
-    divergence_missing_cost_value: '',
-    divergence_surplus_brand: '',
-    divergence_surplus_sku: '',
-    divergence_surplus_color: '',
-    divergence_surplus_size: '',
-    divergence_surplus_quantity: '',
-    divergence_surplus_cost_value: ''
+    // Para Divergência: arrays de itens
+    divergence_missing_items: [{
+      id: Date.now(),
+      brand: '',
+      sku: '',
+      color: '',
+      size: '',
+      quantity: '',
+      cost_value: ''
+    }],
+    divergence_surplus_items: [{
+      id: Date.now(),
+      brand: '',
+      sku: '',
+      color: '',
+      size: '',
+      quantity: '',
+      cost_value: ''
+    }]
   });
 
   useEffect(() => {
@@ -99,6 +106,24 @@ const PhysicalMissing = () => {
           size: '',
           cost_value: '',
           quantity: ''
+        }],
+        divergence_missing_items: prev.divergence_missing_items || [{
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          quantity: '',
+          cost_value: ''
+        }],
+        divergence_surplus_items: prev.divergence_surplus_items || [{
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          quantity: '',
+          cost_value: ''
         }]
       }));
     }
@@ -369,6 +394,90 @@ const PhysicalMissing = () => {
     });
   };
 
+  const handleAddDivergenceMissingItem = () => {
+    setMissingFormData({
+      ...missingFormData,
+      divergence_missing_items: [
+        ...missingFormData.divergence_missing_items,
+        {
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          quantity: '',
+          cost_value: ''
+        }
+      ]
+    });
+  };
+
+  const handleRemoveDivergenceMissingItem = (itemId) => {
+    if (missingFormData.divergence_missing_items.length === 1) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'É necessário ter pelo menos um item que faltou.',
+      });
+      return;
+    }
+    setMissingFormData({
+      ...missingFormData,
+      divergence_missing_items: missingFormData.divergence_missing_items.filter(item => item.id !== itemId)
+    });
+  };
+
+  const handleUpdateDivergenceMissingItem = (itemId, field, value) => {
+    setMissingFormData({
+      ...missingFormData,
+      divergence_missing_items: missingFormData.divergence_missing_items.map(item =>
+        item.id === itemId ? { ...item, [field]: value } : item
+      )
+    });
+  };
+
+  const handleAddDivergenceSurplusItem = () => {
+    setMissingFormData({
+      ...missingFormData,
+      divergence_surplus_items: [
+        ...missingFormData.divergence_surplus_items,
+        {
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          quantity: '',
+          cost_value: ''
+        }
+      ]
+    });
+  };
+
+  const handleRemoveDivergenceSurplusItem = (itemId) => {
+    if (missingFormData.divergence_surplus_items.length === 1) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'É necessário ter pelo menos um item que sobrou.',
+      });
+      return;
+    }
+    setMissingFormData({
+      ...missingFormData,
+      divergence_surplus_items: missingFormData.divergence_surplus_items.filter(item => item.id !== itemId)
+    });
+  };
+
+  const handleUpdateDivergenceSurplusItem = (itemId, field, value) => {
+    setMissingFormData({
+      ...missingFormData,
+      divergence_surplus_items: missingFormData.divergence_surplus_items.map(item =>
+        item.id === itemId ? { ...item, [field]: value } : item
+      )
+    });
+  };
+
   const handleUpdateItem = (itemId, field, value) => {
     setMissingFormData({
       ...missingFormData,
@@ -409,12 +518,21 @@ const PhysicalMissing = () => {
     }
 
     if (missingFormData.missing_type.includes('DIVERGENCIA NF X FISICO')) {
-      if (!missingFormData.divergence_missing_brand || !missingFormData.divergence_missing_sku ||
-          !missingFormData.divergence_surplus_brand || !missingFormData.divergence_surplus_sku) {
+      // Validar todos os itens que faltaram
+      const invalidMissingItems = missingFormData.divergence_missing_items.filter(item => 
+        !item.brand || !item.sku || !item.color || !item.size || !item.cost_value || !item.quantity
+      );
+
+      // Validar todos os itens que sobraram
+      const invalidSurplusItems = missingFormData.divergence_surplus_items.filter(item => 
+        !item.brand || !item.sku || !item.color || !item.size || !item.cost_value || !item.quantity
+      );
+
+      if (invalidMissingItems.length > 0 || invalidSurplusItems.length > 0) {
         toast({
           variant: 'destructive',
           title: 'Erro',
-          description: 'Para divergência, preencha todos os campos do item que faltou e do item que sobrou.',
+          description: 'Preencha todos os campos obrigatórios (Marca, SKU, Cor, Tamanho, Custo e Quantidade) para todos os itens que faltaram e que sobraram.',
         });
         return;
       }
@@ -472,35 +590,58 @@ const PhysicalMissing = () => {
           description: `${missingFormData.items.length} item(ns) registrado(s) com sucesso na NF ${missingFormData.nf_number}.`,
         });
       } else if (missingFormData.missing_type.includes('DIVERGENCIA NF X FISICO')) {
-        // Para divergência, manter o comportamento original (um único registro)
-        const missingData = {
-          nf_number: missingFormData.nf_number.trim(),
-          moved_to_defect: missingFormData.moved_to_defect,
-          store_id: user.storeId,
-          status: missingFormData.moved_to_defect ? 'estoque_falta_fisica' : 'processo_aberto',
-          missing_type: missingFormData.missing_type,
-          divergence_missing_brand: missingFormData.divergence_missing_brand.trim(),
-          divergence_missing_sku: missingFormData.divergence_missing_sku.trim(),
-          divergence_missing_color: missingFormData.divergence_missing_color.trim(),
-          divergence_missing_size: missingFormData.divergence_missing_size.trim(),
-          divergence_missing_quantity: parseInt(missingFormData.divergence_missing_quantity) || 0,
-          divergence_missing_cost_value: parseFloat(missingFormData.divergence_missing_cost_value) || 0,
-          divergence_surplus_brand: missingFormData.divergence_surplus_brand.trim(),
-          divergence_surplus_sku: missingFormData.divergence_surplus_sku.trim(),
-          divergence_surplus_color: missingFormData.divergence_surplus_color.trim(),
-          divergence_surplus_size: missingFormData.divergence_surplus_size.trim(),
-          divergence_surplus_quantity: parseInt(missingFormData.divergence_surplus_quantity) || 0,
-          divergence_surplus_cost_value: parseFloat(missingFormData.divergence_surplus_cost_value) || 0,
-          cost_value: parseFloat(missingFormData.divergence_missing_cost_value) || 0,
-          quantity: parseInt(missingFormData.divergence_missing_quantity) || 0,
-          total_value: (parseFloat(missingFormData.divergence_missing_cost_value) || 0) * (parseInt(missingFormData.divergence_missing_quantity) || 0)
-        };
+        // Para divergência, criar um registro para cada combinação de item que faltou e item que sobrou
+        // Se houver múltiplos itens, criar registros para todas as combinações
+        const promises = [];
+        
+        missingFormData.divergence_missing_items.forEach(missingItem => {
+          missingFormData.divergence_surplus_items.forEach(surplusItem => {
+            const missingCostValue = parseFloat(missingItem.cost_value) || 0;
+            const missingQuantity = parseInt(missingItem.quantity) || 0;
+            const missingTotalValue = missingCostValue * missingQuantity;
 
-        await addPhysicalMissing(missingData);
+            const missingData = {
+              nf_number: missingFormData.nf_number.trim(),
+              moved_to_defect: missingFormData.moved_to_defect,
+              store_id: user.storeId,
+              status: missingFormData.moved_to_defect ? 'estoque_falta_fisica' : 'processo_aberto',
+              missing_type: missingFormData.missing_type,
+              // Item que faltou
+              divergence_missing_brand: missingItem.brand.trim(),
+              divergence_missing_sku: missingItem.sku.trim(),
+              divergence_missing_color: missingItem.color.trim(),
+              divergence_missing_size: missingItem.size.trim(),
+              divergence_missing_quantity: missingQuantity,
+              divergence_missing_cost_value: missingCostValue,
+              // Item que sobrou
+              divergence_surplus_brand: surplusItem.brand.trim(),
+              divergence_surplus_sku: surplusItem.sku.trim(),
+              divergence_surplus_color: surplusItem.color.trim(),
+              divergence_surplus_size: surplusItem.size.trim(),
+              divergence_surplus_quantity: parseInt(surplusItem.quantity) || 0,
+              divergence_surplus_cost_value: parseFloat(surplusItem.cost_value) || 0,
+              // Campos principais (baseados no item que faltou)
+              brand: missingItem.brand.trim(),
+              sku: missingItem.sku.trim(),
+              color: missingItem.color.trim(),
+              size: missingItem.size.trim(),
+              sku_info: `${missingItem.sku.trim()} - ${missingItem.color.trim()} - ${missingItem.size.trim()}`,
+              cost_value: missingCostValue,
+              quantity: missingQuantity,
+              total_value: missingTotalValue
+            };
 
+            promises.push(addPhysicalMissing(missingData));
+          });
+        });
+
+        // Aguardar todos os registros serem criados
+        await Promise.all(promises);
+
+        const totalRecords = missingFormData.divergence_missing_items.length * missingFormData.divergence_surplus_items.length;
         toast({
           title: 'Sucesso!',
-          description: 'Divergência registrada com sucesso.',
+          description: `${totalRecords} registro(s) de divergência criado(s) com sucesso na NF ${missingFormData.nf_number}.`,
         });
       }
 
@@ -519,18 +660,24 @@ const PhysicalMissing = () => {
           cost_value: '',
           quantity: ''
         }],
-        divergence_missing_brand: '',
-        divergence_missing_sku: '',
-        divergence_missing_color: '',
-        divergence_missing_size: '',
-        divergence_missing_quantity: '',
-        divergence_missing_cost_value: '',
-        divergence_surplus_brand: '',
-        divergence_surplus_sku: '',
-        divergence_surplus_color: '',
-        divergence_surplus_size: '',
-        divergence_surplus_quantity: '',
-        divergence_surplus_cost_value: ''
+        divergence_missing_items: [{
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          quantity: '',
+          cost_value: ''
+        }],
+        divergence_surplus_items: [{
+          id: Date.now(),
+          brand: '',
+          sku: '',
+          color: '',
+          size: '',
+          quantity: '',
+          cost_value: ''
+        }]
       });
     } catch (error) {
       console.error('Erro ao registrar falta física:', error);
@@ -1002,167 +1149,251 @@ const PhysicalMissing = () => {
                 <div className="md:col-span-2 border-t pt-4 mt-2">
                   <h4 className="font-semibold text-foreground mb-4">O que Faltou *</h4>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_missing_brand">Marca do Item que Faltou *</Label>
-                  <Select
-                    value={missingFormData.divergence_missing_brand}
-                    onValueChange={(value) => setMissingFormData({ ...missingFormData, divergence_missing_brand: value })}
-                    required
+                {missingFormData.divergence_missing_items.map((item, index) => (
+                  <div key={item.id} className="md:col-span-2 border border-border rounded-lg p-4 space-y-4 bg-secondary/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="font-semibold text-foreground">Item que Faltou {index + 1}</h5>
+                      {missingFormData.divergence_missing_items.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveDivergenceMissingItem(item.id)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Remover
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_missing_brand_${item.id}`}>Marca do Item que Faltou *</Label>
+                        <Select
+                          value={item.brand}
+                          onValueChange={(value) => handleUpdateDivergenceMissingItem(item.id, 'brand', value)}
+                          required
+                        >
+                          <SelectTrigger id={`div_missing_brand_${item.id}`} className="bg-secondary">
+                            <SelectValue placeholder="Selecione a marca" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableBrands.map((brand) => (
+                              <SelectItem key={brand} value={brand}>
+                                {brand}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_missing_sku_${item.id}`}>SKU do Item que Faltou *</Label>
+                        <Input
+                          id={`div_missing_sku_${item.id}`}
+                          value={item.sku}
+                          onChange={(e) => handleUpdateDivergenceMissingItem(item.id, 'sku', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: SKU123"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_missing_color_${item.id}`}>Cor do Item que Faltou *</Label>
+                        <Input
+                          id={`div_missing_color_${item.id}`}
+                          value={item.color}
+                          onChange={(e) => handleUpdateDivergenceMissingItem(item.id, 'color', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 111"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_missing_size_${item.id}`}>Tamanho do Item que Faltou *</Label>
+                        <Input
+                          id={`div_missing_size_${item.id}`}
+                          value={item.size}
+                          onChange={(e) => handleUpdateDivergenceMissingItem(item.id, 'size', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 42"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_missing_quantity_${item.id}`}>Quantidade que Faltou *</Label>
+                        <Input
+                          id={`div_missing_quantity_${item.id}`}
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => handleUpdateDivergenceMissingItem(item.id, 'quantity', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 3"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_missing_cost_value_${item.id}`}>Valor de Custo do Item que Faltou *</Label>
+                        <Input
+                          id={`div_missing_cost_value_${item.id}`}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.cost_value}
+                          onChange={(e) => handleUpdateDivergenceMissingItem(item.id, 'cost_value', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 200.00"
+                        />
+                      </div>
+                    </div>
+                    {item.cost_value && item.quantity && (
+                      <div className="space-y-2">
+                        <Label>Valor Total do Item que Faltou {index + 1}</Label>
+                        <div className="bg-background p-3 rounded-lg border border-border">
+                          <span className="font-semibold text-foreground text-lg">
+                            R$ {(parseFloat(item.cost_value || 0) * parseInt(item.quantity || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div className="md:col-span-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddDivergenceMissingItem}
+                    className="w-full gap-2"
                   >
-                    <SelectTrigger id="div_missing_brand" className="bg-secondary">
-                      <SelectValue placeholder="Selecione a marca" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableBrands.map((brand) => (
-                        <SelectItem key={brand} value={brand}>
-                          {brand}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_missing_sku">SKU do Item que Faltou *</Label>
-                  <Input
-                    id="div_missing_sku"
-                    value={missingFormData.divergence_missing_sku}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_sku: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: SKU123"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_missing_color">Cor do Item que Faltou *</Label>
-                  <Input
-                    id="div_missing_color"
-                    value={missingFormData.divergence_missing_color}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_color: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 111"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_missing_size">Tamanho do Item que Faltou *</Label>
-                  <Input
-                    id="div_missing_size"
-                    value={missingFormData.divergence_missing_size}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_size: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 42"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_missing_quantity">Quantidade que Faltou *</Label>
-                  <Input
-                    id="div_missing_quantity"
-                    type="number"
-                    min="1"
-                    value={missingFormData.divergence_missing_quantity}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_quantity: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 3"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_missing_cost_value">Valor de Custo do Item que Faltou *</Label>
-                  <Input
-                    id="div_missing_cost_value"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={missingFormData.divergence_missing_cost_value}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_missing_cost_value: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 200.00"
-                  />
+                    <Plus className="w-4 h-4" />
+                    Adicionar Mais um Item que Faltou
+                  </Button>
                 </div>
 
                 <div className="md:col-span-2 border-t pt-4 mt-2">
                   <h4 className="font-semibold text-foreground mb-4">O que Sobrou no Lugar *</h4>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_surplus_brand">Marca do Item que Sobrou *</Label>
-                  <Select
-                    value={missingFormData.divergence_surplus_brand}
-                    onValueChange={(value) => setMissingFormData({ ...missingFormData, divergence_surplus_brand: value })}
-                    required
+                {missingFormData.divergence_surplus_items.map((item, index) => (
+                  <div key={item.id} className="md:col-span-2 border border-border rounded-lg p-4 space-y-4 bg-secondary/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="font-semibold text-foreground">Item que Sobrou {index + 1}</h5>
+                      {missingFormData.divergence_surplus_items.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveDivergenceSurplusItem(item.id)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Remover
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_surplus_brand_${item.id}`}>Marca do Item que Sobrou *</Label>
+                        <Select
+                          value={item.brand}
+                          onValueChange={(value) => handleUpdateDivergenceSurplusItem(item.id, 'brand', value)}
+                          required
+                        >
+                          <SelectTrigger id={`div_surplus_brand_${item.id}`} className="bg-secondary">
+                            <SelectValue placeholder="Selecione a marca" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableBrands.map((brand) => (
+                              <SelectItem key={brand} value={brand}>
+                                {brand}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_surplus_sku_${item.id}`}>SKU do Item que Sobrou *</Label>
+                        <Input
+                          id={`div_surplus_sku_${item.id}`}
+                          value={item.sku}
+                          onChange={(e) => handleUpdateDivergenceSurplusItem(item.id, 'sku', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: SKU456"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_surplus_color_${item.id}`}>Cor do Item que Sobrou *</Label>
+                        <Input
+                          id={`div_surplus_color_${item.id}`}
+                          value={item.color}
+                          onChange={(e) => handleUpdateDivergenceSurplusItem(item.id, 'color', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 222"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_surplus_size_${item.id}`}>Tamanho do Item que Sobrou *</Label>
+                        <Input
+                          id={`div_surplus_size_${item.id}`}
+                          value={item.size}
+                          onChange={(e) => handleUpdateDivergenceSurplusItem(item.id, 'size', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 40"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_surplus_quantity_${item.id}`}>Quantidade que Sobrou *</Label>
+                        <Input
+                          id={`div_surplus_quantity_${item.id}`}
+                          type="number"
+                          min="1"
+                          value={item.quantity}
+                          onChange={(e) => handleUpdateDivergenceSurplusItem(item.id, 'quantity', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 2"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor={`div_surplus_cost_value_${item.id}`}>Valor de Custo do Item que Sobrou *</Label>
+                        <Input
+                          id={`div_surplus_cost_value_${item.id}`}
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.cost_value}
+                          onChange={(e) => handleUpdateDivergenceSurplusItem(item.id, 'cost_value', e.target.value)}
+                          required
+                          className="bg-secondary"
+                          placeholder="Ex: 250.00"
+                        />
+                      </div>
+                    </div>
+                    {item.cost_value && item.quantity && (
+                      <div className="space-y-2">
+                        <Label>Valor Total do Item que Sobrou {index + 1}</Label>
+                        <div className="bg-background p-3 rounded-lg border border-border">
+                          <span className="font-semibold text-foreground text-lg">
+                            R$ {(parseFloat(item.cost_value || 0) * parseInt(item.quantity || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div className="md:col-span-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddDivergenceSurplusItem}
+                    className="w-full gap-2"
                   >
-                    <SelectTrigger id="div_surplus_brand" className="bg-secondary">
-                      <SelectValue placeholder="Selecione a marca" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableBrands.map((brand) => (
-                        <SelectItem key={brand} value={brand}>
-                          {brand}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_surplus_sku">SKU do Item que Sobrou *</Label>
-                  <Input
-                    id="div_surplus_sku"
-                    value={missingFormData.divergence_surplus_sku}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_sku: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: SKU456"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_surplus_color">Cor do Item que Sobrou *</Label>
-                  <Input
-                    id="div_surplus_color"
-                    value={missingFormData.divergence_surplus_color}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_color: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 222"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_surplus_size">Tamanho do Item que Sobrou *</Label>
-                  <Input
-                    id="div_surplus_size"
-                    value={missingFormData.divergence_surplus_size}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_size: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 40"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_surplus_quantity">Quantidade que Sobrou *</Label>
-                  <Input
-                    id="div_surplus_quantity"
-                    type="number"
-                    min="1"
-                    value={missingFormData.divergence_surplus_quantity}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_quantity: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 2"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="div_surplus_cost_value">Valor de Custo do Item que Sobrou *</Label>
-                  <Input
-                    id="div_surplus_cost_value"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={missingFormData.divergence_surplus_cost_value}
-                    onChange={(e) => setMissingFormData({ ...missingFormData, divergence_surplus_cost_value: e.target.value })}
-                    required
-                    className="bg-secondary"
-                    placeholder="Ex: 250.00"
-                  />
+                    <Plus className="w-4 h-4" />
+                    Adicionar Mais um Item que Sobrou
+                  </Button>
                 </div>
               </>
             )}
@@ -1184,13 +1415,27 @@ const PhysicalMissing = () => {
             )}
 
             {missingFormData.missing_type?.includes('DIVERGENCIA NF X FISICO') && 
-             missingFormData.divergence_missing_cost_value && missingFormData.divergence_missing_quantity && (
+             (missingFormData.divergence_missing_items.length > 0 || missingFormData.divergence_surplus_items.length > 0) && (
               <div className="space-y-2 md:col-span-2">
-                <Label>Valor Total do Item que Faltou</Label>
-                <div className="bg-secondary p-3 rounded-lg border border-border">
-                  <span className="font-semibold text-foreground text-lg">
-                    R$ {(parseFloat(missingFormData.divergence_missing_cost_value || 0) * parseInt(missingFormData.divergence_missing_quantity || 0)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                <Label>Resumo da Divergência</Label>
+                <div className="bg-secondary p-3 rounded-lg border border-border space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Total de Itens que Faltaram:</span>
+                    <span className="font-semibold text-foreground">{missingFormData.divergence_missing_items.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Total de Itens que Sobraram:</span>
+                    <span className="font-semibold text-foreground">{missingFormData.divergence_surplus_items.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border pt-2">
+                    <span className="text-muted-foreground font-semibold">Total de Registros a Criar:</span>
+                    <span className="font-bold text-primary text-lg">
+                      {missingFormData.divergence_missing_items.length * missingFormData.divergence_surplus_items.length}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Será criado um registro para cada combinação de item que faltou × item que sobrou.
+                  </p>
                 </div>
               </div>
             )}
