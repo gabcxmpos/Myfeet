@@ -206,3 +206,32 @@ feat: Adicionar novos perfis de login e otimizar mobile
 
 **Tudo pronto para começar!** 🚀
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

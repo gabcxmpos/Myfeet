@@ -202,3 +202,32 @@ git push -u origin main
 
 O **Método 1** (interface do Cursor) é o mais fácil para começar. Se você já tem experiência com Git, use o **Método 2** (terminal).
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

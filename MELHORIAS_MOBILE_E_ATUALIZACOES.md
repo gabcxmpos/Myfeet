@@ -65,3 +65,32 @@
 3. Monitorar performance e ajustar intervalos se necessário
 4. Considerar implementar Service Worker para cache offline (futuro)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

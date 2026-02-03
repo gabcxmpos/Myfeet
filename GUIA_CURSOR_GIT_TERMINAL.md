@@ -313,3 +313,32 @@ Agora você sabe usar Git direto no terminal do Cursor, sem precisar do GitHub D
 
 **Tudo funciona perfeitamente assim!** 🚀
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

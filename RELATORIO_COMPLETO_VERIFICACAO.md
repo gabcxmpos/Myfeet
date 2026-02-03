@@ -257,3 +257,32 @@ Execute a query de verificação acima para confirmar que todos os roles foram a
 
 **Data do Relatório:** $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

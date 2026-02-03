@@ -109,3 +109,32 @@ Após executar os scripts SQL com sucesso:
 2. Fazer commit e push para GitHub
 3. Verificar se tudo funciona em produção
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -67,3 +67,32 @@ WHERE email IN (
 -- Se retornar 0, significa que os usuários foram excluídos com sucesso
 -- Se retornar algum número, significa que ainda existem usuários com esses emails
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
