@@ -1,94 +1,127 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
+import { Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useData } from '@/contexts/DataContext';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BarChart3, CheckSquare, Calendar, Store, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { BarChart3, CheckSquare, Calendar, User, TrendingUp, AlertCircle, CheckCircle2, Shield, Store } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 
 const ChecklistAuditAnalytics = () => {
-  const { stores, checklistAudits, fetchData } = useData();
-  const { user } = useAuth();
+  const { stores, fetchData, users } = useData();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
-  const [selectedStore, setSelectedStore] = useState('all');
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [checklistType, setChecklistType] = useState('operacional');
-  const [auditingChecklist, setAuditingChecklist] = useState(null);
+  const [checklistAudits, setChecklistAudits] = useState({});
+  const [loadingAudits, setLoadingAudits] = useState(false);
+  const [supervisors, setSupervisors] = useState([]);
+
+  // Verificar se é admin
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  if (!user || user.role !== 'admin') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // Carregar supervisors
+  useEffect(() => {
+    const loadSupervisors = async () => {
+      try {
+        // Buscar todos os usuários com role supervisor
+        const { data: supervisorsData, error } = await supabase
+          .from('app_users')
+          .select('id, username, role')
+          .in('role', ['supervisor', 'admin'])
+          .order('username');
+        
+        if (error) throw error;
+        setSupervisors(supervisorsData || []);
+      } catch (error) {
+        console.error('Erro ao carregar supervisors:', error);
+      }
+    };
+    
+    loadSupervisors();
+  }, []);
+
+  // Carregar checklists auditados
+  useEffect(() => {
+    const loadChecklistAudits = async () => {
+      setLoadingAudits(true);
+      try {
+        // Buscar checklists auditados com informações do supervisor
+        const { data: simpleData, error: simpleError } = await supabase
+          .from('daily_checklists')
+          .select('*, stores(id, name, code)')
+          .eq('is_audited', true)
+          .not('audited_by', 'is', null)
+          .order('date', { ascending: false })
+          .limit(1000);
+        
+        if (simpleError) throw simpleError;
+        
+        // Buscar informações dos usuários separadamente (apenas username, sem email)
+        const auditsWithUsers = await Promise.all((simpleData || []).map(async (item) => {
+          if (item.audited_by) {
+            try {
+              const { data: userData } = await supabase
+                .from('app_users')
+                .select('id, username, role')
+                .eq('id', item.audited_by)
+                .maybeSingle();
+              
+              return { ...item, audited_by_user: userData };
+            } catch {
+              return item;
+            }
+          }
+          return item;
+        }));
+        
+        const auditsMap = {};
+        auditsWithUsers.forEach(item => {
+          const key = `${item.store_id}-${item.date}`;
+          auditsMap[key] = item;
+        });
+        setChecklistAudits(auditsMap);
+      } catch (error) {
+        console.error('Erro ao carregar checklists auditados:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: 'Erro ao carregar dados de auditoria.',
+        });
+      } finally {
+        setLoadingAudits(false);
+      }
+    };
+    
+    loadChecklistAudits();
+  }, [toast]);
 
   // Refresh automático otimizado
   useOptimizedRefresh(fetchData);
-
-  const handleMarkAsAudited = async (checklistItem) => {
-    try {
-      setAuditingChecklist(`${checklistItem.store_id}-${checklistItem.date}-${checklistItem.checklist_type || 'operacional'}`);
-      
-      // Preparar dados para atualização
-      const updateData = {
-        is_audited: true,
-        audited_by: user?.id,
-        audited_at: new Date().toISOString()
-      };
-      
-      // Atualizar o checklist como auditado
-      const { error } = await supabase
-        .from('daily_checklists')
-        .update(updateData)
-        .eq('store_id', checklistItem.store_id)
-        .eq('date', checklistItem.date);
-      
-      if (error) {
-        // Se o erro for de coluna não encontrada, tentar sem os campos extras
-        if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
-          console.warn('Campos de auditoria não encontrados, tentando atualização simples...');
-          const { error: simpleError } = await supabase
-            .from('daily_checklists')
-            .update({ is_audited: true })
-            .eq('store_id', checklistItem.store_id)
-            .eq('date', checklistItem.date);
-          
-          if (simpleError) throw simpleError;
-        } else {
-          throw error;
-        }
-      }
-      
-      toast({
-        title: 'Sucesso',
-        description: 'Checklist marcado como auditado.',
-      });
-      
-      // Recarregar dados
-      await fetchData();
-    } catch (error) {
-      console.error('Erro ao marcar como auditado:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erro',
-        description: error.message || 'Não foi possível marcar o checklist como auditado.',
-      });
-    } finally {
-      setAuditingChecklist(null);
-    }
-  };
 
   // Filtrar checklists baseado nos filtros
   const filteredChecklists = useMemo(() => {
     if (!checklistAudits || Object.keys(checklistAudits).length === 0) return [];
     
     let filtered = Object.values(checklistAudits);
-    
-    if (selectedStore && selectedStore !== 'all') {
-      filtered = filtered.filter(c => c.store_id === selectedStore);
-    }
     
     if (selectedDate) {
       filtered = filtered.filter(c => c.date === selectedDate);
@@ -99,28 +132,75 @@ const ChecklistAuditAnalytics = () => {
     }
     
     return filtered;
-  }, [checklistAudits, selectedStore, selectedDate, checklistType]);
+  }, [checklistAudits, selectedDate, checklistType]);
 
-  // Calcular estatísticas
+  // Agrupar por supervisor e calcular produtividade
+  const supervisorStats = useMemo(() => {
+    if (!filteredChecklists.length || !supervisors.length) return [];
+
+    const statsBySupervisor = {};
+
+    // Inicializar estatísticas para cada supervisor
+    supervisors.forEach(supervisor => {
+      statsBySupervisor[supervisor.id] = {
+        supervisor,
+        totalAudited: 0,
+        totalChecklists: 0,
+        storesAudited: new Set(),
+        dates: new Set(),
+        lastAuditDate: null,
+      };
+    });
+
+    // Processar checklists auditados
+    filteredChecklists.forEach(checklist => {
+      if (checklist.audited_by && checklist.is_audited) {
+        const supervisorId = checklist.audited_by;
+        
+        if (statsBySupervisor[supervisorId]) {
+          statsBySupervisor[supervisorId].totalAudited++;
+          statsBySupervisor[supervisorId].storesAudited.add(checklist.store_id);
+          statsBySupervisor[supervisorId].dates.add(checklist.date);
+          
+          const auditDate = checklist.audited_at ? new Date(checklist.audited_at) : new Date(checklist.date);
+          if (!statsBySupervisor[supervisorId].lastAuditDate || 
+              auditDate > statsBySupervisor[supervisorId].lastAuditDate) {
+            statsBySupervisor[supervisorId].lastAuditDate = auditDate;
+          }
+        }
+      }
+    });
+
+    // Converter para array e calcular métricas
+    return Object.values(statsBySupervisor)
+      .map(stat => ({
+        ...stat,
+        storesAuditedCount: stat.storesAudited.size,
+        datesCount: stat.dates.size,
+        averagePerDay: stat.datesCount > 0 ? (stat.totalAudited / stat.datesCount).toFixed(1) : '0',
+      }))
+      .sort((a, b) => b.totalAudited - a.totalAudited); // Ordenar por total auditado
+  }, [filteredChecklists, supervisors]);
+
+  // Calcular estatísticas gerais
   const stats = useMemo(() => {
-    const total = filteredChecklists.length;
-    
-    // Verificar se está completo baseado nas tarefas
-    const completed = filteredChecklists.filter(c => {
-      if (!c.tasks || typeof c.tasks !== 'object') return false;
-      const tasks = Object.values(c.tasks);
-      // Considerar completo se houver pelo menos uma tarefa marcada
-      // ou se todas as tarefas estiverem marcadas (dependendo da lógica de negócio)
-      return tasks.some(task => task === true);
-    }).length;
-    
-    const completionRate = total > 0 ? (completed / total) * 100 : 0;
-    
+    const totalAudited = filteredChecklists.filter(c => c.is_audited).length;
+    const uniqueSupervisors = new Set(
+      filteredChecklists
+        .filter(c => c.audited_by)
+        .map(c => c.audited_by)
+    ).size;
+    const uniqueStores = new Set(
+      filteredChecklists
+        .filter(c => c.is_audited)
+        .map(c => c.store_id)
+    ).size;
+
     return {
-      total,
-      completed,
-      pending: total - completed,
-      completionRate: completionRate.toFixed(1)
+      totalAudited,
+      uniqueSupervisors,
+      uniqueStores,
+      averagePerSupervisor: uniqueSupervisors > 0 ? (totalAudited / uniqueSupervisors).toFixed(1) : '0',
     };
   }, [filteredChecklists]);
 
@@ -135,11 +215,11 @@ const ChecklistAuditAnalytics = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-              <BarChart3 className="w-8 h-8 text-primary" />
+              <Shield className="w-8 h-8 text-primary" />
               Análise de Auditoria de Checklists
             </h1>
             <p className="text-muted-foreground mt-1">
-              Visualize e analise o desempenho dos checklists
+              Produtividade por supervisor
             </p>
           </div>
         </div>
@@ -153,24 +233,7 @@ const ChecklistAuditAnalytics = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="store">Loja</Label>
-                <Select value={selectedStore} onValueChange={setSelectedStore}>
-                  <SelectTrigger id="store">
-                    <SelectValue placeholder="Todas as lojas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todas as lojas</SelectItem>
-                    {stores.map(store => (
-                      <SelectItem key={store.id} value={store.id}>
-                        {store.name} - {store.code}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="date">Data</Label>
                 <Input
@@ -197,7 +260,7 @@ const ChecklistAuditAnalytics = () => {
           </CardContent>
         </Card>
 
-        {/* Estatísticas */}
+        {/* Estatísticas Gerais */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -206,8 +269,8 @@ const ChecklistAuditAnalytics = () => {
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total de Checklists</p>
-                <p className="text-2xl font-bold text-foreground mt-1">{stats.total}</p>
+                <p className="text-sm text-muted-foreground">Total Auditado</p>
+                <p className="text-2xl font-bold text-foreground mt-1">{stats.totalAudited}</p>
               </div>
               <CheckSquare className="w-8 h-8 text-primary opacity-50" />
             </div>
@@ -221,10 +284,10 @@ const ChecklistAuditAnalytics = () => {
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Concluídos</p>
-                <p className="text-2xl font-bold text-green-400 mt-1">{stats.completed}</p>
+                <p className="text-sm text-muted-foreground">Supervisores Ativos</p>
+                <p className="text-2xl font-bold text-green-400 mt-1">{stats.uniqueSupervisors}</p>
               </div>
-              <TrendingUp className="w-8 h-8 text-green-400 opacity-50" />
+              <User className="w-8 h-8 text-green-400 opacity-50" />
             </div>
           </motion.div>
 
@@ -236,10 +299,10 @@ const ChecklistAuditAnalytics = () => {
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Pendentes</p>
-                <p className="text-2xl font-bold text-yellow-400 mt-1">{stats.pending}</p>
+                <p className="text-sm text-muted-foreground">Lojas Auditadas</p>
+                <p className="text-2xl font-bold text-blue-400 mt-1">{stats.uniqueStores}</p>
               </div>
-              <AlertCircle className="w-8 h-8 text-yellow-400 opacity-50" />
+              <Store className="w-8 h-8 text-blue-400 opacity-50" />
             </div>
           </motion.div>
 
@@ -251,104 +314,87 @@ const ChecklistAuditAnalytics = () => {
           >
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Taxa de Conclusão</p>
-                <p className="text-2xl font-bold text-primary mt-1">{stats.completionRate}%</p>
+                <p className="text-sm text-muted-foreground">Média por Supervisor</p>
+                <p className="text-2xl font-bold text-primary mt-1">{stats.averagePerSupervisor}</p>
               </div>
-              <BarChart3 className="w-8 h-8 text-primary opacity-50" />
+              <TrendingUp className="w-8 h-8 text-primary opacity-50" />
             </div>
           </motion.div>
         </div>
 
-        {/* Lista de Checklists */}
+        {/* Produtividade por Supervisor */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
-              Checklists Encontrados ({filteredChecklists.length})
+              <User className="w-5 h-5" />
+              Produtividade por Supervisor ({supervisorStats.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {filteredChecklists.length === 0 ? (
+            {loadingAudits ? (
               <div className="text-center py-8 text-muted-foreground">
-                <CheckSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>Nenhum checklist encontrado com os filtros selecionados.</p>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                <p>Carregando dados de auditoria...</p>
+              </div>
+            ) : supervisorStats.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <User className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>Nenhum dado de auditoria encontrado com os filtros selecionados.</p>
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredChecklists.map((checklistItem) => {
-                  const store = stores.find(s => s.id === checklistItem.store_id);
-                  return (
-                    <motion.div
-                      key={`${checklistItem.store_id}-${checklistItem.date}-${checklistItem.checklist_type || 'operacional'}`}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="bg-secondary/30 rounded-lg p-4 border border-border/30 flex items-center justify-between"
-                    >
+                {supervisorStats.map((stat, index) => (
+                  <motion.div
+                    key={stat.supervisor.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="bg-secondary/30 rounded-lg p-6 border border-border/30"
+                  >
+                    <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-4">
-                        <Store className="w-5 h-5 text-primary" />
+                        <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center">
+                          <User className="w-6 h-6 text-primary" />
+                        </div>
                         <div>
-                          <p className="font-semibold text-foreground">
-                            {store?.name || 'Loja não encontrada'} - {store?.code || ''}
+                          <p className="font-semibold text-foreground text-lg">
+                            {stat.supervisor.username || 'Supervisor sem nome'}
                           </p>
                           <p className="text-sm text-muted-foreground">
-                            {format(new Date(checklistItem.date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })} • 
-                            Tipo: {(checklistItem.checklist_type || 'operacional').charAt(0).toUpperCase() + (checklistItem.checklist_type || 'operacional').slice(1)}
+                            {stat.supervisor.role === 'admin' ? 'Administrador' : 'Supervisor'}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {(() => {
-                          const hasTasks = checklistItem.tasks && typeof checklistItem.tasks === 'object';
-                          const completedTasks = hasTasks ? Object.values(checklistItem.tasks).filter(t => t === true).length : 0;
-                          const totalTasks = hasTasks ? Object.keys(checklistItem.tasks).length : 0;
-                          const isCompleted = hasTasks && completedTasks > 0 && completedTasks === totalTasks;
-                          const hasProgress = hasTasks && completedTasks > 0 && completedTasks < totalTasks;
-                          const isAudited = checklistItem.is_audited === true;
-                          const checklistKey = `${checklistItem.store_id}-${checklistItem.date}-${checklistItem.checklist_type || 'operacional'}`;
-                          const isAuditing = auditingChecklist === checklistKey;
-                          
-                          return (
-                            <>
-                              {isCompleted && !isAudited && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleMarkAsAudited(checklistItem)}
-                                  disabled={isAuditing}
-                                  className="flex items-center gap-2"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  {isAuditing ? 'Marcando...' : 'Marcar como Auditado'}
-                                </Button>
-                              )}
-                              {isAudited && (
-                                <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-sm font-medium flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  Auditado
-                                </span>
-                              )}
-                              {isCompleted && (
-                                <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm font-medium">
-                                  Concluído ({completedTasks}/{totalTasks})
-                                </span>
-                              )}
-                              {hasProgress && !isCompleted && (
-                                <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium">
-                                  Em Progresso ({completedTasks}/{totalTasks})
-                                </span>
-                              )}
-                              {!hasProgress && !isCompleted && (
-                                <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-sm font-medium">
-                                  Pendente
-                                </span>
-                              )}
-                            </>
-                          );
-                        })()}
+                      {stat.lastAuditDate && (
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">Última auditoria</p>
+                          <p className="text-sm font-medium text-foreground">
+                            {format(stat.lastAuditDate, "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                      <div className="bg-background/50 rounded-lg p-4">
+                        <p className="text-sm text-muted-foreground mb-1">Total Auditado</p>
+                        <p className="text-2xl font-bold text-primary">{stat.totalAudited}</p>
                       </div>
-                    </motion.div>
-                  );
-                })}
+                      <div className="bg-background/50 rounded-lg p-4">
+                        <p className="text-sm text-muted-foreground mb-1">Lojas Auditadas</p>
+                        <p className="text-2xl font-bold text-blue-400">{stat.storesAuditedCount}</p>
+                      </div>
+                      <div className="bg-background/50 rounded-lg p-4">
+                        <p className="text-sm text-muted-foreground mb-1">Dias Ativos</p>
+                        <p className="text-2xl font-bold text-green-400">{stat.datesCount}</p>
+                      </div>
+                      <div className="bg-background/50 rounded-lg p-4">
+                        <p className="text-sm text-muted-foreground mb-1">Média por Dia</p>
+                        <p className="text-2xl font-bold text-purple-400">{stat.averagePerDay}</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             )}
           </CardContent>
