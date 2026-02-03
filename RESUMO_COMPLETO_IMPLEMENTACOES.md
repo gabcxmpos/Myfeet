@@ -173,3 +173,32 @@
 - O refresh otimizado economiza bateria e dados móveis
 - O sistema verifica conexão antes de fazer refresh
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
