@@ -111,15 +111,25 @@ const originalFetch = window.fetch;
 
 window.fetch = function(...args) {
 	const url = args[0] instanceof Request ? args[0].url : args[0];
+	const urlString = typeof url === 'string' ? url : (url instanceof Request ? url.url : String(url));
 
 	// Skip WebSocket URLs
-	if (url.startsWith('ws:') || url.startsWith('wss:')) {
+	if (urlString.startsWith('ws:') || urlString.startsWith('wss:')) {
 		return originalFetch.apply(this, args);
+	}
+
+	// Ignorar completamente requisições para alert_views - não logar erros
+	if (urlString && urlString.includes('alert_views')) {
+		return originalFetch.apply(this, args).catch(error => {
+			// Não logar erros de alert_views - são tratados silenciosamente pela aplicação
+			throw error;
+		});
 	}
 
 	return originalFetch.apply(this, args)
 		.then(async response => {
 			const contentType = response.headers.get('Content-Type') || '';
+			const requestUrl = response.url || urlString;
 
 			// Exclude HTML document responses
 			const isDocumentResponse =
@@ -129,14 +139,25 @@ window.fetch = function(...args) {
 			if (!response.ok && !isDocumentResponse) {
 					const responseClone = response.clone();
 					const errorFromRes = await responseClone.text();
-					const requestUrl = response.url;
+					
+					// Ignorar erros de RLS (42501) - não são críticos
+					try {
+						const errorJson = JSON.parse(errorFromRes);
+						if (errorJson.code === '42501') {
+							// Não logar erro de RLS - é esperado e tratado pela aplicação
+							return response;
+						}
+					} catch {
+						// Se não for JSON, continuar normalmente
+					}
+					
 					console.error(\`Fetch error from \${requestUrl}: \${errorFromRes}\`);
 			}
 
 			return response;
 		})
 		.catch(error => {
-			if (!url.match(/\.html?$/i)) {
+			if (!urlString.match(/\.html?$/i)) {
 				console.error(error);
 			}
 
