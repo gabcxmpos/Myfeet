@@ -75,6 +75,22 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         
         const response = await fetch(url, options);
         
+        // Tratar erros de refresh token inválido silenciosamente
+        if (!response.ok && urlString.includes('/auth/v1/token') && response.status === 400) {
+          try {
+            const errorData = await response.clone().json();
+            // Se for erro de refresh token inválido, não logar (é esperado quando token expira)
+            if (errorData?.error === 'invalid_grant' || 
+                errorData?.error_description?.includes('Refresh Token') ||
+                errorData?.message?.includes('Refresh Token')) {
+              // Retornar resposta sem logar erro - o Supabase vai tratar automaticamente
+              return response;
+            }
+          } catch {
+            // Se não conseguir parsear JSON, continuar normalmente
+          }
+        }
+        
         // Se for erro 403 em rotas de autenticação, limpar sessão
         if (response.status === 403 && typeof window !== 'undefined') {
           try {
