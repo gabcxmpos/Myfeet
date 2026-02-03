@@ -47,12 +47,37 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     // Interceptar erros de autenticação
     fetch: async (url, options = {}) => {
       try {
+        const urlString = typeof url === 'string' ? url : url.url || url.toString();
+        
+        // Ignorar silenciosamente erros relacionados a alert_views (RLS pode bloquear, não é crítico)
+        if (urlString.includes('alert_views')) {
+          try {
+            const response = await fetch(url, options);
+            // Se for erro 403, criar uma resposta simulada para não quebrar o código
+            if (!response.ok && response.status === 403) {
+              // Criar uma resposta simulada que não vai quebrar o código do Supabase
+              return new Response(JSON.stringify({ code: '42501', message: 'RLS policy violation' }), {
+                status: 403,
+                statusText: 'Forbidden',
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return response;
+          } catch (fetchError) {
+            // Se houver erro na requisição, criar resposta simulada
+            return new Response(JSON.stringify({ code: '42501', message: 'RLS policy violation' }), {
+              status: 403,
+              statusText: 'Forbidden',
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        }
+        
         const response = await fetch(url, options);
         
         // Se for erro 403 em rotas de autenticação, limpar sessão
         if (response.status === 403 && typeof window !== 'undefined') {
           try {
-            const urlString = typeof url === 'string' ? url : url.url || url.toString();
             const urlObj = urlString.startsWith('http') 
               ? new URL(urlString) 
               : new URL(urlString, window.location.origin);
@@ -66,7 +91,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
             }
           } catch (urlError) {
             // Se houver erro ao parsear URL, ainda verificar se a string contém as rotas
-            const urlString = typeof url === 'string' ? url : url.url || url.toString();
             if (urlString.includes('/auth/v1/') && 
                 (urlString.includes('/user') || urlString.includes('/logout'))) {
               console.warn('⚠️ Erro 403 detectado em rota de autenticação. Limpando sessão local...');
