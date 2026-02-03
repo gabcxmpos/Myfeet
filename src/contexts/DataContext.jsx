@@ -53,6 +53,7 @@ export const DataProvider = ({ children }) => {
   const [forms, setForms] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [feedbacks, setFeedbacks] = useState([]);
+  const [returns, setReturns] = useState([]);
   const [returnsPlanner, setReturnsPlanner] = useState([]);
   const [physicalMissing, setPhysicalMissing] = useState([]);
   const [trainings, setTrainings] = useState([]);
@@ -83,6 +84,7 @@ export const DataProvider = ({ children }) => {
         fetchedJobRoles,
         fetchedDailyTasks,
         fetchedGerencialTasks,
+        fetchedReturns,
         fetchedReturnsPlanner,
         fetchedPhysicalMissing,
         fetchedTrainings,
@@ -100,6 +102,7 @@ export const DataProvider = ({ children }) => {
         api.fetchAppSettings('job_roles'),
         api.fetchAppSettings('daily_tasks'),
         api.fetchAppSettings('gerencial_tasks'),
+        api.fetchReturns(),
         api.fetchReturnsPlanner(),
         api.fetchPhysicalMissing(),
         api.fetchTrainings(),
@@ -112,6 +115,7 @@ export const DataProvider = ({ children }) => {
       setEvaluations(fetchedEvaluations);
       setCollaborators(fetchedCollaborators);
       setFeedbacks(fetchedFeedbacks);
+      setReturns(fetchedReturns || []);
       setReturnsPlanner(fetchedReturnsPlanner || []);
       setPhysicalMissing(fetchedPhysicalMissing || []);
       setTrainings(fetchedTrainings || []);
@@ -158,6 +162,7 @@ export const DataProvider = ({ children }) => {
       setEvaluations([]);
       setCollaborators([]);
       setFeedbacks([]);
+      setReturns([]);
       setReturnsPlanner([]);
       setPhysicalMissing([]);
       setTrainings([]);
@@ -303,6 +308,19 @@ export const DataProvider = ({ children }) => {
   // Feedback
   const addFeedback = useCallback((feedbackData) => {
     return handleApiCall(() => api.createFeedback(feedbackData), 'Feedback enviado.');
+  }, [handleApiCall]);
+
+  // Returns (Pending Returns)
+  const addReturn = useCallback((returnData) => {
+    return handleApiCall(() => api.createReturn(returnData), 'Devolução pendente cadastrada.');
+  }, [handleApiCall]);
+  
+  const updateReturn = useCallback((id, data) => {
+    return handleApiCall(() => api.updateReturn(id, data), 'Devolução atualizada.');
+  }, [handleApiCall]);
+  
+  const deleteReturn = useCallback((id) => {
+    return handleApiCall(() => api.deleteReturn(id), 'Devolução removida.');
   }, [handleApiCall]);
 
   // Returns Planner
@@ -489,6 +507,10 @@ export const DataProvider = ({ children }) => {
     updateDailyTasks,
     menuVisibility,
     updateMenuVisibility,
+    returns,
+    addReturn,
+    updateReturn,
+    deleteReturn,
     returnsPlanner,
     addReturnsPlanner,
     updateReturnsPlanner,

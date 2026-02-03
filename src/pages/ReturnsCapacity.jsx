@@ -87,7 +87,8 @@ const ReturnsCapacity = () => {
 
   const filterOptions = useMemo(() => {
     const storesList = stores || [];
-    const mus = [...new Set(returnsCapacity.map(c => c.mu).filter(Boolean))];
+    const capacityList = returnsCapacity || [];
+    const mus = [...new Set(capacityList.map(c => c.mu).filter(Boolean))];
     return {
       stores: storesList.map(s => ({ value: s.id, label: s.name })),
       franqueados: [...new Set(storesList.map(s => s.franqueado).filter(Boolean))].map(f => ({ value: f, label: f })),

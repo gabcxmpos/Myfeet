@@ -45,6 +45,8 @@ import GestaoMetasPage from '@/pages/GestaoMetasPage';
 import PatrimonyManagement from '@/pages/PatrimonyManagement';
 import StorePatrimony from '@/pages/StorePatrimony';
 import PhysicalMissing from '@/pages/PhysicalMissing';
+import BrandsSettings from '@/pages/BrandsSettings';
+import AlertasComunicados from '@/pages/AlertasComunicados';
 
 function App() {
   return (
@@ -109,6 +111,10 @@ function App() {
                 <Route path="store-patrimony" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><StorePatrimony /></ProtectedRoute>} />
                 {/* Falta Física */}
                 <Route path="physical-missing" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia', 'admin', 'supervisor', 'supervisor_franquia', 'devoluções']}><PhysicalMissing /></ProtectedRoute>} />
+                {/* Configurações de Marcas de Devoluções */}
+                <Route path="brands-settings" element={<ProtectedRoute allowedRoles={['admin', 'devoluções']}><BrandsSettings /></ProtectedRoute>} />
+                {/* Alertas e Comunicados */}
+                <Route path="alertas-comunicados" element={<ProtectedRoute allowedRoles={['admin', 'comunicação']}><AlertasComunicados /></ProtectedRoute>} />
               </Route>
             </Routes>
             </Router>

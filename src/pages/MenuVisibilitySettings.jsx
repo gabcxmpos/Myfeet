@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, Eye, Calculator, TrendingUp, AlertCircle, GraduationCap, RotateCcw, Calendar, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, Trophy, BarChart3, ClipboardCheck, Store, FileText, Target, Users2, MessageSquare as MessageSquareQuote, BookUser, KeyRound, CheckSquare, Eye, Calculator, TrendingUp, AlertCircle, GraduationCap, RotateCcw, Calendar, AlertTriangle, Bell } from 'lucide-react';
 
 const allMenuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'comunicação', 'financeiro', 'digital'] },
@@ -24,6 +24,7 @@ const allMenuItems = [
     { path: '/store-results', icon: TrendingUp, label: 'Resultados da Loja', roles: ['loja', 'loja_franquia'] },
     { path: '/physical-missing', icon: AlertTriangle, label: 'Falta Física', roles: ['loja', 'loja_franquia'] }, // Apenas loja (admin e devoluções têm dentro de Devoluções)
     { path: '/stores-cto', icon: Calculator, label: 'CTO', roles: ['admin', 'supervisor', 'supervisor_franquia', 'financeiro'] },
+    { path: '/alertas-comunicados', icon: Bell, label: 'Alertas e Comunicados', roles: ['admin', 'comunicação'] },
     { path: '/acionamentos', icon: AlertCircle, label: 'Acionamentos', roles: ['comunicação'] },
     { path: '/forms', icon: FileText, label: 'Criar Formulário', roles: ['admin'] },
     { path: '/collaborators', icon: Users2, label: 'Colaboradores', roles: ['loja', 'loja_franquia'] },

@@ -150,6 +150,23 @@ export const AuthProvider = ({ children }) => {
     supabase.auth.getSession()
       .then(({ data: { session }, error }) => {
         if (error) {
+          // Se for erro de refresh token inválido, tratar silenciosamente (é esperado quando token expira)
+          if (error.message?.includes('Refresh Token') || 
+              error.message?.includes('invalid_grant') ||
+              error.status === 400) {
+            // Limpar dados locais silenciosamente e permitir novo login
+            setSession(null);
+            setUser(null);
+            try {
+              localStorage.removeItem('sb-hzwmacltgiyanukgvfvn-auth-token');
+              sessionStorage.clear();
+            } catch (e) {
+              // Ignorar erros ao limpar storage
+            }
+            setLoading(false);
+            return;
+          }
+          
           // Se houver erro 403/401, limpar dados locais
           if (error.status === 403 || error.status === 401) {
             console.warn('⚠️ Sessão inicial expirada (403/401). Limpando dados locais...');
@@ -170,6 +187,21 @@ export const AuthProvider = ({ children }) => {
         loadUserProfile(session?.user);
       })
       .catch((err) => {
+        // Se for erro de refresh token, tratar silenciosamente
+        if (err?.message?.includes('Refresh Token') || 
+            err?.message?.includes('invalid_grant')) {
+          setSession(null);
+          setUser(null);
+          try {
+            localStorage.removeItem('sb-hzwmacltgiyanukgvfvn-auth-token');
+            sessionStorage.clear();
+          } catch (e) {
+            // Ignorar erros ao limpar storage
+          }
+          setLoading(false);
+          return;
+        }
+        
         console.error('Erro ao obter sessão inicial:', err);
         // Se houver erro inesperado, limpar dados e continuar
         setSession(null);

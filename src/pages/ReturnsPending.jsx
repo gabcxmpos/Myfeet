@@ -64,8 +64,7 @@ const ReturnsPending = () => {
     volume_quantity: '',
     date: new Date().toISOString().split('T')[0],
     store_id: user?.storeId || '',
-    has_no_nf: false,
-    caixa_elevada: false
+    has_no_nf: false
   });
 
   // Carregar marcas do banco de dados
@@ -342,8 +341,7 @@ const ReturnsPending = () => {
         volume_quantity: parseInt(pendingFormData.volume_quantity),
         date: pendingFormData.date,
         store_id: user.storeId,
-        admin_status: 'aguardando_coleta',
-        caixa_elevada: pendingFormData.caixa_elevada || false
+        admin_status: 'aguardando_coleta'
       };
 
       if (pendingFormData.has_no_nf) {
@@ -357,7 +355,7 @@ const ReturnsPending = () => {
       }
 
       // Verificar duplicidade antes de salvar
-      const duplicateCheck = returns.find(item => {
+      const duplicateCheck = (returns || []).find(item => {
         // Comparar loja (obrigatório)
         if (item.store_id !== returnData.store_id) return false;
         
@@ -405,8 +403,7 @@ const ReturnsPending = () => {
         volume_quantity: '',
         date: new Date().toISOString().split('T')[0],
         store_id: user.storeId,
-        has_no_nf: false,
-        caixa_elevada: false
+        has_no_nf: false
       });
     } catch (error) {
       console.error('Erro ao criar devolução:', error);
@@ -723,21 +720,6 @@ const ReturnsPending = () => {
                 className="bg-secondary"
               />
             </div>
-            <div className="space-y-2 flex items-center space-x-2 pt-6">
-              <Checkbox
-                id="caixa_elevada"
-                checked={pendingFormData.caixa_elevada}
-                onCheckedChange={(checked) => {
-                  setPendingFormData({ 
-                    ...pendingFormData, 
-                    caixa_elevada: checked 
-                  });
-                }}
-              />
-              <Label htmlFor="caixa_elevada" className="text-sm font-normal cursor-pointer">
-                Caixa Elevada
-              </Label>
-            </div>
             <div className="md:col-span-2 lg:col-span-6">
               <Button type="submit" className="w-full gap-2">
                 <Plus className="w-4 h-4" />
@@ -857,12 +839,6 @@ const ReturnsPending = () => {
                       <span className="text-muted-foreground">Status:</span>
                       {getStatusBadge(returnItem.admin_status || 'aguardando_coleta', 'return')}
                     </div>
-                    {returnItem.caixa_elevada && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Caixa Elevada:</span>
-                        <span className="font-medium text-primary">Sim</span>
-                      </div>
-                    )}
                   </div>
                 </div>
                 

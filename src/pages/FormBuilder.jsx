@@ -161,11 +161,15 @@ const FormBuilder = () => {
     const [editorOpen, setEditorOpen] = useState(false);
     const [editingForm, setEditingForm] = useState(null);
     
+    // Garantir que forms seja sempre um array
+    const safeForms = Array.isArray(forms) ? forms : [];
+    
     // Debug: Verificar dados recebidos
     console.log('📝 [FormBuilder] Dados recebidos:', {
-        formsCount: forms?.length || 0,
+        formsCount: safeForms.length,
         forms: forms,
-        isArray: Array.isArray(forms)
+        isArray: Array.isArray(forms),
+        safeForms: safeForms
     });
 
     const handleSave = (formData) => {
@@ -205,14 +209,14 @@ const FormBuilder = () => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {forms.length === 0 ? (
+                    {safeForms.length === 0 ? (
                         <div className="col-span-full text-center py-12 text-muted-foreground">
                             <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
                             <p className="text-lg font-semibold">Nenhum formulário cadastrado ainda.</p>
                             <p className="text-sm mt-2">Clique em "Criar Novo" para começar.</p>
                         </div>
                     ) : (
-                        forms.map(form => (
+                        safeForms.map(form => (
                         <motion.div 
                             key={form.id}
                             initial={{ opacity: 0, scale: 0.95 }}

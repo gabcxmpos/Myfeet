@@ -217,13 +217,16 @@ const StartEvaluation = () => {
   const { stores, forms, evaluations } = useData();
   const { user } = useAuth();
   
+  // Garantir que forms seja sempre um array
+  const safeForms = Array.isArray(forms) ? forms : [];
+  
   const availableStores = useMemo(() => {
       if (user.role === 'admin' || user.role === 'supervisor' || user.role === 'comunicação' || user.role === 'digital') return stores;
       if (user.role === 'loja') return stores.filter(s => s.id === user.storeId);
       return [];
   }, [stores, user]);
 
-  const selectedForm = useMemo(() => forms.find(f => f.id === selectedFormId), [forms, selectedFormId]);
+  const selectedForm = useMemo(() => safeForms.find(f => f.id === selectedFormId), [safeForms, selectedFormId]);
 
   // Buscar última avaliação de cada pilar para a loja selecionada
   const lastEvaluationsByPillar = useMemo(() => {
@@ -341,7 +344,7 @@ const StartEvaluation = () => {
 
           {/* Seleção de Formulário - Apenas Botões */}
           <AnimatePresence>
-            {selectedStoreId && forms.length > 0 && (
+            {selectedStoreId && safeForms.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -352,7 +355,7 @@ const StartEvaluation = () => {
                   Selecione o Formulário
                 </Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {forms.map(form => {
+                  {safeForms.map(form => {
                     const Icon = pillarIcons[form.pillar]?.icon || FileText;
                     const color = pillarIcons[form.pillar]?.color || 'text-foreground';
                     const isSelected = selectedFormId === form.id;

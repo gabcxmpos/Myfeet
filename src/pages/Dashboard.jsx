@@ -111,21 +111,24 @@ const calculateGaps = (approvedEvaluations, forms) => {
     Digital: [],
   };
 
-  if (!approvedEvaluations || approvedEvaluations.length === 0 || !forms || forms.length === 0) {
+  // Garantir que forms seja sempre um array
+  const safeForms = Array.isArray(forms) ? forms : [];
+  
+  if (!approvedEvaluations || approvedEvaluations.length === 0 || !safeForms || safeForms.length === 0) {
     console.log('⚠️ [calculateGaps] Sem dados suficientes:', {
       evaluations: approvedEvaluations?.length || 0,
-      forms: forms?.length || 0
+      forms: safeForms?.length || 0
     });
     return gapsByPillar;
   }
 
   console.log('🔍 [calculateGaps] Calculando gaps:', {
     evaluations: approvedEvaluations.length,
-    forms: forms.length
+    forms: safeForms.length
   });
 
   // Criar mapa de formulários por ID para acesso rápido
-  const formsMap = new Map(forms.map(f => [f.id, f]));
+  const formsMap = new Map(safeForms.map(f => [f.id, f]));
 
   // Agrupar avaliações por pilar
   const evaluationsByPillar = {};

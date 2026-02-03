@@ -59,6 +59,9 @@ const Analytics = () => {
     setFilters(prev => ({ ...prev, [filterName]: value }));
   };
 
+  // Garantir que forms seja sempre um array
+  const safeForms = Array.isArray(forms) ? forms : [];
+  
   const filteredData = useMemo(() => {
     // Primeiro filtrar por tipo de loja (própria vs franquia)
     let storesByType = filterStoresByUserType(stores, user?.role, user?.storeId);
@@ -83,7 +86,7 @@ const Analytics = () => {
       totalEvaluations: evaluations.length,
       approvedEvaluations: evaluations.filter(e => e.status === 'approved').length,
       filteredEvaluations: filteredEvaluations.length,
-      forms: forms.length
+      forms: safeForms.length
     });
     
     // Filtrar por período de data

@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { useData } from '@/contexts/DataContext';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
@@ -37,7 +37,9 @@ const AlertasComunicados = () => {
   
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  
   const [editingAlert, setEditingAlert] = useState(null);
   const [viewingViews, setViewingViews] = useState(null);
   const [alertViews, setAlertViews] = useState({});
@@ -62,6 +64,7 @@ const AlertasComunicados = () => {
 
   // Filtrar lojas disponíveis
   const availableStores = useMemo(() => {
+    if (!stores || !Array.isArray(stores)) return [];
     return stores.filter(store => {
       if (filters.franqueado.length > 0 && !filters.franqueado.includes(store.franqueado)) return false;
       if (filters.bandeira.length > 0 && !filters.bandeira.includes(store.bandeira)) return false;
@@ -69,25 +72,42 @@ const AlertasComunicados = () => {
     });
   }, [stores, filters]);
 
-  const franqueados = useMemo(() => [...new Set(stores.map(s => s.franqueado).filter(Boolean))], [stores]);
-  const bandeiras = useMemo(() => [...new Set(stores.map(s => s.bandeira).filter(Boolean))], [stores]);
+  const franqueados = useMemo(() => {
+    if (!stores || !Array.isArray(stores)) return [];
+    return [...new Set(stores.map(s => s.franqueado).filter(Boolean))];
+  }, [stores]);
+  
+  const bandeiras = useMemo(() => {
+    if (!stores || !Array.isArray(stores)) return [];
+    return [...new Set(stores.map(s => s.bandeira).filter(Boolean))];
+  }, [stores]);
 
   useEffect(() => {
     loadAlerts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadAlerts = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await fetchAlerts();
-      setAlerts(data || []);
-    } catch (error) {
-      console.error('Erro ao carregar alertas:', error);
-      toast({
-        title: 'Erro',
-        description: 'Não foi possível carregar os alertas.',
-        variant: 'destructive'
-      });
+      setAlerts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Erro ao carregar alertas:', err);
+      setError(err.message || 'Erro ao carregar alertas');
+      // Se a tabela não existir, apenas mostrar array vazio
+      if (err.code === '42P01' || err.code === 'PGRST116') {
+        setAlerts([]);
+        setError(null); // Não mostrar erro se a tabela não existir
+      } else {
+        toast({
+          title: 'Erro',
+          description: err.message || 'Não foi possível carregar os alertas.',
+          variant: 'destructive'
+        });
+        setAlerts([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -283,7 +303,7 @@ const AlertasComunicados = () => {
       recipients.forEach(store => {
         const view = viewsByStore.get(store.id);
         const status = view ? 'Visualizado' : 'Não Visualizado';
-        const username = view?.user?.username || '';
+        const username = view?.user?.username || view?.user?.email || '';
         const email = view?.user?.email || '';
         const viewedAt = view?.viewed_at 
           ? format(new Date(view.viewed_at), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })
@@ -346,6 +366,30 @@ const AlertasComunicados = () => {
     return { type: 'specific', label: parts.join(', '), icon: Building2 };
   };
 
+  // Verificar permissões
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-destructive" />
+          <p className="text-muted-foreground">Carregando informações do usuário...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user.role !== 'admin' && user.role !== 'comunicação') {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <AlertCircle className="w-12 h-12 mx-auto mb-4 text-destructive" />
+          <p className="text-muted-foreground">Acesso negado. Você não tem permissão para acessar esta página.</p>
+          <p className="text-xs text-muted-foreground mt-2">Role atual: {user.role}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <Helmet>
@@ -379,7 +423,7 @@ const AlertasComunicados = () => {
               <div>
                 <Label>Lojas</Label>
                 <MultiSelectFilter
-                  options={stores.map(s => ({ value: s.id, label: `${s.code} - ${s.name}` }))}
+                  options={(stores || []).map(s => ({ value: s.id, label: `${s.code || ''} - ${s.name || ''}` }))}
                   selected={filters.store}
                   onChange={(value) => setFilters(prev => ({ ...prev, store: value }))}
                   placeholder="Todas as lojas"
@@ -412,6 +456,17 @@ const AlertasComunicados = () => {
           <div className="text-center py-12">
             <p className="text-muted-foreground">Carregando alertas...</p>
           </div>
+        ) : error ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+              <p className="text-destructive font-semibold mb-2">Erro ao carregar alertas</p>
+              <p className="text-muted-foreground">{error}</p>
+              <Button onClick={loadAlerts} className="mt-4">
+                Tentar Novamente
+              </Button>
+            </CardContent>
+          </Card>
         ) : filteredAlerts.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
@@ -687,13 +742,13 @@ const AlertasComunicados = () => {
                     alertViews[viewingViews.id].map((view) => (
                       <div key={view.id} className="flex items-center justify-between p-3 border rounded-lg bg-primary/5 border-primary/20">
                         <div className="flex-1">
-                          <p className="font-medium">{view.user?.username || 'Usuário'}</p>
+                          <p className="font-medium">{view.user?.username || view.user?.email || 'Usuário'}</p>
                           <p className="text-sm text-muted-foreground">
                             {view.store?.name || 'Loja'} ({view.store?.code || ''})
                             {view.store?.bandeira && ` - ${view.store.bandeira}`}
                           </p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Visualizado em: {format(new Date(view.viewed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            Visualizado em: {view.viewed_at ? format(new Date(view.viewed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }) : 'Data não disponível'}
                           </p>
                         </div>
                         <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0 ml-4" />

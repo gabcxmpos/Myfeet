@@ -40,7 +40,7 @@ const organizeTasksBySector = (tasks) => {
 // Componente de Categoria com tarefas separadas (pendentes e realizadas)
 const SectorSection = ({ sector, tasks, storeTodayChecklist, onCheckChange, storeId }) => {
   const colors = sectorColors[sector] || sectorColors.OUTROS;
-  const sectorTasks = tasks.filter(task => (task.sector || 'OUTROS') === sector);
+  const sectorTasks = (tasks && Array.isArray(tasks)) ? tasks.filter(task => (task.sector || 'OUTROS') === sector) : [];
   
   // Separar tarefas pendentes e realizadas
   const pendingTasks = sectorTasks.filter(task => !storeTodayChecklist[task.id]);
@@ -152,6 +152,8 @@ const StoreDailyChecklist = ({ storeId }) => {
   const isUpdatingRef = useRef(false);
   
   const storeName = stores.find(s => s.id === storeId)?.name || "sua loja";
+  // Remover "TESTE" do nome da loja se presente
+  const displayStoreName = storeName.replace(/\s*-\s*TESTE\s*/gi, '').replace(/\s*TESTE\s*/gi, '').trim();
   
   // Carregar dados do banco quando componente monta ou storeId muda
   useEffect(() => {
@@ -232,7 +234,10 @@ const StoreDailyChecklist = ({ storeId }) => {
   const storeTodayChecklist = localChecklist;
   
   const tasksBySector = useMemo(() => organizeTasksBySector(dailyTasks), [dailyTasks]);
-  const sectors = Object.keys(tasksBySector);
+  const sectors = useMemo(() => {
+    if (!tasksBySector || typeof tasksBySector !== 'object') return [];
+    return Object.keys(tasksBySector);
+  }, [tasksBySector]);
   
   const totalTasks = dailyTasks.length;
   const completedTasks = Object.values(storeTodayChecklist).filter(Boolean).length;
@@ -288,7 +293,7 @@ const StoreDailyChecklist = ({ storeId }) => {
     <div className="space-y-6">
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-foreground">Checklist Diário - {storeName}</CardTitle>
+          <CardTitle className="text-2xl font-bold text-foreground">Checklist Diário{displayStoreName && displayStoreName !== "sua loja" ? ` - ${displayStoreName}` : ''}</CardTitle>
           <div className="flex items-center gap-4 text-muted-foreground mt-2">
             <span>Progresso de Hoje:</span>
             <div className="w-full bg-secondary rounded-full h-3">
