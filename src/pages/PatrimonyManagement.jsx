@@ -26,7 +26,11 @@ import {
   Store,
   Filter,
   Package,
-  AlertCircle
+  AlertCircle,
+  LayoutGrid,
+  List,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import * as api from '@/lib/supabaseService';
 import { filterStoresByUserType } from '@/lib/storeTypeHelper';
@@ -59,6 +63,8 @@ const PatrimonyManagement = () => {
   const [selectedStore, setSelectedStore] = useState(null);
   const [selectedEquipmentType, setSelectedEquipmentType] = useState('all');
   const [selectedCondition, setSelectedCondition] = useState('all');
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' ou 'table'
+  const [collapsedStores, setCollapsedStores] = useState(new Set()); // Lojas colapsadas
   
   // Dialogs
   const [equipmentDialogOpen, setEquipmentDialogOpen] = useState(false);
@@ -592,10 +598,22 @@ const PatrimonyManagement = () => {
   const getConditionBadge = (condition) => {
     const option = conditionOptions.find(opt => opt.value === condition);
     return (
-      <Badge className={`${option?.color || 'bg-gray-500'} text-white`}>
+      <Badge className={`${option?.color || 'bg-gray-500'} text-white text-xs px-2 py-0.5`}>
         {option?.label || condition}
       </Badge>
     );
+  };
+
+  const toggleStoreCollapse = (storeId) => {
+    setCollapsedStores(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(storeId)) {
+        newSet.delete(storeId);
+      } else {
+        newSet.add(storeId);
+      }
+      return newSet;
+    });
   };
 
   const equipmentStats = useMemo(() => {
@@ -804,6 +822,26 @@ const PatrimonyManagement = () => {
               ))}
             </SelectContent>
           </Select>
+          {isAdminOrSupervisor && (
+            <div className="flex gap-1 border rounded-md p-1">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                className="h-7 px-2"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'table' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('table')}
+                className="h-7 px-2"
+              >
+                <List className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Equipamentos */}
@@ -822,75 +860,181 @@ const PatrimonyManagement = () => {
             </div>
           ) : isAdminOrSupervisor && equipmentsByStore ? (
             // Exibição agrupada por loja para admin e supervisão
-            <div className="space-y-6">
-              {Object.values(equipmentsByStore).map((storeGroup, storeIndex) => (
-                <div key={storeGroup.storeId} className="space-y-3">
-                  <div className="flex items-center gap-2 pb-2 border-b border-border">
-                    <Store className="w-5 h-5 text-primary" />
-                    <h3 className="text-md font-semibold text-foreground">{storeGroup.storeName}</h3>
-                    <Badge variant="outline" className="ml-2">{storeGroup.equipments.length} equipamentos</Badge>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {storeGroup.equipments.map((equipment, index) => {
-                      const Icon = getEquipmentIcon(equipment.equipment_type);
-                      const typeLabel = equipmentTypes.find(t => t.value === equipment.equipment_type)?.label;
-                      const colors = equipmentTypes.find(t => t.value === equipment.equipment_type)?.color || 'text-blue-500';
-                      
-                      return (
-                        <motion.div
-                          key={equipment.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: (storeIndex * 0.1) + (index * 0.05) }}
-                        >
-                          <Card className="hover:border-primary/50 transition-all cursor-pointer group">
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between mb-3">
-                                <div className={`p-2 rounded-lg bg-opacity-10 ${colors.replace('text-', 'bg-')}`}>
-                                  <Icon className={`w-5 h-5 ${colors}`} />
-                                </div>
-                                {getConditionBadge(equipment.condition_status)}
-                              </div>
-                              <div className="space-y-1 mb-3">
-                                <p className="font-semibold text-sm">{typeLabel}</p>
-                                {equipment.brand && (
-                                  <p className="text-xs text-muted-foreground">{equipment.brand} {equipment.model}</p>
-                                )}
-                              </div>
-                              <div className="flex gap-1 pt-2 border-t">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenEquipmentDialog(equipment);
-                                  }}
-                                  className="flex-1 h-7 text-xs"
+            <div className="space-y-4">
+              {Object.values(equipmentsByStore).map((storeGroup, storeIndex) => {
+                const isCollapsed = collapsedStores.has(storeGroup.storeId);
+                const Icon = getEquipmentIcon(storeGroup.equipments[0]?.equipment_type);
+                
+                return (
+                  <Card key={storeGroup.storeId} className="overflow-hidden">
+                    <CardHeader 
+                      className="cursor-pointer hover:bg-accent/50 transition-colors pb-3"
+                      onClick={() => toggleStoreCollapse(storeGroup.storeId)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Store className="w-5 h-5 text-primary" />
+                          <div>
+                            <h3 className="text-md font-semibold text-foreground">{storeGroup.storeName}</h3>
+                            <p className="text-xs text-muted-foreground">
+                              {storeGroup.equipments.length} equipamento{storeGroup.equipments.length !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {storeGroup.equipments.filter(e => e.condition_status === 'QUEBRADO').length} quebrado{storeGroup.equipments.filter(e => e.condition_status === 'QUEBRADO').length !== 1 ? 's' : ''}
+                          </Badge>
+                          {isCollapsed ? (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    {!isCollapsed && (
+                      <CardContent className="pt-0">
+                        {viewMode === 'table' ? (
+                          // Visualização em tabela (mais compacta)
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b">
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Tipo</th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Marca/Modelo</th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Patrimônio</th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Condição</th>
+                                  <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Ações</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {storeGroup.equipments.map((equipment) => {
+                                  const Icon = getEquipmentIcon(equipment.equipment_type);
+                                  const typeLabel = equipmentTypes.find(t => t.value === equipment.equipment_type)?.label;
+                                  
+                                  return (
+                                    <tr key={equipment.id} className="border-b hover:bg-accent/50 transition-colors">
+                                      <td className="py-2 px-3">
+                                        <div className="flex items-center gap-2">
+                                          <Icon className="w-4 h-4 text-muted-foreground" />
+                                          <span className="text-sm">{typeLabel}</span>
+                                        </div>
+                                      </td>
+                                      <td className="py-2 px-3">
+                                        <span className="text-sm">
+                                          {equipment.brand} {equipment.model || ''}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 px-3">
+                                        <span className="text-xs text-muted-foreground font-mono">
+                                          {equipment.serial_number || '-'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2 px-3">
+                                        {getConditionBadge(equipment.condition_status)}
+                                      </td>
+                                      <td className="py-2 px-3">
+                                        <div className="flex items-center justify-end gap-1">
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleOpenEquipmentDialog(equipment);
+                                            }}
+                                            className="h-7 w-7 p-0"
+                                          >
+                                            <Edit className="w-3 h-3" />
+                                          </Button>
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingEquipment(equipment);
+                                              setDeleteEquipmentDialogOpen(true);
+                                            }}
+                                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </Button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          // Visualização em grid (cards compactos)
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                            {storeGroup.equipments.map((equipment, index) => {
+                              const Icon = getEquipmentIcon(equipment.equipment_type);
+                              const typeLabel = equipmentTypes.find(t => t.value === equipment.equipment_type)?.label;
+                              const colors = equipmentTypes.find(t => t.value === equipment.equipment_type)?.color || 'text-blue-500';
+                              
+                              return (
+                                <motion.div
+                                  key={equipment.id}
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  transition={{ delay: index * 0.02 }}
                                 >
-                                  <Edit className="w-3 h-3 mr-1" />
-                                  Editar
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingEquipment(equipment);
-                                    setDeleteEquipmentDialogOpen(true);
-                                  }}
-                                  className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                                  <Card className="hover:border-primary/50 transition-all cursor-pointer group h-full">
+                                    <CardContent className="p-3">
+                                      <div className="flex items-start justify-between mb-2">
+                                        <div className={`p-1.5 rounded-md bg-opacity-10 ${colors.replace('text-', 'bg-')}`}>
+                                          <Icon className={`w-4 h-4 ${colors}`} />
+                                        </div>
+                                        {getConditionBadge(equipment.condition_status)}
+                                      </div>
+                                      <div className="space-y-0.5 mb-2">
+                                        <p className="font-medium text-xs">{typeLabel}</p>
+                                        {equipment.brand && (
+                                          <p className="text-xs text-muted-foreground truncate">
+                                            {equipment.brand} {equipment.model}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="flex gap-1 pt-2 border-t">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenEquipmentDialog(equipment);
+                                          }}
+                                          className="flex-1 h-6 text-xs px-1"
+                                        >
+                                          <Edit className="w-3 h-3" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingEquipment(equipment);
+                                            setDeleteEquipmentDialogOpen(true);
+                                          }}
+                                          className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    </CardContent>
+                                  </Card>
+                                </motion.div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
           ) : (
             // Exibição normal (não agrupada)
@@ -976,69 +1120,155 @@ const PatrimonyManagement = () => {
             </div>
           ) : isAdminOrSupervisor && chipsByStore ? (
             // Exibição agrupada por loja para admin e supervisão
-            <div className="space-y-6">
-              {Object.values(chipsByStore).map((storeGroup, storeIndex) => (
-                <div key={storeGroup.storeId} className="space-y-3">
-                  <div className="flex items-center gap-2 pb-2 border-b border-border">
-                    <Store className="w-5 h-5 text-primary" />
-                    <h3 className="text-md font-semibold text-foreground">{storeGroup.storeName}</h3>
-                    <Badge variant="outline" className="ml-2">{storeGroup.chips.length} chips</Badge>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {storeGroup.chips.map((chip, index) => (
-                      <motion.div
-                        key={chip.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: (storeIndex * 0.1) + (index * 0.05) }}
-                      >
-                        <Card className="hover:border-primary/50 transition-all cursor-pointer group">
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between mb-3">
-                              <div className="p-2 rounded-lg bg-purple-500/10">
-                                <CreditCard className="w-5 h-5 text-purple-500" />
-                              </div>
-                              <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
-                            </div>
-                            <div className="space-y-1 mb-3">
-                              <p className="font-semibold text-sm">{chip.phone_number}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {chip.usage_type || 'Uso não informado'}
-                              </p>
-                            </div>
-                            <div className="flex gap-1 pt-2 border-t">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenChipDialog(chip);
-                                }}
-                                className="flex-1 h-7 text-xs"
+            <div className="space-y-4">
+              {Object.values(chipsByStore).map((storeGroup, storeIndex) => {
+                const isCollapsed = collapsedStores.has(`chip-${storeGroup.storeId}`);
+                
+                return (
+                  <Card key={storeGroup.storeId} className="overflow-hidden">
+                    <CardHeader 
+                      className="cursor-pointer hover:bg-accent/50 transition-colors pb-3"
+                      onClick={() => toggleStoreCollapse(`chip-${storeGroup.storeId}`)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Store className="w-5 h-5 text-primary" />
+                          <div>
+                            <h3 className="text-md font-semibold text-foreground">{storeGroup.storeName}</h3>
+                            <p className="text-xs text-muted-foreground">
+                              {storeGroup.chips.length} chip{storeGroup.chips.length !== 1 ? 's' : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isCollapsed ? (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
+                    {!isCollapsed && (
+                      <CardContent className="pt-0">
+                        {viewMode === 'table' ? (
+                          // Visualização em tabela (mais compacta)
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b">
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Número</th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Operadora</th>
+                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Uso</th>
+                                  <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Ações</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {storeGroup.chips.map((chip) => (
+                                  <tr key={chip.id} className="border-b hover:bg-accent/50 transition-colors">
+                                    <td className="py-2 px-3">
+                                      <span className="text-sm font-medium">{chip.phone_number}</span>
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <span className="text-xs text-muted-foreground">
+                                        {chip.usage_type || 'Uso não informado'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenChipDialog(chip);
+                                          }}
+                                          className="h-7 w-7 p-0"
+                                        >
+                                          <Edit className="w-3 h-3" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingChip(chip);
+                                            setDeleteChipDialogOpen(true);
+                                          }}
+                                          className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </Button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          // Visualização em grid (cards compactos)
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                            {storeGroup.chips.map((chip, index) => (
+                              <motion.div
+                                key={chip.id}
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: index * 0.02 }}
                               >
-                                <Edit className="w-3 h-3 mr-1" />
-                                Editar
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditingChip(chip);
-                                  setDeleteChipDialogOpen(true);
-                                }}
-                                className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                                <Card className="hover:border-primary/50 transition-all cursor-pointer group h-full">
+                                  <CardContent className="p-3">
+                                    <div className="flex items-start justify-between mb-2">
+                                      <div className="p-1.5 rounded-md bg-purple-500/10">
+                                        <CreditCard className="w-4 h-4 text-purple-500" />
+                                      </div>
+                                      <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
+                                    </div>
+                                    <div className="space-y-0.5 mb-2">
+                                      <p className="font-medium text-xs">{chip.phone_number}</p>
+                                      <p className="text-xs text-muted-foreground truncate">
+                                        {chip.usage_type || 'Uso não informado'}
+                                      </p>
+                                    </div>
+                                    <div className="flex gap-1 pt-2 border-t">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenChipDialog(chip);
+                                        }}
+                                        className="flex-1 h-6 text-xs px-1"
+                                      >
+                                        <Edit className="w-3 h-3" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingChip(chip);
+                                          setDeleteChipDialogOpen(true);
+                                        }}
+                                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              </motion.div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
           ) : (
             // Exibição normal (não agrupada)
