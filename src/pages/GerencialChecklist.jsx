@@ -158,6 +158,8 @@ const StoreGerencialChecklistView = ({ storeId }) => {
   const isUpdatingRef = useRef(false); // Ref para rastrear se estamos atualizando
   
   const storeName = stores.find(s => s.id === storeId)?.name || "sua loja";
+  // Remover "TESTE" do nome da loja se presente
+  const displayStoreName = storeName.replace(/\s*-\s*TESTE\s*/gi, '').replace(/\s*TESTE\s*/gi, '').trim();
   
   // Inicializar estado local apenas uma vez quando componente monta ou storeId muda
   useEffect(() => {
@@ -265,7 +267,7 @@ const StoreGerencialChecklistView = ({ storeId }) => {
     return (
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-foreground">CHECK LIST PPAD GERENCIAL - {storeName}</CardTitle>
+          <CardTitle className="text-2xl font-bold text-foreground">CHECK LIST PPAD GERENCIAL{displayStoreName && displayStoreName !== "sua loja" ? ` - ${displayStoreName}` : ''}</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">Nenhuma tarefa configurada para o checklist gerencial.</p>
@@ -278,7 +280,7 @@ const StoreGerencialChecklistView = ({ storeId }) => {
     <div className="space-y-6">
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-foreground">CHECK LIST PPAD GERENCIAL - {storeName}</CardTitle>
+          <CardTitle className="text-2xl font-bold text-foreground">CHECK LIST PPAD GERENCIAL{displayStoreName && displayStoreName !== "sua loja" ? ` - ${displayStoreName}` : ''}</CardTitle>
           <div className="flex items-center gap-4 text-muted-foreground mt-2">
             <span>Progresso de Hoje:</span>
             <div className="w-full bg-secondary rounded-full h-3">
@@ -412,7 +414,7 @@ const AdminSupervisorGerencialChecklistView = () => {
   const [expandedStores, setExpandedStores] = useState(new Set());
   const [auditingChecklist, setAuditingChecklist] = useState(null);
   const [auditedStatus, setAuditedStatus] = useState({});
-  const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia';
+  const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor';
 
   const tasksBySector = useMemo(() => organizeTasksBySector(gerencialTasks), [gerencialTasks]);
   const sectors = Object.keys(tasksBySector);
@@ -429,75 +431,189 @@ const AdminSupervisorGerencialChecklistView = () => {
     });
   };
 
-  const handleMarkAsAudited = async (storeId) => {
-    try {
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const checklistKey = `${storeId}-${todayStr}`;
-      setAuditingChecklist(checklistKey);
-      
-      const updateData = {
-        is_audited: true,
-        audited_by: user?.id,
-        audited_at: new Date().toISOString()
-      };
-      
-      const { error } = await supabase
-        .from('daily_checklists')
-        .update(updateData)
-        .eq('store_id', storeId)
-        .eq('date', todayStr);
-      
-      if (error) {
-        if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
-          console.warn('Campos de auditoria não encontrados, tentando atualização simples...');
-          const { error: simpleError } = await supabase
-            .from('daily_checklists')
-            .update({ is_audited: true })
-            .eq('store_id', storeId)
-            .eq('date', todayStr);
-          
-          if (simpleError) throw simpleError;
-        } else {
-          throw error;
-        }
-      }
-      
-      toast({
-        title: 'Sucesso',
-        description: 'Checklist marcado como auditado.',
-      });
-      
-      // Atualizar status de auditoria localmente
-      setAuditedStatus(prev => ({ ...prev, [storeId]: true }));
-      
-      // Recarregar dados
-      await fetchData();
-    } catch (error) {
-      console.error('Erro ao marcar como auditado:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Erro',
-        description: error.message || 'Não foi possível marcar o checklist como auditado.',
-      });
-    } finally {
-      setAuditingChecklist(null);
+  // Função para marcar/desmarcar checklist como auditado (aceita data específica)
+  const handleToggleAudit = async (storeId, dateStr = null, isAudited) => {
+    if (isAudited) {
+      // Se já está auditado, remover auditoria
+      await handleRemoveAudit(storeId, dateStr);
+    } else {
+      // Se não está auditado, marcar como auditado
+      await handleMarkAsAudited(storeId, dateStr);
     }
   };
 
-  // Carregar histórico para todas as lojas
+  const handleMarkAsAudited = async (storeId, dateStr = null) => {
+    const targetDate = dateStr || format(new Date(), 'yyyy-MM-dd');
+    const checklistKey = `${storeId}-${targetDate}`;
+    const statusKey = dateStr ? `${storeId}-${dateStr}` : storeId;
+    
+    // Atualização otimista - atualizar UI imediatamente
+    setAuditingChecklist(checklistKey);
+    setAuditedStatus(prev => ({ ...prev, [statusKey]: true }));
+    
+    // Operação assíncrona em background
+    (async () => {
+      try {
+        // Tentar atualizar com campos de auditoria
+        let updateData = {
+          is_audited: true,
+          audited_by: user?.id,
+          audited_at: new Date().toISOString()
+        };
+        
+        let { error } = await supabase
+          .from('daily_checklists')
+          .update(updateData)
+          .eq('store_id', storeId)
+          .eq('date', targetDate);
+        
+        // Se as colunas não existem ou schema cache não atualizado, tentar apenas is_audited
+        if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist') || error.message?.includes('schema cache'))) {
+          updateData = { is_audited: true };
+          const { error: simpleError } = await supabase
+            .from('daily_checklists')
+            .update(updateData)
+            .eq('store_id', storeId)
+            .eq('date', targetDate);
+          
+          if (simpleError && simpleError.code !== 'PGRST204' && simpleError.code !== '42703') {
+            throw simpleError;
+          }
+        } else if (error) {
+          throw error;
+        }
+        
+        // Recarregar dados em background (sem bloquear UI)
+        fetchData().catch(console.error);
+        
+        // Recarregar histórico em background
+        api.fetchChecklistHistory(storeId, 7).then(history => {
+          if (history) {
+            setChecklistHistories(prev => ({ ...prev, [storeId]: history || [] }));
+            const updatedAudited = {};
+            for (const dayChecklist of (history || [])) {
+              const dateKey = `${storeId}-${dayChecklist.date}`;
+              updatedAudited[dateKey] = dayChecklist.is_audited === true;
+            }
+            setAuditedStatus(prev => ({ ...prev, ...updatedAudited }));
+          }
+        }).catch(console.error);
+        
+      } catch (error) {
+        console.error('Erro ao marcar como auditado:', error);
+        // Reverter estado em caso de erro
+        setAuditedStatus(prev => ({ ...prev, [statusKey]: false }));
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: error.message || 'Não foi possível marcar o checklist como auditado.',
+        });
+      } finally {
+        setAuditingChecklist(null);
+      }
+    })();
+  };
+
+  // Função para remover auditoria
+  const handleRemoveAudit = async (storeId, dateStr = null) => {
+    const targetDate = dateStr || format(new Date(), 'yyyy-MM-dd');
+    const checklistKey = `${storeId}-${targetDate}`;
+    const statusKey = dateStr ? `${storeId}-${dateStr}` : storeId;
+    
+    // Atualização otimista - atualizar UI imediatamente
+    setAuditingChecklist(checklistKey);
+    setAuditedStatus(prev => ({ ...prev, [statusKey]: false }));
+    
+    // Operação assíncrona em background
+    (async () => {
+      try {
+        // Tentar remover campos de auditoria
+        let updateData = {
+          is_audited: false,
+          audited_by: null,
+          audited_at: null
+        };
+        
+        let { error } = await supabase
+          .from('daily_checklists')
+          .update(updateData)
+          .eq('store_id', storeId)
+          .eq('date', targetDate);
+        
+        // Se as colunas não existem ou schema cache não atualizado, tentar apenas is_audited
+        if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist') || error.message?.includes('schema cache'))) {
+          updateData = { is_audited: false };
+          const { error: simpleError } = await supabase
+            .from('daily_checklists')
+            .update(updateData)
+            .eq('store_id', storeId)
+            .eq('date', targetDate);
+          
+          if (simpleError && simpleError.code !== 'PGRST204' && simpleError.code !== '42703') {
+            throw simpleError;
+          }
+        } else if (error) {
+          throw error;
+        }
+        
+        // Recarregar dados em background (sem bloquear UI)
+        fetchData().catch(console.error);
+        
+        // Recarregar histórico em background
+        api.fetchChecklistHistory(storeId, 7).then(history => {
+          if (history) {
+            setChecklistHistories(prev => ({ ...prev, [storeId]: history || [] }));
+            const updatedAudited = {};
+            for (const dayChecklist of (history || [])) {
+              const dateKey = `${storeId}-${dayChecklist.date}`;
+              updatedAudited[dateKey] = dayChecklist.is_audited === true;
+            }
+            setAuditedStatus(prev => ({ ...prev, ...updatedAudited }));
+          }
+        }).catch(console.error);
+        
+      } catch (error) {
+        console.error('Erro ao remover auditoria:', error);
+        // Reverter estado em caso de erro
+        setAuditedStatus(prev => ({ ...prev, [statusKey]: true }));
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: error.message || 'Não foi possível remover a auditoria.',
+        });
+      } finally {
+        setAuditingChecklist(null);
+      }
+    })();
+  };
+
+  // Carregar histórico e status de auditoria para todas as lojas
   useEffect(() => {
     const loadAllHistories = async () => {
       const histories = {};
       const loading = {};
+      const audited = {};
       
       for (const store of stores) {
         loading[store.id] = true;
         try {
           const history = await api.fetchChecklistHistory(store.id, 7);
           histories[store.id] = history || [];
+          
+          // Buscar status de auditoria do dia atual
+          const todayStr = format(new Date(), 'yyyy-MM-dd');
+          const checklistData = await api.fetchDailyChecklist(store.id, todayStr);
+          audited[store.id] = checklistData?.is_audited === true;
+          
+          // Buscar status de auditoria para cada dia do histórico
+          for (const dayChecklist of (history || [])) {
+            const dateKey = `${store.id}-${dayChecklist.date}`;
+            audited[dateKey] = dayChecklist.is_audited === true;
+          }
         } catch (error) {
           console.error(`Erro ao carregar histórico da loja ${store.id}:`, error);
           histories[store.id] = [];
+          audited[store.id] = false;
         } finally {
           loading[store.id] = false;
         }
@@ -505,6 +621,7 @@ const AdminSupervisorGerencialChecklistView = () => {
       
       setChecklistHistories(histories);
       setLoadingHistories(loading);
+      setAuditedStatus(audited);
     };
     
     if (stores.length > 0) {
@@ -546,7 +663,7 @@ const AdminSupervisorGerencialChecklistView = () => {
             const completedTasks = Object.values(storeTodayChecklist).filter(Boolean).length;
             const completionPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
             const isExpanded = expandedStores.has(store.id);
-            const isCompleted = completionPercentage === 100;
+            const canAudit = completionPercentage >= 5; // Pelo menos 5% das tarefas devem estar completas
             const isAudited = auditedStatus[store.id] === true;
             const todayStr = format(new Date(), 'yyyy-MM-dd');
             const checklistKey = `${store.id}-${todayStr}`;
@@ -572,29 +689,41 @@ const AdminSupervisorGerencialChecklistView = () => {
                       <span className="text-xl font-bold">
                         {store.name} <span className="text-sm text-muted-foreground font-normal">({store.code})</span>
                       </span>
+                      {isAdminOrSupervisor && (
+                        <div className="flex items-center gap-2 ml-3">
+                          <Checkbox
+                            id={`audit-gerencial-${store.id}`}
+                            checked={isAudited}
+                            onCheckedChange={(checked) => {
+                              if (!isExpanded && checked) toggleStore(store.id);
+                              if (checked && !canAudit) {
+                                toast({
+                                  variant: 'destructive',
+                                  title: 'Atenção',
+                                  description: 'Complete pelo menos 5% das tarefas para auditar.',
+                                });
+                                return;
+                              }
+                              handleToggleAudit(store.id, null, isAudited);
+                            }}
+                            disabled={isAuditing || (!isAudited && !canAudit)}
+                            className="h-5 w-5"
+                          />
+                          <Label 
+                            htmlFor={`audit-gerencial-${store.id}`}
+                            className="text-sm font-medium cursor-pointer flex items-center gap-2"
+                            title={isAudited ? 'Desmarcar para remover auditoria' : (!canAudit ? 'Complete pelo menos 5% das tarefas para auditar' : 'Marcar como auditado')}
+                          >
+                            <CheckCircle2 className={`w-4 h-4 ${isAudited ? 'text-purple-400' : 'text-muted-foreground'}`} />
+                            {isAudited ? 'Auditado' : 'Auditar'}
+                          </Label>
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant={completionPercentage === 100 ? 'default' : 'secondary'}>
                         {completionPercentage.toFixed(0)}%
                       </Badge>
-                      {isAdminOrSupervisor && isCompleted && !isAudited && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleMarkAsAudited(store.id)}
-                          disabled={isAuditing}
-                          className="flex items-center gap-2"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          {isAuditing ? 'Marcando...' : 'Marcar como Auditado'}
-                        </Button>
-                      )}
-                      {isAudited && (
-                        <Badge variant="outline" className="bg-purple-500/20 text-purple-400 border-purple-500/30">
-                          <CheckCircle2 className="w-3 h-3 mr-1" />
-                          Auditado
-                        </Badge>
-                      )}
                     </div>
                   </CardTitle>
                   <div className="w-full bg-secondary rounded-full h-2 mt-2">
@@ -653,6 +782,11 @@ const AdminSupervisorGerencialChecklistView = () => {
                         const dayCompleted = Object.values(dayGerencialTasks).filter(Boolean).length;
                         const dayCompletedDaily = Object.values(dayDailyTasks).filter(Boolean).length;
                         const dayPercentage = gerencialTasks.length > 0 ? (dayCompleted / gerencialTasks.length) * 100 : 0;
+                        const isCompleted = dayPercentage === 100;
+                        const dateKey = `${store.id}-${dayChecklist.date}`;
+                        const isAudited = auditedStatus[dateKey] === true || dayChecklist.is_audited === true;
+                        const checklistKey = `${store.id}-${dayChecklist.date}`;
+                        const isAuditing = auditingChecklist === checklistKey;
                         
                         return (
                           <Card key={dayChecklist.date} className="bg-secondary/50">
@@ -661,13 +795,44 @@ const AdminSupervisorGerencialChecklistView = () => {
                                 <span className="text-sm font-semibold">
                                   {isToday(date) ? 'Hoje' : isYesterday(date) ? 'Ontem' : format(date, "dd/MM/yyyy", { locale: ptBR })}
                                 </span>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 items-center">
                                   <Badge variant={dayPercentage === 100 ? 'default' : 'secondary'}>
                                     PPAD: {dayCompleted}/{gerencialTasks.length} ({dayPercentage.toFixed(0)}%)
                                   </Badge>
                                   <Badge variant="outline">
                                     Diário: {dayCompletedDaily}
                                   </Badge>
+                                  {isAdminOrSupervisor && (
+                                    <div className="flex items-center gap-1">
+                                      <Checkbox
+                                        id={`audit-gerencial-hist-${store.id}-${dayChecklist.date}`}
+                                        checked={isAudited}
+                                        onCheckedChange={(checked) => {
+                                          if (checked && !canAudit) {
+                                            toast({
+                                              variant: 'destructive',
+                                              title: 'Atenção',
+                                              description: 'Complete pelo menos 5% das tarefas para auditar.',
+                                            });
+                                            return;
+                                          }
+                                          // checked = true significa que queremos auditar (isAudited atual é false)
+                                          // checked = false significa que queremos remover (isAudited atual é true)
+                                          handleToggleAudit(store.id, dayChecklist.date, isAudited);
+                                        }}
+                                        disabled={isAuditing || (!isAudited && !canAudit)}
+                                        className="h-4 w-4"
+                                      />
+                                      <Label 
+                                        htmlFor={`audit-gerencial-hist-${store.id}-${dayChecklist.date}`}
+                                        className="text-xs cursor-pointer flex items-center gap-1"
+                                        title={isAudited ? 'Desmarcar para remover auditoria' : (!canAudit ? 'Complete pelo menos 5% das tarefas para auditar' : 'Marcar como auditado')}
+                                      >
+                                        <CheckCircle2 className={`w-3 h-3 ${isAudited ? 'text-purple-400' : 'text-muted-foreground'}`} />
+                                        {isAudited ? 'Auditado' : 'Auditar'}
+                                      </Label>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </CardHeader>
@@ -715,7 +880,7 @@ const GerencialChecklist = () => {
   const { user } = useAuth();
   const { gerencialTasks } = useData();
   const isLoja = user?.role === 'loja' || user?.role === 'loja_franquia';
-  const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia';
+  const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor';
 
   console.log('🔍 [GerencialChecklist] Renderizando:', {
     userRole: user?.role,
