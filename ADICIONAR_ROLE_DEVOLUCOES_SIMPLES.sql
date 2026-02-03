@@ -44,3 +44,32 @@ WHERE conrelid = 'public.app_users'::regclass
 -- ALTER TABLE public.app_users ADD CONSTRAINT app_users_role_check 
 -- CHECK (role IN ('admin', 'supervisor', 'loja', 'devoluções', 'user'));
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

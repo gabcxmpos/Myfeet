@@ -16,3 +16,32 @@ CHECK (status IN ('ativo', 'ferias', 'afastado'));
 -- Comentário na coluna
 COMMENT ON COLUMN public.collaborators.status IS 'Status do colaborador: ativo, ferias ou afastado. Apenas colaboradores ativos contam no headcount.';
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

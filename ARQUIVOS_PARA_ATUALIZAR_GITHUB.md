@@ -1,111 +1,82 @@
-# 📋 ARQUIVOS PARA ATUALIZAR NO GITHUB
+# 📋 Arquivos para Atualizar no GitHub
 
-## ✅ Resumo
-Esta atualização inclui:
-1. **Correção dos filtros** (seleção com mouse e teclado)
-2. **Funcionalidade completa de treinamentos**
+## ⚠️ CRÍTICO - Build está falhando
 
----
-
-## 📁 ARQUIVOS QUE PRECISAM SER ATUALIZADOS
-
-### 🔧 Filtros Corrigidos
-- ✅ `src/components/MultiSelectFilter.jsx` - Reescrito com checkboxes reais
-- ✅ `src/components/StoreMultiSelect.jsx` - Reescrito com checkboxes reais
-
-### 🎓 Funcionalidade de Treinamentos
-- ✅ `src/pages/TrainingManagement.jsx` - Página de gerenciamento de treinamentos (admin)
-- ✅ `src/pages/Training.jsx` - Página de treinamentos para lojas
-- ✅ `src/contexts/DataContext.jsx` - Adicionado suporte a treinamentos
-- ✅ `src/lib/supabaseService.js` - Funções API para treinamentos
-- ✅ `src/App.jsx` - Rotas de treinamentos adicionadas
-- ✅ `src/components/Sidebar.jsx` - Links de treinamentos no menu
-- ✅ `src/pages/Collaborators.jsx` - Campos CPF e email adicionados
+O build no Vercel está falhando porque as dependências `jspdf` e `html2canvas` não estão no `package.json` do GitHub.
 
 ---
 
-## 🚀 COMO ATUALIZAR
+## 📦 Arquivos OBRIGATÓRIOS para atualizar:
 
-### Opção 1: GitHub Desktop (Recomendado)
-1. Abra o GitHub Desktop
-2. Todos os arquivos acima aparecerão na lista de mudanças
-3. Adicione mensagem de commit:
-   ```
-   feat: Corrigir filtros e adicionar funcionalidade completa de treinamentos
-   ```
-4. Clique em **"Commit to main"**
-5. Clique em **"Push origin"**
+### 1. **`package.json`** ⚠️ CRÍTICO
+   - **Motivo:** Faltam as dependências `jspdf` e `html2canvas` que foram instaladas localmente
+   - **O que fazer:** Atualizar o arquivo `package.json` com as novas dependências:
+     ```json
+     "html2canvas": "^1.4.1",
+     "jspdf": "^3.0.4",
+     ```
+   - **Localização:** Linhas 35-36 nas dependências
 
-### Opção 2: GitHub Web
-1. Acesse seu repositório no GitHub
-2. Vá em **"Add file"** > **"Upload files"**
-3. Arraste todos os arquivos listados acima
-4. Adicione a mensagem de commit acima
-5. Clique em **"Commit changes"**
+### 2. **`src/pages/ReturnsPlanner.jsx`** ⚠️ IMPORTANTE
+   - **Motivo:** Todas as melhorias visuais e funcionalidade de exportação PDF
+   - **Mudanças principais:**
+     - Modernização visual dos dashboards
+     - Cores dos gráficos atualizadas (tons mais claros)
+     - Textos dos gráficos em branco (eixos, legendas, tooltips)
+     - Botão de exportar PDF
+     - Função `handleExportPDF` completa
+     - Estilos CSS inline para forçar cores brancas nos gráficos
+     - Imports: `jsPDF`, `html2canvas`, `Download` icon
 
-### Opção 3: Script PowerShell
-Execute o script `update-github-completo.ps1` (se o Git estiver configurado):
-```powershell
-powershell -ExecutionPolicy Bypass -File update-github-completo.ps1
+---
+
+## 📝 Comandos Git para atualizar:
+
+```bash
+# 1. Adicionar arquivos modificados
+git add package.json
+git add src/pages/ReturnsPlanner.jsx
+
+# 2. Commit
+git commit -m "feat: Adiciona exportação PDF e melhora visualização dos gráficos no Planner de Devoluções
+
+- Adiciona dependências jspdf e html2canvas
+- Moderniza layout dos dashboards
+- Corrige cores dos gráficos (textos brancos)
+- Adiciona botão de exportar PDF com filtros aplicados"
+
+# 3. Push
+git push origin main
 ```
 
 ---
 
-## 📝 MENSAGEM DE COMMIT SUGERIDA
+## ✅ Verificações pós-deploy:
 
-```
-feat: Corrigir filtros e adicionar funcionalidade completa de treinamentos
-
-Filtros:
-- Reescrever MultiSelectFilter com checkboxes reais
-- Reescrever StoreMultiSelect com checkboxes reais
-- Corrigir seleção com mouse e teclado
-- Melhorar experiência de uso dos filtros
-
-Treinamentos:
-- Adicionar página TrainingManagement para admin
-- Adicionar página Training para lojas
-- Adicionar campos CPF e email em colaboradores
-- Adicionar funcionalidade de inscrição em treinamentos
-- Adicionar dashboard de treinamentos
-- Adicionar exportação Excel de inscritos
-- Adicionar controle de presença
-- Integrar com DataContext e Supabase
-```
+Após o deploy, verificar:
+1. ✅ Build passa sem erros
+2. ✅ Gráficos "Devoluções por Tipo" e "Devoluções por Status" têm textos brancos
+3. ✅ Tooltips dos gráficos têm texto branco
+4. ✅ Botão "Exportar PDF" funciona corretamente
+5. ✅ PDF gerado contém os filtros aplicados
 
 ---
 
-## ⚠️ IMPORTANTE
+## 📌 Resumo das mudanças:
 
-### Após atualizar no GitHub:
-1. ⏱️ Aguarde 2-3 minutos para o Vercel fazer deploy automático
-2. 🧹 Limpe o cache do navegador (Ctrl + Shift + Delete ou Ctrl + F5)
-3. ✅ Teste as funcionalidades:
-   - Filtros devem funcionar com mouse e teclado
-   - Treinamentos devem aparecer no menu
-   - Admin pode criar treinamentos
-   - Lojas podem se inscrever em treinamentos
+### Dependências novas:
+- `jspdf`: ^3.0.4
+- `html2canvas`: ^1.4.1
 
-### Scripts SQL necessários (já devem estar no Supabase):
-- `CRIAR_TABELAS_TREINAMENTOS.sql`
-- `ATUALIZAR_COLABORADORES_EMAIL.sql`
-- `ATUALIZAR_TREINAMENTOS_CAMPOS.sql`
-- `ATUALIZAR_TREINAMENTOS_LOJAS.sql`
-- `CORRIGIR_RLS_TREINAMENTOS.sql`
+### Funcionalidades novas:
+- Exportação de PDF do dashboard com filtros aplicados
+- Melhorias visuais nos gráficos (cores mais claras, textos brancos)
+
+### Correções:
+- Tooltips com texto branco
+- Eixos e legendas dos gráficos em branco
+- Labels do gráfico de pizza em branco
 
 ---
 
-## ✅ VERIFICAÇÃO
-
-Após atualizar, verifique se:
-- ✅ O commit foi criado no GitHub
-- ✅ O build no Vercel passou sem erros
-- ✅ Os arquivos foram realmente atualizados
-- ✅ As funcionalidades estão funcionando online
-
-
-
-
-
-
-
+**Status:** ⚠️ **URGENTE** - Build está falhando sem essas atualizações

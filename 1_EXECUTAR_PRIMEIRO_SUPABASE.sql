@@ -26,3 +26,32 @@ ORDER BY e.enumsortorder;
 
 -- Se você ver 'devoluções' na lista, o passo 1 foi concluído com sucesso!
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

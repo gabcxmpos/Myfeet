@@ -1,0 +1,63 @@
+================================================================================
+📦 ARQUIVOS PARA ATUALIZAR NO GITHUB - RELATÓRIO DE NÃO CONVERSÃO
+================================================================================
+
+✅ ARQUIVOS NOVOS (CRIADOS):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. src/pages/NonConversionReport.jsx
+2. create_non_conversion_table.sql
+3. update_non_conversion_constraint.sql
+
+✅ ARQUIVOS MODIFICADOS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. src/App.jsx
+   └─ Adicionada rota /non-conversion-report (linha 39 e 89)
+
+2. src/components/Sidebar.jsx
+   └─ Adicionado item de menu (linha 23)
+
+3. src/lib/supabaseService.js
+   └─ Adicionadas funções fetchNonConversionRecords e createNonConversionRecord
+   └─ Import de format do date-fns (se necessário)
+
+================================================================================
+📋 RESUMO DAS ALTERAÇÕES
+================================================================================
+
+✨ NOVA FUNCIONALIDADE:
+   • Relatório de Não Conversão completo
+   • Dashboard com estatísticas
+   • Formulário de registro
+   • Filtros avançados (colaborador, dia, período)
+   • Validação de dados
+
+🔧 CORREÇÕES:
+   • Constraint do banco atualizada (inclui "OUTROS")
+   • Erro do SelectItem corrigido
+   • Validação de filtros de período
+
+📊 BANCO DE DADOS:
+   • Tabela: non_conversion_records
+   • Scripts SQL prontos para execução
+
+================================================================================
+🚀 COMANDOS RÁPIDOS
+================================================================================
+
+# Adicionar todos os arquivos
+git add src/pages/NonConversionReport.jsx
+git add create_non_conversion_table.sql
+git add update_non_conversion_constraint.sql
+git add src/App.jsx
+git add src/components/Sidebar.jsx
+git add src/lib/supabaseService.js
+
+# Commit
+git commit -m "feat: Implementa Relatório de Não Conversão"
+
+# Push
+git push origin main
+
+================================================================================
+
+

@@ -65,3 +65,32 @@ Estes logs de debug são temporários para diagnosticar o problema. Após identi
 - [ ] Commit feito
 - [ ] Push feito
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -234,3 +234,32 @@ git push -u origin main
 
 Se você já tem o código local e o repositório no GitHub, use o **Método 2** para conectar. É mais rápido e direto!
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

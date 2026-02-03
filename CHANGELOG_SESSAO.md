@@ -42,6 +42,34 @@ Esta sessão incluiu otimizações de performance, correções de erros, melhori
 
 **Impacto:** Console limpo, sem erros desnecessários, melhor experiência do desenvolvedor.
 
+### 2.1. Correção de Erros de Refresh Token
+**Arquivos modificados:**
+- `src/lib/customSupabaseClient.js`
+- `src/contexts/SupabaseAuthContext.jsx`
+- `vite.config.js`
+
+**Mudanças:**
+- ✅ Tratamento silencioso de erros "Invalid Refresh Token"
+- ✅ Erros de refresh token não são mais logados no console
+- ✅ Limpeza automática de tokens expirados
+- ✅ Sistema tenta fazer login novamente automaticamente
+
+**Impacto:** Console mais limpo, erros de token expirado tratados silenciosamente.
+
+### 2.2. Correção de Erro "Cannot read properties of undefined (reading 'map')"
+**Arquivos modificados:**
+- `src/pages/FormBuilder.jsx`
+- `src/pages/Dashboard.jsx`
+- `src/pages/StartEvaluation.jsx`
+- `src/pages/Analytics.jsx`
+
+**Mudanças:**
+- ✅ Adicionada verificação de segurança para garantir que `forms` seja sempre um array
+- ✅ Uso de `safeForms = Array.isArray(forms) ? forms : []` em todos os componentes
+- ✅ Prevenção de erros quando `forms` é `undefined` durante renderização inicial
+
+**Impacto:** Elimina erro de runtime quando `forms` ainda não foi inicializado pelo contexto.
+
 ### 3. Correção de Erros de Schema
 **Arquivos modificados:**
 - `src/pages/ChecklistAuditAnalytics.jsx`
@@ -131,11 +159,16 @@ Esta sessão incluiu otimizações de performance, correções de erros, melhori
 2. `src/pages/GerencialChecklist.jsx` - Otimizações de auditoria
 3. `src/pages/ChecklistAuditAnalytics.jsx` - Produtividade por supervisor
 4. `src/pages/PatrimonyManagement.jsx` - Organização melhorada
-5. `src/lib/supabaseService.js` - Tratamento de erros RLS
-6. `src/lib/customSupabaseClient.js` - Interceptor de fetch
-7. `src/components/Sidebar.jsx` - Ícones atualizados
-8. `src/components/AlertsModal.jsx` - Tratamento de erros RLS
-9. `vite.config.js` - Interceptor global de fetch
+5. `src/pages/FormBuilder.jsx` - Correção de erro com forms undefined
+6. `src/pages/Dashboard.jsx` - Correção de erro com forms undefined
+7. `src/pages/StartEvaluation.jsx` - Correção de erro com forms undefined
+8. `src/pages/Analytics.jsx` - Correção de erro com forms undefined
+9. `src/lib/supabaseService.js` - Tratamento de erros RLS
+10. `src/lib/customSupabaseClient.js` - Interceptor de fetch + tratamento de refresh token
+11. `src/contexts/SupabaseAuthContext.jsx` - Tratamento de refresh token inválido
+12. `src/components/Sidebar.jsx` - Ícones atualizados
+13. `src/components/AlertsModal.jsx` - Tratamento de erros RLS
+14. `vite.config.js` - Interceptor global de fetch + tratamento de refresh token
 
 ### Arquivos Criados:
 1. `CONFIGURAR_RLS_ALERT_VIEWS.sql` - Script de configuração RLS

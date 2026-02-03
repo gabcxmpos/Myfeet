@@ -57,3 +57,31 @@ WHERE routine_schema = 'public'
 -- não através de trigger (mais seguro e confiável)
 -- ============================================
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

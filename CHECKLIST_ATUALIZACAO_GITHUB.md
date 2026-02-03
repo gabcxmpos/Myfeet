@@ -127,3 +127,32 @@ Se o Git não estiver instalado ou configurado, você pode:
 2. Fazer upload manual dos arquivos via interface web do GitHub
 3. Instalar Git e configurar
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
