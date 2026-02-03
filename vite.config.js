@@ -147,6 +147,13 @@ window.fetch = function(...args) {
 							// Não logar erro de RLS - é esperado e tratado pela aplicação
 							return response;
 						}
+						// Ignorar erros de refresh token inválido (é esperado quando token expira)
+						if (errorJson.error === 'invalid_grant' || 
+						    errorJson.error_description?.includes('Refresh Token') ||
+						    errorJson.message?.includes('Refresh Token')) {
+							// Não logar erro de refresh token - é tratado automaticamente pelo Supabase
+							return response;
+						}
 					} catch {
 						// Se não for JSON, continuar normalmente
 					}
