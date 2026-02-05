@@ -122,9 +122,13 @@ const UserManagement = () => {
                 store_id: (role === 'loja' || role === 'loja_franquia' || role === 'colaborador' || role === 'admin_loja') ? storeId : null 
             };
             
+            // Se senha não fornecida, passar null para usar senha padrão
+            const userPassword = password && password.trim() !== '' ? password : null;
+            
             console.log('🔍 [UserManagement] Chamando addUser com:', {
                 email,
-                passwordLength: (password || '').length,
+                passwordProvided: !!userPassword,
+                passwordLength: userPassword ? userPassword.length : 0,
                 userData,
                 addUserType: typeof addUser,
                 addUserIsFunction: typeof addUser === 'function'
@@ -134,7 +138,7 @@ const UserManagement = () => {
                 throw new Error('Função addUser não está disponível. Por favor, recarregue a página.');
             }
             
-            await addUser(email, password || '', userData);
+            await addUser(email, userPassword, userData);
             
             // Limpar formulário apenas se a criação foi bem-sucedida
             setEmail('');
