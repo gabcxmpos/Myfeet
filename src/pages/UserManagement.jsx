@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Helmet } from 'react-helmet';
 import { useData } from '@/contexts/DataContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -25,6 +25,47 @@ import {
 const UserManagement = () => {
     const { users, addUser, stores, toggleUserStatus, deleteUser: contextDeleteUser, resetUserPassword, loading, isInitialized } = useData();
     const { toast } = useToast();
+    
+    // ⚠️ IMPORTANTE: Todos os hooks devem ser chamados ANTES de qualquer return condicional
+    const [email, setEmail] = useState('');
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [role, setRole] = useState('');
+    const [storeId, setStoreId] = useState('');
+    const [resetEmail, setResetEmail] = useState('');
+    const [showResetDialog, setShowResetDialog] = useState(false);
+    const [selectedUserId, setSelectedUserId] = useState(null);
+
+    // Filtrar lojas disponíveis baseado no role selecionado
+    // ⚠️ IMPORTANTE: useMemo deve estar ANTES de qualquer return condicional
+    const availableStores = useMemo(() => {
+        if (!stores || !Array.isArray(stores)) return [];
+        if (!role || (role !== 'loja' && role !== 'loja_franquia' && role !== 'colaborador' && role !== 'admin_loja')) {
+            return stores;
+        }
+        // Colaborador e Admin de Loja são de loja própria
+        if (role === 'colaborador' || role === 'admin_loja') {
+            return stores.filter(store => store.tipo === 'propria');
+        }
+        // Filtrar lojas por tipo quando for loja ou loja_franquia
+        const storeType = role === 'loja' ? 'propria' : 'franquia';
+        return stores.filter(store => store.tipo === storeType);
+    }, [stores, role]);
+
+    // Debug: Verificar dados recebidos (movido para useEffect para evitar re-renders)
+    useEffect(() => {
+        if (isInitialized && !loading) {
+            console.log('👥 [UserManagement] Dados recebidos:', {
+                usersCount: users?.length || 0,
+                users: users,
+                isArray: Array.isArray(users),
+                storesCount: stores?.length || 0,
+                addUserAvailable: typeof addUser === 'function',
+                toggleUserStatusAvailable: typeof toggleUserStatus === 'function',
+                resetUserPasswordAvailable: typeof resetUserPassword === 'function'
+            });
+        }
+    }, [isInitialized, loading, users, stores, addUser, toggleUserStatus, resetUserPassword]);
     
     // Aguardar inicialização do contexto
     if (loading || !isInitialized) {
@@ -54,39 +95,6 @@ const UserManagement = () => {
             </div>
         );
     }
-    
-    // Debug: Verificar dados recebidos
-    console.log('👥 [UserManagement] Dados recebidos:', {
-        usersCount: users?.length || 0,
-        users: users,
-        isArray: Array.isArray(users),
-        storesCount: stores?.length || 0,
-        addUserAvailable: typeof addUser === 'function',
-        toggleUserStatusAvailable: typeof toggleUserStatus === 'function',
-        resetUserPasswordAvailable: typeof resetUserPassword === 'function'
-    });
-    const [email, setEmail] = useState('');
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [role, setRole] = useState('');
-    const [storeId, setStoreId] = useState('');
-    const [resetEmail, setResetEmail] = useState('');
-    const [showResetDialog, setShowResetDialog] = useState(false);
-    const [selectedUserId, setSelectedUserId] = useState(null);
-
-    // Filtrar lojas disponíveis baseado no role selecionado
-    const availableStores = useMemo(() => {
-        if (!role || (role !== 'loja' && role !== 'loja_franquia' && role !== 'colaborador' && role !== 'admin_loja')) {
-            return stores;
-        }
-        // Colaborador e Admin de Loja são de loja própria
-        if (role === 'colaborador' || role === 'admin_loja') {
-            return stores.filter(store => store.tipo === 'propria');
-        }
-        // Filtrar lojas por tipo quando for loja ou loja_franquia
-        const storeType = role === 'loja' ? 'propria' : 'franquia';
-        return stores.filter(store => store.tipo === storeType);
-    }, [stores, role]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
