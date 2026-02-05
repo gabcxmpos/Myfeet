@@ -121,34 +121,16 @@ const MainLayout = () => {
 
   return (
     <div className="flex h-screen bg-background text-foreground relative overflow-hidden">
-      {/* Overlay para mobile quando sidebar está aberta */}
-      {isSidebarOpen && !isDesktop && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-black/50 z-[50]"
-          style={{ zIndex: 50 }}
-          onClick={(e) => {
-            // Só fechar se clicar diretamente no overlay (não em elementos filhos)
-            // A sidebar está em z-60, então cliques nela não chegam aqui
-            if (e.target === e.currentTarget) {
-              closeSidebar();
-            }
-          }}
-          aria-hidden="true"
+      {/* Sidebar - apenas em desktop */}
+      {isDesktop && (
+        <Sidebar 
+          isOpen={isSidebarOpen} 
+          onClose={closeSidebar}
+          isCollapsed={isDesktop ? isSidebarCollapsed : false}
+          onToggleCollapse={toggleSidebarCollapse}
+          isDesktop={isDesktop}
         />
       )}
-      
-      {/* Sidebar */}
-      <Sidebar 
-        isOpen={isSidebarOpen} 
-        onClose={closeSidebar}
-        isCollapsed={isDesktop ? isSidebarCollapsed : false}
-        onToggleCollapse={toggleSidebarCollapse}
-        isDesktop={isDesktop}
-      />
       
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${isSidebarOpen && isDesktop ? (isSidebarCollapsed ? 'lg:ml-[80px]' : 'lg:ml-[256px]') : 'lg:ml-0'}`}>
         <Header onToggleSidebar={toggleSidebar} isSidebarOpen={isSidebarOpen} isDesktop={isDesktop} />

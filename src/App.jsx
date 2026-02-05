@@ -47,6 +47,7 @@ import StorePatrimony from '@/pages/StorePatrimony';
 import PhysicalMissing from '@/pages/PhysicalMissing';
 import BrandsSettings from '@/pages/BrandsSettings';
 import AlertasComunicados from '@/pages/AlertasComunicados';
+import HomePage from '@/pages/HomePage';
 
 function App() {
   return (
@@ -63,7 +64,8 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/first-access" element={<FirstAccess />} />
               <Route path="/" element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>
-                <Route index element={<Navigate to="/dashboard" replace />} />
+                <Route index element={<Navigate to="/home" replace />} />
+                <Route path="home" element={<HomePage />} />
                 <Route path="dashboard" element={<Dashboard />} />
                 <Route path="ranking" element={<MonthlyRanking />} />
                 <Route path="analytics" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia']}><Analytics /></ProtectedRoute>} />

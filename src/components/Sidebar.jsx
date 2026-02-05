@@ -62,15 +62,38 @@ const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: is
   const menuItems = allMenuItems.filter(item => {
     // Check if user has the role for the item
     if (!user?.role || !item.roles.includes(user.role)) {
+      if (process.env.NODE_ENV === 'development' && item.path === '/returns') {
+        console.log('🔍 [Sidebar] Item /returns filtrado:', {
+          userRole: user?.role,
+          itemRoles: item.roles,
+          hasRole: item.roles.includes(user?.role)
+        });
+      }
       return false;
     }
     // Check visibility settings
     const visibilitySettings = menuVisibility[item.path];
     if (visibilitySettings && visibilitySettings[user.role] === false) {
+      if (process.env.NODE_ENV === 'development' && item.path === '/returns') {
+        console.log('🔍 [Sidebar] Item /returns escondido por menuVisibility:', visibilitySettings);
+      }
       return false;
+    }
+    if (process.env.NODE_ENV === 'development' && item.path === '/returns') {
+      console.log('✅ [Sidebar] Item /returns incluído no menu para role:', user?.role);
     }
     return true;
   });
+  
+  if (process.env.NODE_ENV === 'development') {
+    console.log('📋 [Sidebar] Menu items filtrados:', {
+      userRole: user?.role,
+      totalItems: allMenuItems.length,
+      filteredItems: menuItems.length,
+      returnsIncluded: menuItems.some(item => item.path === '/returns'),
+      menuItems: menuItems.map(item => item.path)
+    });
+  }
 
   // Usar isDesktop do prop se fornecido, senão detectar localmente
   const [isDesktopLocal, setIsDesktopLocal] = React.useState(() => {

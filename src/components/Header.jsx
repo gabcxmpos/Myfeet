@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User, Bell, Settings, UserPlus, Eye, Menu, AlertCircle, Sun, Moon } from 'lucide-react';
-import { useNavigate, NavLink } from 'react-router-dom';
+import { LogOut, User, Bell, Settings, UserPlus, Eye, Menu, AlertCircle, Sun, Moon, Home } from 'lucide-react';
+import { useNavigate, NavLink, useLocation } from 'react-router-dom';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,10 +21,12 @@ const Header = ({ onToggleSidebar, isSidebarOpen, isDesktop }) => {
   const { user, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const isAdmin = user?.role === 'admin';
   const isStore = user?.role === 'loja' || user?.role === 'loja_franquia' || user?.role === 'admin_loja';
   const [unreadAlertsCount, setUnreadAlertsCount] = useState(0);
   const [isAlertsModalOpen, setIsAlertsModalOpen] = useState(false);
+  const isHomePage = location.pathname === '/home';
 
   useEffect(() => {
     if (isStore && user?.storeId) {
@@ -57,12 +59,24 @@ const Header = ({ onToggleSidebar, isSidebarOpen, isDesktop }) => {
     }
   };
 
+  const handleGoHome = () => {
+    navigate('/home');
+  };
+
   const handleToggleSidebar = (e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
     if (process.env.NODE_ENV === 'development') {
       console.log('🔄 [Header] handleToggleSidebar chamado. isDesktop:', isDesktop, 'isSidebarOpen:', isSidebarOpen);
     }
+    
+    // Em mobile, navegar para /home ao invés de abrir sidebar
+    if (!isDesktop) {
+      navigate('/home');
+      return;
+    }
+    
+    // Em desktop, usar comportamento normal da sidebar
     if (onToggleSidebar) {
       onToggleSidebar();
     } else {
@@ -75,18 +89,50 @@ const Header = ({ onToggleSidebar, isSidebarOpen, isDesktop }) => {
   return (
     <header className="bg-card border-b border-border px-4 sm:px-6 py-3 flex items-center justify-between relative z-[55] w-full" style={{ zIndex: 55 }}>
       <div className="flex items-center gap-3">
-        {/* Botão de toggle da sidebar - sempre visível e com z-index alto, especialmente em mobile */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleToggleSidebar}
-          onTouchStart={handleToggleSidebar}
-          aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
-          className="cursor-pointer z-50 relative flex items-center justify-center"
-          style={{ zIndex: 50, minWidth: '2.5rem', minHeight: '2.5rem' }}
-        >
-          <Menu className="w-5 h-5" />
-        </Button>
+        {/* Botão de voltar ao início - apenas quando não estiver na página inicial */}
+        {!isHomePage && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleGoHome}
+            aria-label="Voltar ao início"
+            className="cursor-pointer z-50 relative flex items-center justify-center"
+            style={{ zIndex: 50, minWidth: '2.5rem', minHeight: '2.5rem' }}
+            title="Voltar ao início"
+          >
+            <Home className="w-5 h-5" />
+          </Button>
+        )}
+        
+        {/* Botão de toggle da sidebar - apenas em desktop, ou em mobile quando não estiver na home */}
+        {isDesktop && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleToggleSidebar}
+            aria-label={isSidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+            className="cursor-pointer z-50 relative flex items-center justify-center"
+            style={{ zIndex: 50, minWidth: '2.5rem', minHeight: '2.5rem' }}
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
+        )}
+        
+        {/* Em mobile, mostrar botão de menu apenas quando não estiver na home */}
+        {!isDesktop && !isHomePage && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleToggleSidebar}
+            onTouchStart={handleToggleSidebar}
+            aria-label="Ir para início"
+            className="cursor-pointer z-50 relative flex items-center justify-center"
+            style={{ zIndex: 50, minWidth: '2.5rem', minHeight: '2.5rem' }}
+            title="Ir para início"
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
+        )}
       </div>
       
       <div className="flex items-center gap-4 ml-auto">
