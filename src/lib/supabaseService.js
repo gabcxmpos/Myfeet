@@ -57,10 +57,13 @@ export const fetchAppUsers = async () => {
 };
 
 export const createAppUser = async (email, password, userData) => {
+  // Use default password if not provided
+  const userPassword = password && password.trim() !== '' ? password : 'afeet10';
+  
   // Create auth user
   const { data: authData, error: authError } = await supabase.auth.signUp({
-    email,
-    password,
+    email: email.trim().toLowerCase(),
+    password: userPassword,
   });
   
   if (authError) throw authError;
