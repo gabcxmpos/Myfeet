@@ -5,9 +5,11 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ReturnsPending from './ReturnsPending';
 import ReturnsPlanner from './ReturnsPlanner';
+import ReturnsPaymentDashboard from './ReturnsPaymentDashboard';
+import ReturnsPayment from './ReturnsPayment';
 import PhysicalMissing from './PhysicalMissing';
 import ReturnsCapacity from './ReturnsCapacity';
-import { RotateCcw, Calendar, Package, BarChart3 } from 'lucide-react';
+import { RotateCcw, Calendar, Package, BarChart3, CheckSquare } from 'lucide-react';
 
 const ReturnsConsolidated = () => {
   const { user } = useAuth();
@@ -21,7 +23,8 @@ const ReturnsConsolidated = () => {
     if (location.pathname === '/returns-planner') return 'planner';
     if (!user) return 'pending';
     if (user?.role === 'devoluções') return 'planner';
-    if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'loja' || user?.role === 'loja_franquia' || user?.role === 'financeiro') return 'pending';
+    if (user?.role === 'financeiro') return 'payment-dashboard';
+    if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'loja' || user?.role === 'loja_franquia') return 'pending';
     return 'pending';
   };
 
@@ -42,7 +45,9 @@ const ReturnsConsolidated = () => {
       setActiveTab('planner');
     } else if (user?.role === 'devoluções') {
       setActiveTab('planner');
-    } else if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'loja' || user?.role === 'financeiro') {
+    } else if (user?.role === 'financeiro') {
+      setActiveTab('payment-dashboard');
+    } else if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'loja') {
       setActiveTab('pending');
     }
   }, [user, location.pathname, tabFromUrl]);
@@ -99,8 +104,8 @@ const ReturnsConsolidated = () => {
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="w-full flex flex-wrap gap-2 h-auto overflow-x-auto scrollbar-hide">
-            {/* Aba Devoluções (Pendentes) - Comunicativo com loja */}
-            {(isAdmin || isSupervisor || isLoja || isDevolucoes || isFinanceiro) && (
+            {/* Aba Devoluções (Pendentes) - Comunicativo com loja (NÃO para financeiro) */}
+            {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 <RotateCcw className="w-4 h-4" />
                 <span>Devoluções</span>
@@ -130,10 +135,26 @@ const ReturnsConsolidated = () => {
                 <span>Capacidade</span>
               </TabsTrigger>
             )}
+
+            {/* Aba Pagamento Devoluções - Para admin e financeiro */}
+            {(isAdmin || isFinanceiro) && (
+              <TabsTrigger value="payment-dashboard" className="flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                <span>Pagamento Devoluções</span>
+              </TabsTrigger>
+            )}
+
+            {/* Aba Confirmação de Pagamento - Apenas para financeiro */}
+            {isFinanceiro && (
+              <TabsTrigger value="payment-confirm" className="flex items-center gap-2">
+                <CheckSquare className="w-4 h-4" />
+                <span>Pagamento</span>
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Conteúdo das Abas */}
-          {(isAdmin || isSupervisor || isLoja || isDevolucoes || isFinanceiro) && (
+          {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
             <TabsContent value="pending" className="mt-6">
               {activeTab === 'pending' && <ReturnsPending />}
             </TabsContent>
@@ -156,6 +177,20 @@ const ReturnsConsolidated = () => {
           {(isAdmin || isDevolucoes || isSupervisor) && (
             <TabsContent value="capacity" className="mt-6">
               {activeTab === 'capacity' && <ReturnsCapacity />}
+            </TabsContent>
+          )}
+
+          {/* Aba Dashboard Pagamento Devoluções - Para admin e financeiro */}
+          {(isAdmin || isFinanceiro) && (
+            <TabsContent value="payment-dashboard" className="mt-6">
+              {activeTab === 'payment-dashboard' && <ReturnsPaymentDashboard />}
+            </TabsContent>
+          )}
+
+          {/* Aba Confirmação de Pagamento - Apenas para financeiro */}
+          {isFinanceiro && (
+            <TabsContent value="payment-confirm" className="mt-6">
+              {activeTab === 'payment-confirm' && <ReturnsPayment />}
             </TabsContent>
           )}
         </Tabs>

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Edit, Trash2, Calendar, Store, FileText, User, Search, BarChart3, Clock, TrendingUp, AlertCircle, CheckCircle, DollarSign, Package, CheckSquare, Save, X, Settings, Download } from 'lucide-react';
+import ReturnsPaymentDashboard from './ReturnsPaymentDashboard';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -965,10 +966,23 @@ const ReturnsPlanner = () => {
             <FileText className="w-4 h-4 inline mr-2" />
             Lista de Registros
           </button>
+          {(user?.role === 'admin' || user?.role === 'devoluções') && (
+            <button
+              onClick={() => setActiveTab('pagamentos')}
+              className={`px-4 py-2 font-medium transition-colors ${
+                activeTab === 'pagamentos'
+                  ? 'border-b-2 border-primary text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <DollarSign className="w-4 h-4 inline mr-2" />
+              Pagamentos
+            </button>
+          )}
         </div>
 
         {/* Conteúdo das Tabs */}
-        {activeTab === 'dashboard' ? (
+        {activeTab === 'dashboard' && (
           <div id="dashboard-content" className="space-y-6">
             {/* Filtros do Dashboard - Compacto e Moderno */}
             <Card className="border-border/50">
@@ -1608,7 +1622,8 @@ const ReturnsPlanner = () => {
               </Card>
             </div>
           </div>
-        ) : (
+        )}
+        {activeTab === 'lista' && (
           <div className="space-y-6">
             {/* Filtros */}
             <Card>
@@ -2035,6 +2050,11 @@ const ReturnsPlanner = () => {
                       <Badge className={getStatusBadgeColor(item.status)}>
                         {item.status}
                       </Badge>
+                      {item.paid_by_brand_at && (
+                        <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
+                          ✓ Pago pela marca
+                        </Badge>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2108,6 +2128,31 @@ const ReturnsPlanner = () => {
                           <span className="text-muted-foreground">Responsável:</span>
                           <span className="font-medium text-foreground">{getResponsibleName(item.responsible_user_id)}</span>
                         </div>
+                        {item.paid_by_brand_at && (
+                          <div className="space-y-2 mt-2">
+                            <div className="flex items-center gap-2 text-sm p-2 bg-green-500/10 rounded-md border border-green-500/20">
+                              <CheckCircle className="w-4 h-4 text-green-500" />
+                              <span className="text-muted-foreground">Pago pela marca em:</span>
+                              <span className="font-medium text-green-500">
+                                {format(new Date(item.paid_by_brand_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                              </span>
+                            </div>
+                            {item.paid_by_brand_value && (
+                              <div className="flex items-center gap-2 text-sm p-2 bg-green-500/10 rounded-md border border-green-500/20">
+                                <DollarSign className="w-4 h-4 text-green-500" />
+                                <span className="text-muted-foreground">Valor pago:</span>
+                                <span className="font-medium text-green-500">
+                                  R$ {parseFloat(item.paid_by_brand_value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                {item.return_value && parseFloat(item.return_value) !== parseFloat(item.paid_by_brand_value) && (
+                                  <span className="text-xs text-muted-foreground ml-1">
+                                    (Valor original: R$ {parseFloat(item.return_value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2140,6 +2185,11 @@ const ReturnsPlanner = () => {
           })}
               </div>
             )}
+          </div>
+        )}
+        {activeTab === 'pagamentos' && (
+          <div className="mt-6">
+            <ReturnsPaymentDashboard />
           </div>
         )}
 

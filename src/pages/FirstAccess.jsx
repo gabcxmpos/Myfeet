@@ -64,8 +64,8 @@ const FirstAccess = () => {
         console.log('✅ Primeiro acesso: Senha atualizada com sucesso');
         // Aguardar um pouco para garantir que a sessão foi atualizada
         await new Promise(resolve => setTimeout(resolve, 500));
-        // Redirecionar para o dashboard após definir a senha
-        navigate('/dashboard', { replace: true });
+        // Redirecionar para a página inicial após definir a senha
+        navigate('/home', { replace: true });
       } else if (result.error) {
         console.error('❌ Primeiro acesso: Erro ao atualizar senha:', result.error);
         setError(result.error.message || 'Erro ao definir senha');

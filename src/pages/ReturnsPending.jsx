@@ -40,6 +40,7 @@ const ReturnsPending = () => {
   const isAdmin = user?.role === 'admin';
   const isStore = user?.role === 'loja' || user?.role === 'admin_loja';
   const isDevolucoes = user?.role === 'devoluções';
+  const isFinanceiro = user?.role === 'financeiro';
   
   const [searchTerm, setSearchTerm] = useState('');
   const [availableBrands, setAvailableBrands] = useState(DEFAULT_BRANDS);
@@ -113,8 +114,8 @@ const ReturnsPending = () => {
   const dashboardStats = useMemo(() => {
     let filteredReturns = returns || [];
 
-    // Aplicar filtros (para admin/supervisor/devoluções)
-    if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
+    // Aplicar filtros (para admin/supervisor/devoluções/financeiro)
+    if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro) {
       // Filtro por data
       if (activeFilters.startDate || activeFilters.endDate) {
         filteredReturns = filteredReturns.filter(ret => {
@@ -194,7 +195,11 @@ const ReturnsPending = () => {
       return true;
     });
 
-    const allPendingReturns = [...returnsToCount.filter(ret => !ret.collected_at), ...plannerAsReturnsFiltered];
+    // Para financeiro: mostrar devoluções coletadas mas não pagas
+    // Para outros: mostrar devoluções não coletadas
+    const allPendingReturns = (user?.role === 'financeiro')
+      ? [...returnsToCount.filter(ret => ret.collected_at && !ret.paid_by_brand_at), ...plannerAsReturnsFiltered]
+      : [...returnsToCount.filter(ret => !ret.collected_at), ...plannerAsReturnsFiltered];
 
     return {
       totalPending: allPendingReturns.length,
@@ -217,8 +222,8 @@ const ReturnsPending = () => {
       const store = (stores || []).find(s => s.id === ret.store_id);
       if (!store) return false;
       
-      // Para admin, supervisor e devoluções: aplicar filtros se existirem
-      if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
+      // Para admin, supervisor, devoluções e financeiro: aplicar filtros se existirem
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro) {
         // Se há filtros aplicados, verificar correspondência
         const hasFilters = activeFilters.store.length > 0 || 
                           activeFilters.franqueado.length > 0 || 
@@ -264,12 +269,18 @@ const ReturnsPending = () => {
       
       if (!matchesSearch) return false;
       
-      // Não mostrar devoluções já coletadas
-      if (ret.collected_at) return false;
+      // Para o perfil financeiro: mostrar devoluções coletadas mas não pagas
+      if (isFinanceiro) {
+        // Mostrar apenas devoluções coletadas mas não pagas pela marca
+        if (!ret.collected_at || ret.paid_by_brand_at) return false;
+      } else {
+        // Para outros perfis: não mostrar devoluções já coletadas
+        if (ret.collected_at) return false;
+      }
       
       return true;
     });
-  }, [returns, plannerAsReturns, searchTerm, stores, isStore, isAdmin, isDevolucoes, user?.storeId, user?.role, activeFilters]);
+  }, [returns, plannerAsReturns, searchTerm, stores, isStore, isAdmin, isDevolucoes, isFinanceiro, user?.storeId, user?.role, activeFilters]);
 
   const getStatusBadge = (status, type = 'return') => {
     if (type === 'return') {
@@ -411,7 +422,7 @@ const ReturnsPending = () => {
   };
 
   const handleMarkAsCollected = async (returnId) => {
-    if (window.confirm('Confirmar que esta devolução foi coletada?')) {
+    if (window.confirm('Confirmar que esta devolução foi coletada?\n\nApós a coleta, a devolução ficará aguardando aprovação financeira para confirmação de pagamento pela marca.')) {
       try {
         if (returnId.startsWith('planner_')) {
           const plannerId = returnId.replace('planner_', '');
@@ -420,15 +431,17 @@ const ReturnsPending = () => {
           });
           toast({
             title: 'Sucesso!',
-            description: 'Devolução do planner marcada como coletada.',
+            description: 'Devolução do planner marcada como coletada. Aguardando aprovação financeira.',
           });
         } else {
+          // Marcar como coletado, mas NÃO marcar como pago (aguardar aprovação financeira)
           await updateReturn(returnId, {
-            collected_at: new Date().toISOString()
+            collected_at: new Date().toISOString(),
+            // paid_by_brand_at permanece NULL - aguardando aprovação financeira
           });
           toast({
             title: 'Sucesso!',
-            description: 'Devolução marcada como coletada.',
+            description: 'Devolução marcada como coletada. Aguardando aprovação financeira para confirmação de pagamento.',
           });
         }
       } catch (error) {
@@ -437,6 +450,29 @@ const ReturnsPending = () => {
           variant: 'destructive',
           title: 'Erro',
           description: error.message || 'Erro ao marcar devolução como coletada.',
+        });
+      }
+    }
+  };
+
+  // Função para o perfil financeiro marcar como pago pela marca
+  const handleMarkAsPaidByBrand = async (returnId) => {
+    if (window.confirm('Confirmar que esta devolução foi paga pela marca?')) {
+      try {
+        await updateReturn(returnId, {
+          paid_by_brand_at: new Date().toISOString(),
+          paid_by_brand_user_id: user?.id
+        });
+        toast({
+          title: 'Sucesso!',
+          description: 'Devolução marcada como paga pela marca.',
+        });
+      } catch (error) {
+        console.error('Erro ao marcar como pago:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: error.message || 'Erro ao marcar devolução como paga.',
         });
       }
     }
@@ -468,8 +504,14 @@ const ReturnsPending = () => {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Devoluções Pendentes</h2>
-          <p className="text-muted-foreground mt-1">Comunicativo com a loja - devoluções aguardando coleta</p>
+          <h2 className="text-2xl font-bold text-foreground">
+            {isFinanceiro ? 'Devoluções Aguardando Pagamento' : 'Devoluções Pendentes'}
+          </h2>
+          <p className="text-muted-foreground mt-1">
+            {isFinanceiro 
+              ? 'Devoluções coletadas aguardando confirmação de pagamento pela marca'
+              : 'Comunicativo com a loja - devoluções aguardando coleta'}
+          </p>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -489,12 +531,12 @@ const ReturnsPending = () => {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-yellow-400" />
-                Dashboard de Devoluções Pendentes
+                {isFinanceiro ? 'Dashboard de Devoluções Aguardando Pagamento' : 'Dashboard de Devoluções Pendentes'}
               </h3>
             </div>
 
-            {/* Filtros para Devoluções Pendentes (admin/supervisor/devoluções) */}
-            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
+            {/* Filtros para Devoluções Pendentes (admin/supervisor/devoluções/financeiro) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro) && (
               <Card className="p-4 bg-secondary/50 border border-yellow-500/30 mb-4">
                 <h4 className="font-semibold text-foreground mb-3 text-sm">Filtros</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
@@ -580,7 +622,9 @@ const ReturnsPending = () => {
                   <AlertCircle className="w-5 h-5 text-yellow-400" />
                 </div>
                 <span className="font-bold text-3xl text-foreground">{dashboardStats.totalPending}</span>
-                <p className="text-xs text-muted-foreground mt-1">Devoluções aguardando coleta</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isFinanceiro ? 'Devoluções aguardando pagamento' : 'Devoluções aguardando coleta'}
+                </p>
               </motion.div>
               <motion.div
                 className="bg-card p-4 rounded-xl border border-border"
@@ -591,7 +635,9 @@ const ReturnsPending = () => {
                   <Package className="w-5 h-5 text-blue-400" />
                 </div>
                 <span className="font-bold text-3xl text-foreground">{dashboardStats.totalVolumes}</span>
-                <p className="text-xs text-muted-foreground mt-1">Volumes parados na loja (apenas pendentes)</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isFinanceiro ? 'Volumes coletados aguardando pagamento' : 'Volumes parados na loja (apenas pendentes)'}
+                </p>
               </motion.div>
               <motion.div
                 className="bg-card p-4 rounded-xl border border-border"
@@ -734,9 +780,17 @@ const ReturnsPending = () => {
       {pendingReturns.length === 0 ? (
         <Card className="p-12 text-center">
           <RotateCcw className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50" />
-          <h3 className="text-lg font-semibold text-foreground mb-2">Nenhuma devolução pendente</h3>
+          <h3 className="text-lg font-semibold text-foreground mb-2">
+            {isFinanceiro ? 'Nenhuma devolução aguardando pagamento' : 'Nenhuma devolução pendente'}
+          </h3>
           <p className="text-muted-foreground">
-            {searchTerm ? 'Tente ajustar os filtros de busca.' : (isStore ? 'Cadastre uma nova devolução pendente acima.' : 'Nenhuma devolução pendente encontrada.')}
+            {searchTerm 
+              ? 'Tente ajustar os filtros de busca.' 
+              : (isStore 
+                ? 'Cadastre uma nova devolução pendente acima.' 
+                : (isFinanceiro 
+                  ? 'Todas as devoluções coletadas já foram pagas pela marca ou não há devoluções coletadas aguardando pagamento.'
+                  : 'Nenhuma devolução pendente encontrada.'))}
           </p>
         </Card>
       ) : (
@@ -839,11 +893,27 @@ const ReturnsPending = () => {
                       <span className="text-muted-foreground">Status:</span>
                       {getStatusBadge(returnItem.admin_status || 'aguardando_coleta', 'return')}
                     </div>
+                    {returnItem.collected_at && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Coletado em:</span>
+                        <span className="font-medium text-foreground text-xs">
+                          {format(new Date(returnItem.collected_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                        </span>
+                      </div>
+                    )}
+                    {returnItem.paid_by_brand_at && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Pago pela marca em:</span>
+                        <span className="font-medium text-green-500 text-xs">
+                          {format(new Date(returnItem.paid_by_brand_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 
                 {/* Botão COLETADO para lojas e perfil de devoluções */}
-                {(isStore && returnItem.store_id === user?.storeId) || isDevolucoes ? (
+                {((isStore && returnItem.store_id === user?.storeId) || isDevolucoes) && !returnItem.collected_at ? (
                   <Button
                     onClick={() => handleMarkAsCollected(returnItem.id)}
                     className="w-full gap-2 bg-green-500 hover:bg-green-600 text-white"
@@ -852,6 +922,26 @@ const ReturnsPending = () => {
                     COLETADO
                   </Button>
                 ) : null}
+                
+                {/* Botão PAGO PELA MARCA para perfil financeiro */}
+                {isFinanceiro && returnItem.collected_at && !returnItem.paid_by_brand_at ? (
+                  <Button
+                    onClick={() => handleMarkAsPaidByBrand(returnItem.id)}
+                    className="w-full gap-2 bg-blue-500 hover:bg-blue-600 text-white"
+                  >
+                    <CheckSquare className="w-4 h-4" />
+                    PAGO PELA MARCA
+                  </Button>
+                ) : null}
+                
+                {/* Badge de já pago */}
+                {returnItem.paid_by_brand_at && (
+                  <div className="w-full p-2 bg-green-500/10 border border-green-500/20 rounded-md text-center">
+                    <span className="text-xs font-medium text-green-500">
+                      ✓ Pago pela marca
+                    </span>
+                  </div>
+                )}
               </motion.div>
             );
           })}

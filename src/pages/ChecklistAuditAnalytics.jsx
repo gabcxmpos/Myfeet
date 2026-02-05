@@ -35,7 +35,7 @@ const ChecklistAuditAnalytics = () => {
   }
 
   if (!user || user.role !== 'admin') {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/home" replace />;
   }
 
   // Carregar supervisors
