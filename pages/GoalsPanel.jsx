@@ -1,15 +1,14 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import { useData } from '@/contexts/DataContext';
 import { useToast } from '@/components/ui/use-toast';
-import { updateStore as updateStoreAPI } from '@/lib/supabaseService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { DollarSign, Percent, Hash, Truck, Target, BarChart, Save, Upload, Download, FileText } from 'lucide-react';
+import { DollarSign, Percent, Hash, Truck, Target, BarChart, Save } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend } from 'recharts';
 import { cn } from '@/lib/utils';
 import { Slider } from '@/components/ui/slider';
@@ -54,24 +53,13 @@ const useQuery = () => {
 }
 
 const GoalsPanel = () => {
-  const { stores, updateStore, fetchData } = useData();
+  const { stores, updateStore } = useData();
   const { toast } = useToast();
   const query = useQuery();
   const [selectedStore, setSelectedStore] = useState('');
   const [filters, setFilters] = useState({ supervisor: 'all', franqueado: 'all', bandeira: 'all' });
   const [goals, setGoals] = useState({});
   const [weights, setWeights] = useState({});
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef(null);
-
-  // Refresh automático a cada 30 segundos para ver metas atualizadas em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   const supervisors = useMemo(() => [...new Set(stores.map(s => s.supervisor))], [stores]);
   const franqueados = useMemo(() => [...new Set(stores.map(s => s.franqueado))], [stores]);
@@ -190,259 +178,6 @@ const GoalsPanel = () => {
     toast({ title: 'Sucesso!', description: 'Metas e pesos da loja atualizados.' });
   };
 
-  // Função para gerar template CSV
-  const generateCSVTemplate = () => {
-    const headers = [
-      'codigo_loja',
-      'faturamento',
-      'pa',
-      'ticketMedio',
-      'prateleiraInfinita',
-      'conversao'
-    ];
-    
-    // Exemplos com diferentes formatos: formato brasileiro, valor vazio, zerado
-    // IMPORTANTE: codigo_loja é obrigatório, mas valores de metas podem estar vazios ou zerados
-    const exampleRows = [
-      ['af013', 'R$ 150.000,00', '2,8', '250,50', '15000', '15'],
-      ['af015', '180000', '3.0', 'R$ 280,00', '', '18'],
-      ['af017', 'R$ 200.000,50', '3,2', '300', '0', '20']
-    ];
-    
-    const csvContent = [
-      headers.join(','),
-      ...exampleRows.map(row => row.join(','))
-    ].join('\n');
-    
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'template_metas.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast({ 
-      title: 'Template baixado!', 
-      description: 'Preencha o arquivo com os dados das lojas. Aceita valores formatados (R$, pontos, vírgulas) e células vazias. Os pesos serão fixos em 20% cada.' 
-    });
-  };
-
-  // Função para limpar e converter valores numéricos (remove R$, pontos, vírgulas)
-  const cleanNumericValue = (value) => {
-    if (!value || value === '' || value.trim() === '') {
-      return 0;
-    }
-    
-    // Remove R$, espaços e converte para string
-    let cleaned = String(value).trim().toUpperCase();
-    
-    // Remove R$ e outros símbolos de moeda
-    cleaned = cleaned.replace(/R\$\s*/g, '');
-    
-    // Remove espaços
-    cleaned = cleaned.replace(/\s/g, '');
-    
-    // Se não tem nada, retorna 0
-    if (!cleaned || cleaned === '' || cleaned === '-') {
-      return 0;
-    }
-    
-    // Se tem apenas números e pontos/ vírgulas, processa
-    // Formato brasileiro: 150.000,50 ou 150000,50 ou 150000.50
-    // Detecta se tem vírgula (formato brasileiro) ou ponto (formato americano)
-    if (cleaned.includes(',') && !cleaned.includes('.')) {
-      // Formato brasileiro: 150000,50 -> 150000.50
-      cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-    } else if (cleaned.includes('.') && cleaned.includes(',')) {
-      // Formato misto: 150.000,50 -> 150000.50 (última vírgula vira ponto decimal)
-      const parts = cleaned.split(',');
-      if (parts.length === 2) {
-        cleaned = parts[0].replace(/\./g, '') + '.' + parts[1];
-      } else {
-        // Múltiplas vírgulas, assume que vírgula é decimal
-        cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-      }
-    } else {
-      // Remove pontos que podem ser separadores de milhar
-      // Se tem ponto mas não parece ser decimal (menos de 3 dígitos após), remove
-      if (cleaned.includes('.')) {
-        const lastDotIndex = cleaned.lastIndexOf('.');
-        const afterDot = cleaned.substring(lastDotIndex + 1);
-        if (afterDot.length > 2) {
-          // Ponto é separador de milhar
-          cleaned = cleaned.replace(/\./g, '');
-        }
-        // Senão, ponto é decimal, mantém
-      }
-    }
-    
-    const parsed = parseFloat(cleaned);
-    return isNaN(parsed) ? 0 : parsed;
-  };
-
-  // Função para processar CSV
-  const parseCSV = (csvText) => {
-    const lines = csvText.split('\n').filter(line => line.trim());
-    if (lines.length < 2) {
-      throw new Error('CSV deve ter pelo menos uma linha de cabeçalho e uma linha de dados.');
-    }
-    
-    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-    
-    // Verificar se os cabeçalhos necessários existem
-    const requiredHeaders = ['codigo_loja', 'faturamento', 'pa', 'ticketmedio', 'prateleinfinita', 'conversao'];
-    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-    if (missingHeaders.length > 0) {
-      throw new Error(`Cabeçalhos obrigatórios faltando: ${missingHeaders.join(', ')}`);
-    }
-    
-    const data = [];
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
-      const row = {};
-      headers.forEach((header, index) => {
-        const value = values[index] || '';
-        // Para codigo_loja, mantém como string (pode estar vazio mas precisa validar depois)
-        // Para valores numéricos, aplica limpeza
-        if (header === 'codigo_loja') {
-          row[header] = value;
-        } else {
-          // Permite valores vazios ou zerados - será processado como 0
-          row[header] = value;
-        }
-      });
-      data.push(row);
-    }
-    
-    return data;
-  };
-
-  // Função para fazer upload e processar CSV
-  const handleCSVUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    
-    if (!file.name.endsWith('.csv')) {
-      toast({ 
-        title: 'Erro', 
-        description: 'Por favor, selecione um arquivo CSV.', 
-        variant: 'destructive' 
-      });
-      return;
-    }
-    
-    setIsUploading(true);
-    
-    try {
-      const text = await file.text();
-      const csvData = parseCSV(text);
-      
-      if (csvData.length === 0) {
-        throw new Error('Nenhum dado encontrado no CSV.');
-      }
-      
-      let successCount = 0;
-      let errorCount = 0;
-      const errors = [];
-      
-      // Processar cada linha do CSV
-      for (const row of csvData) {
-        const codigoLoja = row.codigo_loja || row['codigo_loja'];
-        if (!codigoLoja) {
-          errors.push(`Linha ${csvData.indexOf(row) + 2}: Código da loja não fornecido`);
-          errorCount++;
-          continue;
-        }
-        
-        // Buscar a loja pelo código
-        const store = stores.find(s => s.code?.toLowerCase() === codigoLoja.toLowerCase());
-        if (!store) {
-          errors.push(`Linha ${csvData.indexOf(row) + 2}: Loja com código "${codigoLoja}" não encontrada`);
-          errorCount++;
-          continue;
-        }
-        
-        // Preparar metas - aceita valores vazios, zerados ou formatados (R$, pontos, vírgulas)
-        const goals = {
-          faturamento: cleanNumericValue(row.faturamento),
-          pa: cleanNumericValue(row.pa),
-          ticketMedio: cleanNumericValue(row.ticketmedio),
-          prateleiraInfinita: cleanNumericValue(row.prateleinfinita),
-          conversao: cleanNumericValue(row.conversao)
-        };
-        
-        // Pesos fixos em 20% para cada meta (conforme solicitado)
-        const weights = {
-          faturamento: 20,
-          pa: 20,
-          ticketMedio: 20,
-          prateleiraInfinita: 20,
-          conversao: 20
-        };
-        
-        try {
-          // Atualizar a loja usando a API diretamente com metas e pesos fixos
-          await updateStoreAPI(store.id, { goals, weights });
-          successCount++;
-        } catch (error) {
-          errors.push(`Linha ${csvData.indexOf(row) + 2}: Erro ao atualizar loja "${codigoLoja}": ${error.message || 'Erro desconhecido'}`);
-          errorCount++;
-        }
-      }
-      
-      // Recarregar dados se houver sucesso
-      if (successCount > 0) {
-        // Aguardar um pouco antes de recarregar para garantir que todas as atualizações foram processadas
-        setTimeout(() => {
-          fetchData();
-        }, 500);
-        
-        toast({ 
-          title: 'Upload concluído!', 
-          description: `${successCount} loja(s) atualizada(s) com sucesso.${errorCount > 0 ? ` ${errorCount} erro(s) encontrado(s).` : ''}`,
-          variant: errorCount > 0 ? 'default' : 'default'
-        });
-      }
-      
-      if (errors.length > 0) {
-        console.error('Erros no upload:', errors);
-        // Mostrar erros detalhados no console ou em um alerta
-        if (errors.length <= 10) {
-          toast({
-            title: 'Erros encontrados',
-            description: errors.join('; '),
-            variant: 'destructive',
-            duration: 10000
-          });
-        } else {
-          toast({
-            title: 'Muitos erros',
-            description: `${errors.length} erros encontrados. Verifique o console para detalhes.`,
-            variant: 'destructive',
-            duration: 10000
-          });
-        }
-      }
-      
-      // Limpar input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      
-    } catch (error) {
-      toast({ 
-        title: 'Erro ao processar CSV', 
-        description: error.message, 
-        variant: 'destructive' 
-      });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const pieData = goalFields.map(field => ({
     name: field.label,
     value: weights[field.name] || 0
@@ -460,34 +195,6 @@ const GoalsPanel = () => {
           <div>
             <h1 className="text-3xl font-bold text-foreground">Metas de Performance</h1>
             <p className="text-muted-foreground mt-1">Selecione uma loja e defina suas metas e pesos.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button 
-              type="button" 
-              onClick={generateCSVTemplate} 
-              variant="outline" 
-              className="gap-2"
-              title="Baixar template CSV para importação em massa"
-            >
-              <Download className="w-4 h-4" /> Baixar Template
-            </Button>
-            <Button 
-              type="button" 
-              onClick={() => fileInputRef.current?.click()} 
-              variant="outline" 
-              className="gap-2"
-              disabled={isUploading}
-              title="Fazer upload de CSV com múltiplas metas"
-            >
-              <Upload className="w-4 h-4" /> {isUploading ? 'Processando...' : 'Importar CSV'}
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              onChange={handleCSVUpload}
-              style={{ display: 'none' }}
-            />
           </div>
           <div className="flex items-center gap-2">
             <Select onValueChange={(val) => handleFilterChange('bandeira', val)} value={filters.bandeira}>

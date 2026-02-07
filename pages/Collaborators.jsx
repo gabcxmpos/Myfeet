@@ -17,29 +17,18 @@ const Collaborators = () => {
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
 
-  const storeCollaborators = collaborators.filter(c => c.storeId === user?.storeId || c.store_id === user?.storeId);
+  const storeCollaborators = collaborators.filter(c => c.storeId === user.storeId);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!name || !role) {
       toast({ title: 'Erro', description: 'Preencha nome e cargo.', variant: 'destructive' });
       return;
     }
-    
-    if (!user?.storeId) {
-      toast({ title: 'Erro', description: 'Usuário não possui loja associada.', variant: 'destructive' });
-      return;
-    }
-    
-    try {
-      await addCollaborator({ name, role, storeId: user.storeId });
-      toast({ title: 'Sucesso!', description: 'Colaborador adicionado.' });
-      setName('');
-      setRole('');
-    } catch (error) {
-      // Erro já é tratado no DataContext
-      console.error('Erro ao adicionar colaborador:', error);
-    }
+    addCollaborator({ name, role, storeId: user.storeId });
+    toast({ title: 'Sucesso!', description: 'Colaborador adicionado.' });
+    setName('');
+    setRole('');
   };
 
   const handleDelete = (id) => {

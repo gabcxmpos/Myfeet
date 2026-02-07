@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { useData } from '@/contexts/DataContext';
 import { motion } from 'framer-motion';
@@ -57,20 +57,11 @@ const FeedbackCard = ({ feedback, store, collaborator }) => {
 };
 
 const FeedbackManagement = () => {
-  const { feedbacks, collaborators, stores, fetchData } = useData();
+  const { feedbacks, collaborators, stores } = useData();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [showHighlights, setShowHighlights] = useState(false);
   const [satisfactionFilter, setSatisfactionFilter] = useState([]);
-
-  // Refresh automático a cada 30 segundos para ver novos feedbacks em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   const groupedFeedbacks = useMemo(() => {
     const filtered = feedbacks

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
@@ -13,7 +13,6 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
   const { signIn, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -28,44 +27,15 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
     setIsLoading(true);
 
     try {
-      // Sanitizar email e senha (remover espaços em branco)
-      const sanitizedEmail = email.trim().toLowerCase();
-      const sanitizedPassword = password.trim();
-
-      // Validação básica
-      if (!sanitizedEmail || !sanitizedPassword) {
-        setError('Por favor, preencha todos os campos');
-        setIsLoading(false);
-        return;
-      }
-
-      // Validar formato de email
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(sanitizedEmail)) {
-        setError('Por favor, insira um email válido');
-        setIsLoading(false);
-        return;
-      }
-
-      const result = await signIn(sanitizedEmail, sanitizedPassword);
+      const result = await signIn(email, password);
       if (result.success) {
-        // Se for primeiro acesso, redirecionar para página de definição de senha
-        if (result.firstAccess) {
-          navigate('/first-access', { replace: true });
-        } else {
-          navigate(from, { replace: true });
-        }
-      } else if (result.error) {
-        // O erro já é mostrado pelo toast no contexto, mas podemos mostrar aqui também se necessário
-        setError(result.error.message || 'Credenciais inválidas');
+        navigate(from, { replace: true });
       }
     } catch (error) {
       console.error('Login error:', error);
-      setError('Ocorreu um erro inesperado. Tente novamente.');
     } finally {
       setIsLoading(false);
     }
@@ -102,12 +72,6 @@ const Login = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              {error && (
-                <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
-                  {error}
-                </div>
-              )}
-
               <div className="space-y-2">
                 <Label htmlFor="email">E-mail</Label>
                 <Input
@@ -115,13 +79,10 @@ const Login = () => {
                   type="email"
                   placeholder="seu@email.com"
                   value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    setError(''); // Limpar erro quando o usuário começar a digitar
-                  }}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={isLoading}
-                  className={`bg-secondary border-border/50 ${error ? 'border-red-500' : ''}`}
+                  className="bg-secondary border-border/50"
                 />
               </div>
 
@@ -132,13 +93,10 @@ const Login = () => {
                   type="password"
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError(''); // Limpar erro quando o usuário começar a digitar
-                  }}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                   disabled={isLoading}
-                  className={`bg-secondary border-border/50 ${error ? 'border-red-500' : ''}`}
+                  className="bg-secondary border-border/50"
                 />
               </div>
 
@@ -156,22 +114,14 @@ const Login = () => {
                   'Entrar'
                 )}
               </Button>
-              
-              <div className="text-center">
-                <Link 
-                  to="/forgot-password" 
-                  className="text-sm text-primary hover:underline"
-                >
-                  Esqueci minha senha
-                </Link>
-              </div>
             </form>
 
             <div className="mt-6 p-4 bg-secondary/50 rounded-lg">
-              <p className="text-xs text-muted-foreground text-center mb-2">Informações:</p>
+              <p className="text-xs text-muted-foreground text-center mb-2">Usuários de teste:</p>
               <div className="space-y-1 text-xs text-muted-foreground">
-                <p className="text-center">Novos usuários recebem a senha padrão: <strong>afeet10</strong></p>
-                <p className="text-center">É necessário definir uma nova senha no primeiro acesso.</p>
+                <p>Admin: admin@myfeet.com / senha123</p>
+                <p>Supervisor: supervisor@myfeet.com / senha123</p>
+                <p>Loja: loja@myfeet.com / senha123</p>
               </div>
             </div>
           </div>

@@ -331,22 +331,13 @@ const ViewEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove }) => {
 }
 
 const StoresManagement = () => {
-  const { stores, addStore, updateStore, deleteStore, deleteEvaluation, approveEvaluation, fetchData } = useData();
+  const { stores, addStore, updateStore, deleteStore, deleteEvaluation, approveEvaluation } = useData();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [modalState, setModalState] = useState({ type: null, data: null });
   const [searchTerm, setSearchTerm] = useState('');
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-
-  // Refresh automático a cada 30 segundos para ver novas avaliações em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   const filteredStores = useMemo(() => {
     return stores.filter(store => 

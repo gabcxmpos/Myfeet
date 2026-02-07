@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
 import { motion } from 'framer-motion';
 import { useData } from '@/contexts/DataContext';
@@ -29,18 +29,9 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 const Analytics = () => {
-  const { stores, evaluations, patentSettings, fetchData } = useData();
+  const { stores, evaluations, patentSettings } = useData();
   const { toast } = useToast();
   const [filters, setFilters] = useState({ store: [], bandeira: [], franqueado: [], supervisor: [], estado: [] });
-
-  // Refresh automático a cada 30 segundos para ver dados atualizados em tempo real
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchData();
-    }, 30000); // 30 segundos
-
-    return () => clearInterval(interval);
-  }, [fetchData]);
 
   const filterOptions = useMemo(() => ({
     stores: stores.map(s => ({ value: s.id, label: s.name })),

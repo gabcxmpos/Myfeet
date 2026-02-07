@@ -29,39 +29,28 @@ const Feedback = () => {
   const [satisfaction, setSatisfaction] = useState(3);
   const [isPromotionCandidate, setIsPromotionCandidate] = useState(false);
 
-  const storeCollaborators = collaborators.filter(c => c.storeId === user?.storeId || c.store_id === user?.storeId);
+  const storeCollaborators = collaborators.filter(c => c.storeId === user.storeId);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!collaboratorId || !feedbackText) {
       toast({ title: 'Erro', description: 'Selecione um colaborador e escreva o feedback.', variant: 'destructive' });
       return;
     }
-    
-    if (!user?.storeId) {
-      toast({ title: 'Erro', description: 'Usuário não possui loja associada.', variant: 'destructive' });
-      return;
-    }
-    
-    try {
-      await addFeedback({
-        storeId: user.storeId,
-        collaboratorId,
-        feedbackText,
-        developmentPoint,
-        satisfaction,
-        isPromotionCandidate,
-      });
-      toast({ title: 'Sucesso!', description: 'Feedback enviado para o supervisor.' });
-      setCollaboratorId('');
-      setFeedbackText('');
-      setDevelopmentPoint('');
-      setSatisfaction(3);
-      setIsPromotionCandidate(false);
-    } catch (error) {
-      // Erro já é tratado no DataContext
-      console.error('Erro ao enviar feedback:', error);
-    }
+    addFeedback({
+      storeId: user.storeId,
+      collaboratorId,
+      feedbackText,
+      developmentPoint,
+      satisfaction,
+      isPromotionCandidate,
+    });
+    toast({ title: 'Sucesso!', description: 'Feedback enviado para o supervisor.' });
+    setCollaboratorId('');
+    setFeedbackText('');
+    setDevelopmentPoint('');
+    setSatisfaction(3);
+    setIsPromotionCandidate(false);
   };
 
   return (
