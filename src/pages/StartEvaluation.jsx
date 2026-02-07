@@ -9,9 +9,11 @@ import { Slider } from '@/components/ui/slider.jsx';
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { CheckCircle, Users, Sparkles, Smartphone, ChevronLeft, ChevronRight, Store, FileText } from 'lucide-react';
+import { CheckCircle, Users, Sparkles, Smartphone, ChevronLeft, ChevronRight, Store, FileText, AlertCircle, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { format, isToday, isSameDay, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const pillarIcons = {
   Pessoas: { icon: Users, color: 'text-blue-400' },
@@ -52,46 +54,92 @@ const EvaluationScreen = ({ form, storeId, onComplete }) => {
     const handleNext = () => currentQuestion < form.questions.length - 1 && setCurrentQuestion(currentQuestion + 1);
     const handlePrevious = () => currentQuestion > 0 && setCurrentQuestion(currentQuestion - 1);
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        // Validar se todas as questões obrigatórias foram respondidas
+        const unansweredQuestions = form.questions.filter(q => {
+            if (q.type === 'text') return false; // Text não é obrigatório para score
+            const answer = answers[q.id];
+            if (q.type === 'satisfaction') return answer === undefined || answer === null;
+            if (q.type === 'multiple-choice') return !answer || answer === '';
+            if (q.type === 'checkbox') return !Array.isArray(answer) || answer.length === 0;
+            return false;
+        });
+
+        if (unansweredQuestions.length > 0) {
+            toast({
+                variant: 'destructive',
+                title: 'Avaliação incompleta',
+                description: `Por favor, responda todas as questões antes de finalizar. ${unansweredQuestions.length} questão(ões) não respondida(s).`,
+            });
+            return;
+        }
+
         let totalScore = 0;
         let maxScore = 0;
 
         form.questions.forEach(q => {
             const answer = answers[q.id];
             if (q.type === 'satisfaction') {
-                totalScore += answer || 0;
+                const scoreValue = answer || 0;
+                totalScore += scoreValue;
                 maxScore += 10;
             } else if (q.type === 'multiple-choice') {
                 const selectedOption = q.options.find(opt => opt.text === answer);
-                totalScore += selectedOption ? selectedOption.value : 0;
-                maxScore += Math.max(...q.options.map(o => o.value));
+                const scoreValue = selectedOption ? selectedOption.value : 0;
+                totalScore += scoreValue;
+                // Para multiple-choice, o maxScore é o maior valor possível entre as opções
+                maxScore += Math.max(...q.options.map(o => o.value || 0), 0);
             } else if (q.type === 'checkbox') {
-                 if(Array.isArray(answer)) {
-                     answer.forEach(ans => {
-                         const selectedOption = q.options.find(opt => opt.text === ans);
-                         totalScore += selectedOption ? selectedOption.value : 0;
-                     });
-                 }
-                maxScore += q.options.reduce((sum, opt) => sum + (opt.value > 0 ? opt.value : 0), 0);
+                if(Array.isArray(answer) && answer.length > 0) {
+                    answer.forEach(ans => {
+                        const selectedOption = q.options.find(opt => opt.text === ans);
+                        if (selectedOption) {
+                            totalScore += selectedOption.value || 0;
+                        }
+                    });
+                }
+                // Para checkbox, maxScore é a soma de todos os valores positivos (assumindo que não se pode selecionar tudo)
+                // Se todas as opções podem ser selecionadas, soma todos os valores positivos
+                maxScore += q.options.reduce((sum, opt) => sum + Math.max(opt.value || 0, 0), 0);
             }
+            // Questões do tipo 'text' não contribuem para o score
         });
 
-        const finalScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 100;
+        // Calcular score final e validar range
+        let finalScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 100;
+        
+        // Validar range (0-100)
+        if (finalScore < 0) {
+            console.warn('⚠️ Score calculado abaixo de 0, ajustando para 0');
+            finalScore = 0;
+        } else if (finalScore > 100) {
+            console.warn('⚠️ Score calculado acima de 100, ajustando para 100');
+            finalScore = 100;
+        }
 
-        addEvaluation({
-            storeId,
-            formId: form.id,
-            score: finalScore,
-            answers,
-            pillar: form.pillar,
-            status: user.role === 'loja' ? 'pending' : 'approved',
-        });
+        try {
+            await addEvaluation({
+                store_id: storeId, // Usar apenas snake_case (padrão do banco)
+                form_id: form.id, // Usar apenas snake_case (padrão do banco)
+                score: finalScore,
+                answers,
+                pillar: form.pillar,
+                status: (user.role === 'loja' || user.role === 'admin_loja') ? 'pending' : 'approved',
+            });
 
-        toast({
-            title: "Avaliação concluída!",
-            description: `Pontuação: ${finalScore}. ${user.role === 'loja' ? 'Enviada para aprovação.' : ''}`,
-        });
-        onComplete();
+            toast({
+                title: "Avaliação concluída!",
+                description: `Pontuação: ${finalScore}. ${(user.role === 'loja' || user.role === 'admin_loja') ? 'Enviada para aprovação.' : ''}`,
+            });
+            onComplete();
+        } catch (error) {
+            console.error('Erro ao salvar avaliação:', error);
+            toast({
+                variant: 'destructive',
+                title: 'Erro ao salvar',
+                description: 'Não foi possível salvar a avaliação. Tente novamente.',
+            });
+        }
     };
 
     const progress = ((currentQuestion + 1) / form.questions.length) * 100;
@@ -99,7 +147,7 @@ const EvaluationScreen = ({ form, storeId, onComplete }) => {
     const currentAnswer = answers[question.id];
 
     return (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-card rounded-xl shadow-lg border border-border p-8 mt-6">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-card rounded-2xl shadow-lg border border-border/50 p-4 sm:p-6 lg:p-8 mt-6">
             <div className="mb-6">
                 <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-bold text-primary">{form.title}</span>
@@ -166,21 +214,62 @@ const EvaluationScreen = ({ form, storeId, onComplete }) => {
 const StartEvaluation = () => {
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [selectedFormId, setSelectedFormId] = useState('');
-  const { stores, forms } = useData();
+  const { stores, forms, evaluations } = useData();
   const { user } = useAuth();
   
+  // Garantir que forms seja sempre um array
+  const safeForms = Array.isArray(forms) ? forms : [];
+  
   const availableStores = useMemo(() => {
-      if (user.role === 'admin' || user.role === 'supervisor') return stores;
+      if (user.role === 'admin' || user.role === 'supervisor' || user.role === 'comunicação' || user.role === 'digital') return stores;
       if (user.role === 'loja') return stores.filter(s => s.id === user.storeId);
       return [];
   }, [stores, user]);
 
-  const selectedForm = useMemo(() => forms.find(f => f.id === selectedFormId), [forms, selectedFormId]);
+  const selectedForm = useMemo(() => safeForms.find(f => f.id === selectedFormId), [safeForms, selectedFormId]);
+
+  // Buscar última avaliação de cada pilar para a loja selecionada
+  const lastEvaluationsByPillar = useMemo(() => {
+    if (!selectedStoreId || !evaluations || evaluations.length === 0) return {};
+    
+    const storeEvaluations = evaluations.filter(evaluation => evaluation.storeId === selectedStoreId || evaluation.store_id === selectedStoreId);
+    const lastByPillar = {};
+    
+    storeEvaluations.forEach(evaluation => {
+      const pillar = evaluation.pillar;
+      const evaluationDate = evaluation.created_at || evaluation.createdAt || evaluation.date;
+      
+      if (!evaluationDate) return;
+      
+      if (!lastByPillar[pillar] || new Date(evaluationDate) > new Date(lastByPillar[pillar].date)) {
+        lastByPillar[pillar] = {
+          date: evaluationDate,
+          score: evaluation.score,
+          status: evaluation.status
+        };
+      }
+    });
+    
+    return lastByPillar;
+  }, [selectedStoreId, evaluations]);
+
+  // Verificar se já existe avaliação no mesmo dia para um pilar
+  const hasEvaluationToday = (pillar) => {
+    const lastEvaluation = lastEvaluationsByPillar[pillar];
+    if (!lastEvaluation) return false;
+    
+    try {
+      const evaluationDate = parseISO(lastEvaluation.date);
+      return isToday(evaluationDate);
+    } catch {
+      return false;
+    }
+  };
   
   const resetEvaluation = () => {
       setSelectedFormId('');
       if (user.role !== 'loja') {
-          setSelectedStoreId('');
+          setSelectedStoreId(null);
       }
   }
 
@@ -203,60 +292,154 @@ const StartEvaluation = () => {
         <meta name="description" content="Selecione a loja e o formulário para iniciar a avaliação." />
       </Helmet>
 
-      <div className="max-w-3xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Iniciar Avaliação</h1>
-          <p className="text-muted-foreground mt-1">Selecione a loja e o formulário para começar.</p>
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Nova Avaliação</h1>
+          <p className="text-sm sm:text-base text-muted-foreground mt-1">Selecione a loja e o formulário para começar</p>
         </div>
 
-        <div className="bg-card rounded-xl shadow-lg border border-border p-8 space-y-6">
-            {(user.role === 'admin' || user.role === 'supervisor') && (
-                <div className="space-y-2">
-                    <Label className="flex items-center gap-2 font-semibold"><Store className="w-5 h-5 text-primary"/> Etapa 1: Selecione a Loja</Label>
-                    <Select onValueChange={setSelectedStoreId} value={selectedStoreId}>
-                        <SelectTrigger><SelectValue placeholder="Escolha uma loja para avaliar..." /></SelectTrigger>
-                        <SelectContent>
-                            {availableStores.map(store => <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-card rounded-2xl shadow-lg border border-border/50 p-4 sm:p-6"
+        >
+          {/* Seleção de Loja */}
+          {(user.role === 'admin' || user.role === 'supervisor' || user.role === 'comunicação' || user.role === 'digital') ? (
+            <div className="space-y-2 mb-6">
+              <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                <Store className="w-4 h-4 text-primary" />
+                Selecione a Loja
+              </Label>
+              <Select onValueChange={setSelectedStoreId} value={selectedStoreId || ''}>
+                <SelectTrigger className="h-11 bg-secondary/50">
+                  <SelectValue placeholder="Escolha uma loja para avaliar..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {availableStores.map(store => (
+                    <SelectItem key={store.id} value={store.id}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{store.name}</span>
+                        {store.code && (
+                          <span className="text-xs text-muted-foreground">({store.code})</span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            user.role === 'loja' && selectedStoreId && (
+              <div className="space-y-2 mb-6">
+                <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                  <Store className="w-4 h-4 text-primary" />
+                  Loja
+                </Label>
+                <div className="h-11 px-4 bg-secondary/50 rounded-md flex items-center border border-border/50">
+                  <span className="font-medium text-foreground">{availableStores[0]?.name}</span>
                 </div>
-            )}
-             {user.role === 'loja' && selectedStoreId && (
-                <div className="space-y-2">
-                     <Label className="flex items-center gap-2 font-semibold"><Store className="w-5 h-5 text-primary"/> Loja Selecionada</Label>
-                     <p className='p-2 bg-secondary rounded-md'>{availableStores[0]?.name}</p>
+              </div>
+            )
+          )}
+
+          {/* Seleção de Formulário - Apenas Botões */}
+          <AnimatePresence>
+            {selectedStoreId && safeForms.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-3"
+              >
+                <Label className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Selecione o Formulário
+                </Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {safeForms.map(form => {
+                    const Icon = pillarIcons[form.pillar]?.icon || FileText;
+                    const color = pillarIcons[form.pillar]?.color || 'text-foreground';
+                    const isSelected = selectedFormId === form.id;
+                    const lastEvaluation = lastEvaluationsByPillar[form.pillar];
+                    const hasToday = hasEvaluationToday(form.pillar);
+                    
+                    let lastEvalText = '';
+                    if (lastEvaluation) {
+                      try {
+                        const evaluationDate = parseISO(lastEvaluation.date);
+                        if (isToday(evaluationDate)) {
+                          lastEvalText = 'Hoje';
+                        } else {
+                          lastEvalText = format(evaluationDate, "dd/MM/yyyy", { locale: ptBR });
+                        }
+                      } catch {
+                        lastEvalText = 'Data inválida';
+                      }
+                    }
+                    
+                    return (
+                      <motion.button
+                        key={form.id}
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setSelectedFormId(form.id)}
+                        className={`
+                          relative p-4 rounded-xl border-2 transition-all text-left
+                          ${hasToday ? 'border-yellow-500/50 bg-yellow-500/5' : ''}
+                          ${isSelected 
+                            ? 'bg-primary/10 border-primary shadow-lg shadow-primary/20' 
+                            : 'bg-secondary/30 border-border/50 hover:border-primary/50 hover:bg-secondary/50'
+                          }
+                        `}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`p-2.5 rounded-lg flex-shrink-0 ${isSelected ? 'bg-primary/20' : 'bg-secondary/50'}`}>
+                            <Icon className={`w-5 h-5 ${color}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className={`text-sm font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+                                {form.title}
+                              </p>
+                              {hasToday && (
+                                <AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mb-1">{form.pillar}</p>
+                            {lastEvaluation && (
+                              <div className="flex items-center gap-1.5 mt-2 text-xs">
+                                <Clock className="w-3 h-3 text-muted-foreground" />
+                                <span className={`${hasToday ? 'text-yellow-500 font-semibold' : 'text-muted-foreground'}`}>
+                                  Última: {lastEvalText}
+                                  {lastEvaluation.score !== undefined && ` (${lastEvaluation.score} pts)`}
+                                </span>
+                              </div>
+                            )}
+                            {hasToday && (
+                              <p className="text-xs text-yellow-500 font-medium mt-1">
+                                ⚠️ Já avaliado hoje
+                              </p>
+                            )}
+                          </div>
+                          {isSelected && (
+                            <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                      </motion.button>
+                    );
+                  })}
                 </div>
+              </motion.div>
             )}
-            
-            <AnimatePresence>
-            {selectedStoreId && (
-                <motion.div 
-                    initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                    className="space-y-2"
-                >
-                    <Label className="flex items-center gap-2 font-semibold"><FileText className="w-5 h-5 text-primary"/> Etapa 2: Escolha o Formulário</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {forms.map(form => {
-                            const Icon = pillarIcons[form.pillar]?.icon || FileText;
-                            const color = pillarIcons[form.pillar]?.color || 'text-foreground';
-                            return (
-                                <motion.button 
-                                    key={form.id}
-                                    whileHover={{ y: -5 }}
-                                    onClick={() => setSelectedFormId(form.id)}
-                                    className={`p-4 bg-secondary rounded-lg border text-left flex flex-col justify-between items-start transition-all ${selectedFormId === form.id ? 'border-primary' : 'border-transparent'}`}
-                                >
-                                    <Icon className={`w-8 h-8 mb-2 ${color}`} />
-                                    <p className="font-semibold text-foreground">{form.title}</p>
-                                    <p className="text-xs text-muted-foreground">{form.pillar}</p>
-                                </motion.button>
-                            )
-                        })}
-                    </div>
-                </motion.div>
-            )}
-            </AnimatePresence>
-        </div>
+          </AnimatePresence>
+
+          {/* Mensagem quando nenhuma loja selecionada */}
+          {!selectedStoreId && (user.role === 'admin' || user.role === 'supervisor' || user.role === 'comunicação' || user.role === 'digital') && (
+            <div className="text-center py-8 text-muted-foreground">
+              <Store className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">Selecione uma loja para continuar</p>
+            </div>
+          )}
+        </motion.div>
       </div>
     </>
   );

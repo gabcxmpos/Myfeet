@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { 
   Smartphone, 
   Tablet, 
@@ -30,18 +31,13 @@ import {
   LayoutGrid,
   List,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Settings
 } from 'lucide-react';
 import * as api from '@/lib/supabaseService';
 import { filterStoresByUserType } from '@/lib/storeTypeHelper';
 import { supabase } from '@/lib/customSupabaseClient';
-
-const equipmentTypes = [
-  { value: 'CELULAR', label: 'Celular', icon: Smartphone, color: 'text-blue-500' },
-  { value: 'TABLET', label: 'Tablet', icon: Tablet, color: 'text-purple-500' },
-  { value: 'NOTEBOOK', label: 'Notebook', icon: Laptop, color: 'text-green-500' },
-  { value: 'MINI_PC', label: 'Mini PC', icon: Monitor, color: 'text-orange-500' },
-];
+import { availableIcons, getIconByName, defaultEquipmentTypes } from '@/lib/equipmentIcons';
 
 const conditionOptions = [
   { value: 'NOVO', label: 'Novo', color: 'bg-green-500' },
@@ -58,6 +54,7 @@ const PatrimonyManagement = () => {
   
   const [equipments, setEquipments] = useState([]);
   const [chips, setChips] = useState([]);
+  const [equipmentTypesList, setEquipmentTypesList] = useState([]); // Tipos do banco + padrão
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStore, setSelectedStore] = useState(null);
@@ -71,8 +68,12 @@ const PatrimonyManagement = () => {
   const [chipDialogOpen, setChipDialogOpen] = useState(false);
   const [deleteEquipmentDialogOpen, setDeleteEquipmentDialogOpen] = useState(false);
   const [deleteChipDialogOpen, setDeleteChipDialogOpen] = useState(false);
+  const [equipmentTypeDialogOpen, setEquipmentTypeDialogOpen] = useState(false);
+  const [storeDetailsDialogOpen, setStoreDetailsDialogOpen] = useState(false);
+  const [selectedStoreForDetails, setSelectedStoreForDetails] = useState(null);
   const [editingEquipment, setEditingEquipment] = useState(null);
   const [editingChip, setEditingChip] = useState(null);
+  const [editingEquipmentType, setEditingEquipmentType] = useState(null);
   
   // Form states
   const [equipmentForm, setEquipmentForm] = useState({
@@ -83,6 +84,13 @@ const PatrimonyManagement = () => {
     model: '',
     serial_number: '',
     notes: '',
+    icon_name: '',
+  });
+  
+  const [equipmentTypeForm, setEquipmentTypeForm] = useState({
+    name: '',
+    label: '',
+    icon_name: 'Smartphone',
   });
   
   const [chipForm, setChipForm] = useState({
@@ -101,7 +109,7 @@ const PatrimonyManagement = () => {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [equipmentsData, chipsData] = await Promise.all([
+      const [equipmentsData, chipsData, typesData] = await Promise.all([
         api.fetchEquipments().catch(err => {
           // Se a tabela não existir, retornar array vazio
           if (err?.code === '42P01' || err?.message?.includes('does not exist')) {
@@ -118,9 +126,34 @@ const PatrimonyManagement = () => {
           }
           throw err;
         }),
+        api.fetchEquipmentTypes().catch(err => {
+          // Se a tabela não existir, usar apenas tipos padrão
+          if (err?.code === '42P01' || err?.message?.includes('does not exist')) {
+            console.warn('Tabela de tipos de equipamentos não encontrada. Usando tipos padrão.');
+            return [];
+          }
+          throw err;
+        }),
       ]);
       setEquipments(equipmentsData || []);
       setChips(chipsData || []);
+      
+      // Combinar tipos padrão com tipos do banco
+      const combinedTypes = [...defaultEquipmentTypes];
+      if (typesData && typesData.length > 0) {
+        typesData.forEach(dbType => {
+          // Se não existe nos padrões, adicionar
+          if (!combinedTypes.find(t => t.value === dbType.name)) {
+            combinedTypes.push({
+              value: dbType.name,
+              label: dbType.label,
+              iconName: dbType.icon_name,
+              color: dbType.color || 'text-blue-500',
+            });
+          }
+        });
+      }
+      setEquipmentTypesList(combinedTypes);
     } catch (error) {
       console.error('Erro ao carregar patrimônio:', error);
       // Não mostrar toast se for erro de tabela não encontrada (já foi tratado acima)
@@ -134,10 +167,11 @@ const PatrimonyManagement = () => {
       // Garantir que os arrays estão inicializados mesmo em caso de erro
       setEquipments([]);
       setChips([]);
+      setEquipmentTypesList(defaultEquipmentTypes);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   // Debug
   useEffect(() => {
@@ -340,10 +374,36 @@ const PatrimonyManagement = () => {
         }
       });
 
+    // Subscription para tipos de equipamentos (apenas para admin)
+    const equipmentTypesChannel = user?.role === 'admin' ? supabase
+      .channel(`equipment-types-management-${user.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'equipment_types' },
+        async (payload) => {
+          console.log('🔄 [Realtime PatrimonyManagement] Mudança em equipment_types:', {
+            eventType: payload.eventType,
+            id: payload.new?.id || payload.old?.id
+          });
+          // Recarregar tipos quando houver mudanças
+          loadData();
+        }
+      )
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('❌ [PatrimonyManagement] Erro na subscription equipment_types:', err);
+        }
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [PatrimonyManagement] Subscription equipment_types ativa!');
+        }
+      }) : null;
+
     return () => {
       console.log('🔌 [PatrimonyManagement] Desconectando subscriptions...');
       equipmentsChannel.unsubscribe();
       chipsChannel.unsubscribe();
+      if (equipmentTypesChannel) {
+        equipmentTypesChannel.unsubscribe();
+      }
     };
   }, [loadData, user]);
 
@@ -429,20 +489,92 @@ const PatrimonyManagement = () => {
         model: equipment.model || '',
         serial_number: equipment.serial_number || '',
         notes: equipment.notes || '',
+        icon_name: equipment.icon_name || '',
       });
     } else {
       setEditingEquipment(null);
+      const defaultType = equipmentTypesList[0] || defaultEquipmentTypes[0];
       setEquipmentForm({
         store_id: selectedStore || '',
-        equipment_type: 'CELULAR',
+        equipment_type: defaultType?.value || 'CELULAR',
         condition_status: 'BOM',
         brand: '',
         model: '',
         serial_number: '',
         notes: '',
+        icon_name: defaultType?.iconName || 'Smartphone',
       });
     }
     setEquipmentDialogOpen(true);
+  };
+  
+  const handleOpenEquipmentTypeDialog = (type = null) => {
+    if (type) {
+      setEditingEquipmentType(type);
+        setEquipmentTypeForm({
+          name: type.name,
+          label: type.label,
+          icon_name: type.icon_name || 'Smartphone',
+        });
+    } else {
+      setEditingEquipmentType(null);
+      setEquipmentTypeForm({
+        name: '',
+        label: '',
+        icon_name: 'Smartphone',
+      });
+    }
+    setEquipmentTypeDialogOpen(true);
+  };
+  
+  const handleSaveEquipmentType = async () => {
+    try {
+      if (!equipmentTypeForm.name || !equipmentTypeForm.label) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro',
+          description: 'Preencha nome e label do tipo de equipamento.',
+        });
+        return;
+      }
+      
+      // Validar formato do nome (uppercase, sem espaços)
+      const formattedName = equipmentTypeForm.name.toUpperCase().replace(/\s+/g, '_');
+      
+      if (editingEquipmentType) {
+        await api.updateEquipmentType(editingEquipmentType.id, {
+          name: formattedName,
+          label: equipmentTypeForm.label,
+          icon_name: equipmentTypeForm.icon_name,
+          color: 'text-blue-500', // Valor padrão
+        });
+        toast({
+          title: 'Sucesso',
+          description: 'Tipo de equipamento atualizado com sucesso.',
+        });
+      } else {
+        await api.createEquipmentType({
+          name: formattedName,
+          label: equipmentTypeForm.label,
+          icon_name: equipmentTypeForm.icon_name,
+          color: 'text-blue-500', // Valor padrão
+        });
+        toast({
+          title: 'Sucesso',
+          description: 'Tipo de equipamento criado com sucesso.',
+        });
+      }
+      
+      setEquipmentTypeDialogOpen(false);
+      loadData();
+    } catch (error) {
+      console.error('Erro ao salvar tipo de equipamento:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: error.message || 'Não foi possível salvar o tipo de equipamento.',
+      });
+    }
   };
 
   const handleOpenChipDialog = (chip = null) => {
@@ -479,14 +611,23 @@ const PatrimonyManagement = () => {
         return;
       }
 
+      // Garantir que icon_name está preenchido (usar o padrão do tipo se não foi selecionado)
+      const typeData = getEquipmentTypeData(equipmentForm.equipment_type);
+      const iconName = equipmentForm.icon_name || typeData.iconName || 'Smartphone';
+      
+      const equipmentData = {
+        ...equipmentForm,
+        icon_name: iconName
+      };
+
       if (editingEquipment) {
-        await api.updateEquipment(editingEquipment.id, equipmentForm);
+        await api.updateEquipment(editingEquipment.id, equipmentData);
         toast({
           title: 'Sucesso',
           description: 'Equipamento atualizado com sucesso.',
         });
       } else {
-        await api.createEquipment(equipmentForm);
+        await api.createEquipment(equipmentData);
         toast({
           title: 'Sucesso',
           description: 'Equipamento cadastrado com sucesso.',
@@ -591,8 +732,26 @@ const PatrimonyManagement = () => {
     }
   };
 
-  const getEquipmentIcon = (type) => {
-    return equipmentTypes.find(t => t.value === type)?.icon || Smartphone;
+  const getEquipmentIcon = (type, iconName = null) => {
+    // Se tiver icon_name específico, usar ele
+    if (iconName) {
+      return getIconByName(iconName);
+    }
+    // Caso contrário, buscar pelo tipo
+    const typeData = equipmentTypesList.find(t => t.value === type);
+    if (typeData && typeData.iconName) {
+      return getIconByName(typeData.iconName);
+    }
+    return Smartphone; // Default
+  };
+  
+  const getEquipmentTypeData = (type) => {
+    return equipmentTypesList.find(t => t.value === type) || {
+      value: type,
+      label: type,
+      iconName: 'Smartphone',
+      color: 'text-blue-500'
+    };
   };
 
   const getConditionBadge = (condition) => {
@@ -622,16 +781,64 @@ const PatrimonyManagement = () => {
       byType: {},
       byCondition: {},
       byStore: {},
+      byStoreAndType: {}, // { storeId: { type: count } }
+      byStoreAndCondition: {}, // { storeId: { condition: count } }
     };
 
     equipments.forEach(eq => {
       stats.byType[eq.equipment_type] = (stats.byType[eq.equipment_type] || 0) + 1;
       stats.byCondition[eq.condition_status] = (stats.byCondition[eq.condition_status] || 0) + 1;
       stats.byStore[eq.store_id] = (stats.byStore[eq.store_id] || 0) + 1;
+      
+      // Por loja e tipo
+      if (!stats.byStoreAndType[eq.store_id]) {
+        stats.byStoreAndType[eq.store_id] = {};
+      }
+      stats.byStoreAndType[eq.store_id][eq.equipment_type] = 
+        (stats.byStoreAndType[eq.store_id][eq.equipment_type] || 0) + 1;
+      
+      // Por loja e condição
+      if (!stats.byStoreAndCondition[eq.store_id]) {
+        stats.byStoreAndCondition[eq.store_id] = {};
+      }
+      stats.byStoreAndCondition[eq.store_id][eq.condition_status] = 
+        (stats.byStoreAndCondition[eq.store_id][eq.condition_status] || 0) + 1;
     });
 
     return stats;
   }, [equipments]);
+  
+  // Estatísticas por loja para visualização em cards (usando filteredEquipments para refletir filtros)
+  const storeStats = useMemo(() => {
+    if (!isAdminOrSupervisor) return [];
+    
+    return filteredStores.map(store => {
+      // Usar filteredEquipments ao invés de equipments para refletir os filtros ativos
+      const storeEquipments = filteredEquipments.filter(eq => eq.store_id === store.id);
+      const storeChips = chips.filter(chip => chip.store_id === store.id);
+      
+      // Estatísticas por tipo (apenas dos equipamentos filtrados)
+      const byType = {};
+      storeEquipments.forEach(eq => {
+        byType[eq.equipment_type] = (byType[eq.equipment_type] || 0) + 1;
+      });
+      
+      // Estatísticas por condição (apenas dos equipamentos filtrados)
+      const byCondition = {
+        NOVO: storeEquipments.filter(eq => eq.condition_status === 'NOVO').length,
+        BOM: storeEquipments.filter(eq => eq.condition_status === 'BOM').length,
+        QUEBRADO: storeEquipments.filter(eq => eq.condition_status === 'QUEBRADO').length,
+      };
+      
+      return {
+        store,
+        totalEquipments: storeEquipments.length,
+        totalChips: storeChips.length,
+        byType,
+        byCondition,
+      };
+    });
+  }, [filteredStores, filteredEquipments, chips, isAdminOrSupervisor]);
 
   const chipStats = useMemo(() => {
     const stats = {
@@ -691,6 +898,12 @@ const PatrimonyManagement = () => {
             </p>
           </div>
           <div className="flex gap-2">
+            {user?.role === 'admin' && (
+              <Button onClick={() => handleOpenEquipmentTypeDialog()} size="sm" variant="outline">
+                <Settings className="w-4 h-4 mr-2" />
+                Novo Tipo
+              </Button>
+            )}
             <Button onClick={() => handleOpenEquipmentDialog()} size="sm" variant="outline">
               <Plus className="w-4 h-4 mr-2" />
               Equipamento
@@ -767,183 +980,446 @@ const PatrimonyManagement = () => {
           </motion.div>
         </div>
 
-        {/* Filtros compactos */}
-        <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg border bg-card">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-8 h-9"
-            />
-          </div>
-          <Select value={selectedStore || 'all'} onValueChange={(value) => setSelectedStore(value === 'all' ? null : value)}>
-            <SelectTrigger className="w-[180px] h-9">
-              <Store className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Loja" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {filteredStores.map(store => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedEquipmentType} onValueChange={setSelectedEquipmentType}>
-            <SelectTrigger className="w-[150px] h-9">
-              <Monitor className="w-4 h-4 mr-2" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
-              {equipmentTypes.map(type => (
-                <SelectItem key={type.value} value={type.value}>
-                  <div className="flex items-center gap-2">
-                    <type.icon className="w-4 h-4" />
-                    {type.label}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedCondition} onValueChange={setSelectedCondition}>
-            <SelectTrigger className="w-[130px] h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {conditionOptions.map(opt => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {isAdminOrSupervisor && (
-            <div className="flex gap-1 border rounded-md p-1">
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-                className="h-7 px-2"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'table' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('table')}
-                className="h-7 px-2"
-              >
-                <List className="w-4 h-4" />
-              </Button>
-            </div>
-          )}
-        </div>
+        {/* Visualização por loja para admin/supervisor */}
+        {isAdminOrSupervisor ? (
+          <Tabs defaultValue="equipments" className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="equipments" className="flex items-center gap-2">
+                <Monitor className="w-4 h-4" />
+                Equipamentos
+              </TabsTrigger>
+              <TabsTrigger value="chips" className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4" />
+                Chips
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="equipments" className="space-y-4">
+              {/* Filtros - Movidos para cima */}
+              <div className="flex flex-wrap items-center gap-3 p-4 rounded-xl border bg-card/50 backdrop-blur-sm shadow-sm">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar equipamentos..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 h-10"
+                  />
+                </div>
+                <Select value={selectedEquipmentType} onValueChange={setSelectedEquipmentType}>
+                  <SelectTrigger className="w-[180px] h-10">
+                    <Monitor className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Tipos</SelectItem>
+                    {equipmentTypesList.map(type => {
+                      const Icon = getEquipmentIcon(type.value, type.iconName);
+                      return (
+                        <SelectItem key={type.value} value={type.value}>
+                          <div className="flex items-center gap-2">
+                            <Icon className="w-4 h-4" />
+                            {type.label}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedCondition} onValueChange={setSelectedCondition}>
+                  <SelectTrigger className="w-[150px] h-10">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Status</SelectItem>
+                    {conditionOptions.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-1 border rounded-lg p-1 bg-background">
+                  <Button
+                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('grid')}
+                    className="h-8 px-3"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'table' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('table')}
+                    className="h-8 px-3"
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
 
-        {/* Equipamentos */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Monitor className="w-5 h-5 text-blue-500" />
-              Equipamentos
-              <Badge variant="secondary" className="ml-2">{filteredEquipments.length}</Badge>
-            </h2>
-          </div>
-          {filteredEquipments.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground border rounded-lg">
-              <Monitor className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Nenhum equipamento encontrado</p>
-            </div>
-          ) : isAdminOrSupervisor && equipmentsByStore ? (
-            // Exibição agrupada por loja para admin e supervisão
-            <div className="space-y-4">
-              {Object.values(equipmentsByStore).map((storeGroup, storeIndex) => {
-                const isCollapsed = collapsedStores.has(storeGroup.storeId);
-                const Icon = getEquipmentIcon(storeGroup.equipments[0]?.equipment_type);
-                
-                return (
-                  <Card key={storeGroup.storeId} className="overflow-hidden">
-                    <CardHeader 
-                      className="cursor-pointer hover:bg-accent/50 transition-colors pb-3"
-                      onClick={() => toggleStoreCollapse(storeGroup.storeId)}
+              {/* Cards de lojas */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {storeStats.map((storeStat, index) => (
+                  <motion.div
+                    key={storeStat.store.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <Card 
+                      className={`cursor-pointer hover:border-primary transition-all hover:shadow-md ${
+                        selectedStore === storeStat.store.id ? 'border-primary ring-2 ring-primary/20 bg-primary/5' : ''
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Abrir diálogo de detalhes da loja
+                        setSelectedStoreForDetails(storeStat.store);
+                        setStoreDetailsDialogOpen(true);
+                      }}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Store className="w-5 h-5 text-primary" />
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
                           <div>
-                            <h3 className="text-md font-semibold text-foreground">{storeGroup.storeName}</h3>
-                            <p className="text-xs text-muted-foreground">
-                              {storeGroup.equipments.length} equipamento{storeGroup.equipments.length !== 1 ? 's' : ''}
-                            </p>
+                            <CardTitle className="text-lg">{storeStat.store.code}</CardTitle>
+                            <p className="text-xs text-muted-foreground mt-1">{storeStat.store.name}</p>
+                          </div>
+                          <Badge variant="secondary" className="font-semibold">{storeStat.totalEquipments}</Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3" onClick={(e) => e.stopPropagation()}>
+                        {/* Estatísticas por tipo de equipamento */}
+                        {Object.keys(storeStat.byType).length > 0 && (
+                          <div>
+                            <p className="text-xs font-medium text-muted-foreground mb-2">Por Tipo:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {Object.entries(storeStat.byType).map(([type, count]) => {
+                                const typeData = getEquipmentTypeData(type);
+                                const Icon = getEquipmentIcon(type, typeData.iconName);
+                                return (
+                                  <div
+                                    key={type}
+                                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-muted/80 hover:bg-muted transition-colors"
+                                    title={typeData.label}
+                                  >
+                                    <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                                    <span className="text-xs font-semibold">{count}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Estatísticas por condição - Design modernizado */}
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-2">Por Status:</p>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="text-center p-2.5 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-950/30 dark:to-emerald-900/20 border border-emerald-200/50 dark:border-emerald-800/30">
+                              <div className="text-base font-bold text-emerald-700 dark:text-emerald-400">{storeStat.byCondition.NOVO || 0}</div>
+                              <div className="text-[10px] font-medium text-emerald-600 dark:text-emerald-500 uppercase tracking-wide">Novo</div>
+                            </div>
+                            <div className="text-center p-2.5 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/30">
+                              <div className="text-base font-bold text-blue-700 dark:text-blue-400">{storeStat.byCondition.BOM || 0}</div>
+                              <div className="text-[10px] font-medium text-blue-600 dark:text-blue-500 uppercase tracking-wide">Bom</div>
+                            </div>
+                            <div className="text-center p-2.5 rounded-lg bg-gradient-to-br from-rose-50 to-rose-100 dark:from-rose-950/30 dark:to-rose-900/20 border border-rose-200/50 dark:border-rose-800/30">
+                              <div className="text-base font-bold text-rose-700 dark:text-rose-400">{storeStat.byCondition.QUEBRADO || 0}</div>
+                              <div className="text-[10px] font-medium text-rose-600 dark:text-rose-500 uppercase tracking-wide">Quebrado</div>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">
-                            {storeGroup.equipments.filter(e => e.condition_status === 'QUEBRADO').length} quebrado{storeGroup.equipments.filter(e => e.condition_status === 'QUEBRADO').length !== 1 ? 's' : ''}
-                          </Badge>
-                          {isCollapsed ? (
-                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                          )}
-                        </div>
-                      </div>
-                    </CardHeader>
-                    {!isCollapsed && (
-                      <CardContent className="pt-0">
-                        {viewMode === 'table' ? (
-                          // Visualização em tabela (mais compacta)
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead>
-                                <tr className="border-b">
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Tipo</th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Marca/Modelo</th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Patrimônio</th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Condição</th>
-                                  <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Ações</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {storeGroup.equipments.map((equipment) => {
-                                  const Icon = getEquipmentIcon(equipment.equipment_type);
-                                  const typeLabel = equipmentTypes.find(t => t.value === equipment.equipment_type)?.label;
-                                  
-                                  return (
-                                    <tr key={equipment.id} className="border-b hover:bg-accent/50 transition-colors">
-                                      <td className="py-2 px-3">
-                                        <div className="flex items-center gap-2">
-                                          <Icon className="w-4 h-4 text-muted-foreground" />
-                                          <span className="text-sm">{typeLabel}</span>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Lista de equipamentos (quando uma loja está selecionada) */}
+              {selectedStore ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Monitor className="w-5 h-5 text-blue-500" />
+                        Equipamentos da Loja Selecionada
+                        <Badge variant="secondary" className="ml-2">{filteredEquipments.length}</Badge>
+                      </h2>
+                      {filteredStores.find(s => s.id === selectedStore) && (
+                        <Badge variant="outline" className="text-xs">
+                          {filteredStores.find(s => s.id === selectedStore)?.code} - {filteredStores.find(s => s.id === selectedStore)?.name}
+                        </Badge>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedStore(null)}
+                      className="text-xs"
+                    >
+                      Limpar Seleção
+                    </Button>
+                  </div>
+                  {filteredEquipments.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground border rounded-lg">
+                      <Monitor className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Nenhum equipamento encontrado para esta loja</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {filteredEquipments.map((equipment, index) => {
+                        const Icon = getEquipmentIcon(equipment.equipment_type, equipment.icon_name);
+                        const typeData = getEquipmentTypeData(equipment.equipment_type);
+                        const typeLabel = typeData.label;
+                        const colors = typeData.color || 'text-blue-500';
+                        
+                        return (
+                          <motion.div
+                            key={equipment.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.05 }}
+                          >
+                            <Card className="hover:border-primary/50 transition-all cursor-pointer group">
+                              <CardContent className="p-4">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className={`p-2 rounded-lg bg-opacity-10 ${colors.replace('text-', 'bg-')}`}>
+                                    <Icon className={`w-5 h-5 ${colors}`} />
+                                  </div>
+                                  {getConditionBadge(equipment.condition_status)}
+                                </div>
+                                <div className="space-y-1 mb-3">
+                                  <p className="font-semibold text-sm">{typeLabel}</p>
+                                  {equipment.brand && (
+                                    <p className="text-xs text-muted-foreground">{equipment.brand} {equipment.model}</p>
+                                  )}
+                                  {equipment.serial_number && (
+                                    <p className="text-xs text-muted-foreground font-mono">{equipment.serial_number}</p>
+                                  )}
+                                </div>
+                                <div className="flex gap-1 pt-2 border-t">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenEquipmentDialog(equipment);
+                                    }}
+                                    className="flex-1 h-7 text-xs"
+                                  >
+                                    <Edit className="w-3 h-3 mr-1" />
+                                    Editar
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingEquipment(equipment);
+                                      setDeleteEquipmentDialogOpen(true);
+                                    }}
+                                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </motion.div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground border rounded-lg">
+                  <Monitor className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Clique em um card de loja acima para ver os equipamentos</p>
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="chips" className="space-y-4">
+              {/* Filtros para chips */}
+              <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg border bg-card">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar chips..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8 h-9"
+                  />
+                </div>
+                <Select value={selectedStore || 'all'} onValueChange={(value) => setSelectedStore(value === 'all' ? null : value)}>
+                  <SelectTrigger className="w-[180px] h-9">
+                    <Store className="w-4 h-4 mr-2" />
+                    <SelectValue placeholder="Loja" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas</SelectItem>
+                    {filteredStores.map(store => (
+                      <SelectItem key={store.id} value={store.id}>
+                        {store.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-1 border rounded-md p-1">
+                  <Button
+                    variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('grid')}
+                    className="h-7 px-2"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'table' ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setViewMode('table')}
+                    className="h-7 px-2"
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Lista de chips agrupados por loja */}
+              {filteredChips.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground border rounded-lg">
+                  <CreditCard className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Nenhum chip encontrado</p>
+                </div>
+              ) : chipsByStore ? (
+                // Exibição agrupada por loja
+                <div className="space-y-4">
+                  {Object.values(chipsByStore).map((storeGroup, storeIndex) => {
+                    const isCollapsed = collapsedStores.has(`chip-${storeGroup.storeId}`);
+                    
+                    return (
+                      <Card key={storeGroup.storeId} className="overflow-hidden">
+                        <CardHeader 
+                          className="cursor-pointer hover:bg-accent/50 transition-colors pb-3"
+                          onClick={() => toggleStoreCollapse(`chip-${storeGroup.storeId}`)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Store className="w-5 h-5 text-primary" />
+                              <div>
+                                <h3 className="text-md font-semibold text-foreground">{storeGroup.storeName}</h3>
+                                <p className="text-xs text-muted-foreground">
+                                  {storeGroup.chips.length} chip{storeGroup.chips.length !== 1 ? 's' : ''}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {isCollapsed ? (
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                              )}
+                            </div>
+                          </div>
+                        </CardHeader>
+                        {!isCollapsed && (
+                          <CardContent className="pt-0">
+                            {viewMode === 'table' ? (
+                              // Visualização em tabela
+                              <div className="overflow-x-auto">
+                                <table className="w-full">
+                                  <thead>
+                                    <tr className="border-b">
+                                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Número</th>
+                                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Operadora</th>
+                                      <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Uso</th>
+                                      <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Ações</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {storeGroup.chips.map((chip) => (
+                                      <tr key={chip.id} className="border-b hover:bg-accent/50 transition-colors">
+                                        <td className="py-2 px-3">
+                                          <span className="text-sm font-medium">{chip.phone_number}</span>
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          <span className="text-xs text-muted-foreground">
+                                            {chip.usage_type || 'Uso não informado'}
+                                          </span>
+                                        </td>
+                                        <td className="py-2 px-3">
+                                          <div className="flex items-center justify-end gap-1">
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenChipDialog(chip);
+                                              }}
+                                              className="h-7 w-7 p-0"
+                                            >
+                                              <Edit className="w-3 h-3" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setEditingChip(chip);
+                                                setDeleteChipDialogOpen(true);
+                                              }}
+                                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : (
+                              // Visualização em grid (cards compactos)
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+                                {storeGroup.chips.map((chip, index) => (
+                                  <motion.div
+                                    key={chip.id}
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ delay: index * 0.02 }}
+                                  >
+                                    <Card className="hover:border-primary/50 transition-all cursor-pointer group h-full">
+                                      <CardContent className="p-3">
+                                        <div className="flex items-start justify-between mb-2">
+                                          <div className="p-1.5 rounded-md bg-purple-500/10">
+                                            <CreditCard className="w-4 h-4 text-purple-500" />
+                                          </div>
+                                          <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
                                         </div>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <span className="text-sm">
-                                          {equipment.brand} {equipment.model || ''}
-                                        </span>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <span className="text-xs text-muted-foreground font-mono">
-                                          {equipment.serial_number || '-'}
-                                        </span>
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        {getConditionBadge(equipment.condition_status)}
-                                      </td>
-                                      <td className="py-2 px-3">
-                                        <div className="flex items-center justify-end gap-1">
+                                        <div className="space-y-0.5 mb-2">
+                                          <p className="font-medium text-xs">{chip.phone_number}</p>
+                                          <p className="text-xs text-muted-foreground truncate">
+                                            {chip.usage_type || 'Uso não informado'}
+                                          </p>
+                                        </div>
+                                        <div className="flex gap-1 pt-2 border-t">
                                           <Button
                                             variant="ghost"
                                             size="sm"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handleOpenEquipmentDialog(equipment);
+                                              handleOpenChipDialog(chip);
                                             }}
-                                            className="h-7 w-7 p-0"
+                                            className="flex-1 h-6 text-xs px-1"
                                           >
                                             <Edit className="w-3 h-3" />
                                           </Button>
@@ -952,386 +1428,297 @@ const PatrimonyManagement = () => {
                                             size="sm"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              setEditingEquipment(equipment);
-                                              setDeleteEquipmentDialogOpen(true);
+                                              setEditingChip(chip);
+                                              setDeleteChipDialogOpen(true);
                                             }}
-                                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                            className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
                                           >
                                             <Trash2 className="w-3 h-3" />
                                           </Button>
                                         </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          // Visualização em grid (cards compactos)
-                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                            {storeGroup.equipments.map((equipment, index) => {
-                              const Icon = getEquipmentIcon(equipment.equipment_type);
-                              const typeLabel = equipmentTypes.find(t => t.value === equipment.equipment_type)?.label;
-                              const colors = equipmentTypes.find(t => t.value === equipment.equipment_type)?.color || 'text-blue-500';
-                              
-                              return (
-                                <motion.div
-                                  key={equipment.id}
-                                  initial={{ opacity: 0, scale: 0.95 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  transition={{ delay: index * 0.02 }}
-                                >
-                                  <Card className="hover:border-primary/50 transition-all cursor-pointer group h-full">
-                                    <CardContent className="p-3">
-                                      <div className="flex items-start justify-between mb-2">
-                                        <div className={`p-1.5 rounded-md bg-opacity-10 ${colors.replace('text-', 'bg-')}`}>
-                                          <Icon className={`w-4 h-4 ${colors}`} />
-                                        </div>
-                                        {getConditionBadge(equipment.condition_status)}
-                                      </div>
-                                      <div className="space-y-0.5 mb-2">
-                                        <p className="font-medium text-xs">{typeLabel}</p>
-                                        {equipment.brand && (
-                                          <p className="text-xs text-muted-foreground truncate">
-                                            {equipment.brand} {equipment.model}
-                                          </p>
-                                        )}
-                                      </div>
-                                      <div className="flex gap-1 pt-2 border-t">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenEquipmentDialog(equipment);
-                                          }}
-                                          className="flex-1 h-6 text-xs px-1"
-                                        >
-                                          <Edit className="w-3 h-3" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingEquipment(equipment);
-                                            setDeleteEquipmentDialogOpen(true);
-                                          }}
-                                          className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                </motion.div>
-                              );
-                            })}
-                          </div>
+                                      </CardContent>
+                                    </Card>
+                                  </motion.div>
+                                ))}
+                              </div>
+                            )}
+                          </CardContent>
                         )}
-                      </CardContent>
-                    )}
-                  </Card>
-                );
-              })}
-            </div>
-          ) : (
-            // Exibição normal (não agrupada)
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {filteredEquipments.map((equipment, index) => {
-                const Icon = getEquipmentIcon(equipment.equipment_type);
-                const typeLabel = equipmentTypes.find(t => t.value === equipment.equipment_type)?.label;
-                const colors = equipmentTypes.find(t => t.value === equipment.equipment_type)?.color || 'text-blue-500';
-                
-                return (
-                  <motion.div
-                    key={equipment.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <Card className="hover:border-primary/50 transition-all cursor-pointer group">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className={`p-2 rounded-lg bg-opacity-10 ${colors.replace('text-', 'bg-')}`}>
-                            <Icon className={`w-5 h-5 ${colors}`} />
-                          </div>
-                          {getConditionBadge(equipment.condition_status)}
-                        </div>
-                        <div className="space-y-1 mb-3">
-                          <p className="font-semibold text-sm">{typeLabel}</p>
-                          <p className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Store className="w-3 h-3" />
-                            {equipment.stores?.name}
-                          </p>
-                          {equipment.brand && (
-                            <p className="text-xs text-muted-foreground">{equipment.brand} {equipment.model}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-1 pt-2 border-t">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenEquipmentDialog(equipment);
-                            }}
-                            className="flex-1 h-7 text-xs"
-                          >
-                            <Edit className="w-3 h-3 mr-1" />
-                            Editar
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingEquipment(equipment);
-                              setDeleteEquipmentDialogOpen(true);
-                            }}
-                            className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Chips */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-purple-500" />
-              Chips
-              <Badge variant="secondary" className="ml-2">{filteredChips.length}</Badge>
-            </h2>
-          </div>
-          {filteredChips.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground border rounded-lg">
-              <CreditCard className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">Nenhum chip encontrado</p>
-            </div>
-          ) : isAdminOrSupervisor && chipsByStore ? (
-            // Exibição agrupada por loja para admin e supervisão
-            <div className="space-y-4">
-              {Object.values(chipsByStore).map((storeGroup, storeIndex) => {
-                const isCollapsed = collapsedStores.has(`chip-${storeGroup.storeId}`);
-                
-                return (
-                  <Card key={storeGroup.storeId} className="overflow-hidden">
-                    <CardHeader 
-                      className="cursor-pointer hover:bg-accent/50 transition-colors pb-3"
-                      onClick={() => toggleStoreCollapse(`chip-${storeGroup.storeId}`)}
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                // Exibição normal (não agrupada) - fallback
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {filteredChips.map((chip, index) => (
+                    <motion.div
+                      key={chip.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Store className="w-5 h-5 text-primary" />
-                          <div>
-                            <h3 className="text-md font-semibold text-foreground">{storeGroup.storeName}</h3>
+                      <Card className="hover:border-primary/50 transition-all cursor-pointer group">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="p-2 rounded-lg bg-purple-500/10">
+                              <CreditCard className="w-5 h-5 text-purple-500" />
+                            </div>
+                            <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
+                          </div>
+                          <div className="space-y-1 mb-3">
+                            <p className="font-semibold text-sm">{chip.phone_number}</p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Store className="w-3 h-3" />
+                              {chip.stores?.name}
+                            </p>
                             <p className="text-xs text-muted-foreground">
-                              {storeGroup.chips.length} chip{storeGroup.chips.length !== 1 ? 's' : ''}
+                              {chip.usage_type || 'Uso não informado'}
                             </p>
                           </div>
-                        </div>
+                          <div className="flex gap-1 pt-2 border-t">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenChipDialog(chip);
+                              }}
+                              className="flex-1 h-7 text-xs"
+                            >
+                              <Edit className="w-3 h-3 mr-1" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingChip(chip);
+                                setDeleteChipDialogOpen(true);
+                              }}
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        ) : (
+          /* Visualização normal para lojas (não admin) */
+          <>
+            {/* Filtros compactos */}
+            <div className="flex flex-wrap items-center gap-2 p-3 rounded-lg border bg-card">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8 h-9"
+                />
+              </div>
+              <Select value={selectedEquipmentType} onValueChange={setSelectedEquipmentType}>
+                <SelectTrigger className="w-[150px] h-9">
+                  <Monitor className="w-4 h-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {equipmentTypesList.map(type => {
+                    const Icon = getEquipmentIcon(type.value, type.iconName);
+                    return (
+                      <SelectItem key={type.value} value={type.value}>
                         <div className="flex items-center gap-2">
-                          {isCollapsed ? (
-                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                          )}
+                          <Icon className="w-4 h-4" />
+                          {type.label}
                         </div>
-                      </div>
-                    </CardHeader>
-                    {!isCollapsed && (
-                      <CardContent className="pt-0">
-                        {viewMode === 'table' ? (
-                          // Visualização em tabela (mais compacta)
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead>
-                                <tr className="border-b">
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Número</th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Operadora</th>
-                                  <th className="text-left py-2 px-3 text-xs font-medium text-muted-foreground">Uso</th>
-                                  <th className="text-right py-2 px-3 text-xs font-medium text-muted-foreground">Ações</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {storeGroup.chips.map((chip) => (
-                                  <tr key={chip.id} className="border-b hover:bg-accent/50 transition-colors">
-                                    <td className="py-2 px-3">
-                                      <span className="text-sm font-medium">{chip.phone_number}</span>
-                                    </td>
-                                    <td className="py-2 px-3">
-                                      <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
-                                    </td>
-                                    <td className="py-2 px-3">
-                                      <span className="text-xs text-muted-foreground">
-                                        {chip.usage_type || 'Uso não informado'}
-                                      </span>
-                                    </td>
-                                    <td className="py-2 px-3">
-                                      <div className="flex items-center justify-end gap-1">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenChipDialog(chip);
-                                          }}
-                                          className="h-7 w-7 p-0"
-                                        >
-                                          <Edit className="w-3 h-3" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingChip(chip);
-                                            setDeleteChipDialogOpen(true);
-                                          }}
-                                          className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          // Visualização em grid (cards compactos)
-                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-                            {storeGroup.chips.map((chip, index) => (
-                              <motion.div
-                                key={chip.id}
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                transition={{ delay: index * 0.02 }}
-                              >
-                                <Card className="hover:border-primary/50 transition-all cursor-pointer group h-full">
-                                  <CardContent className="p-3">
-                                    <div className="flex items-start justify-between mb-2">
-                                      <div className="p-1.5 rounded-md bg-purple-500/10">
-                                        <CreditCard className="w-4 h-4 text-purple-500" />
-                                      </div>
-                                      <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
-                                    </div>
-                                    <div className="space-y-0.5 mb-2">
-                                      <p className="font-medium text-xs">{chip.phone_number}</p>
-                                      <p className="text-xs text-muted-foreground truncate">
-                                        {chip.usage_type || 'Uso não informado'}
-                                      </p>
-                                    </div>
-                                    <div className="flex gap-1 pt-2 border-t">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleOpenChipDialog(chip);
-                                        }}
-                                        className="flex-1 h-6 text-xs px-1"
-                                      >
-                                        <Edit className="w-3 h-3" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEditingChip(chip);
-                                          setDeleteChipDialogOpen(true);
-                                        }}
-                                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </Button>
-                                    </div>
-                                  </CardContent>
-                                </Card>
-                              </motion.div>
-                            ))}
-                          </div>
-                        )}
-                      </CardContent>
-                    )}
-                  </Card>
-                );
-              })}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Select value={selectedCondition} onValueChange={setSelectedCondition}>
+                <SelectTrigger className="w-[130px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {conditionOptions.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          ) : (
-            // Exibição normal (não agrupada)
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {filteredChips.map((chip, index) => (
-                <motion.div
-                  key={chip.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <Card className="hover:border-primary/50 transition-all cursor-pointer group">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="p-2 rounded-lg bg-purple-500/10">
-                          <CreditCard className="w-5 h-5 text-purple-500" />
-                        </div>
-                        <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
-                      </div>
-                      <div className="space-y-1 mb-3">
-                        <p className="font-semibold text-sm">{chip.phone_number}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Store className="w-3 h-3" />
-                          {chip.stores?.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {chip.usage_type || 'Uso não informado'}
-                        </p>
-                      </div>
-                      <div className="flex gap-1 pt-2 border-t">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenChipDialog(chip);
-                          }}
-                          className="flex-1 h-7 text-xs"
-                        >
-                          <Edit className="w-3 h-3 mr-1" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingChip(chip);
-                            setDeleteChipDialogOpen(true);
-                          }}
-                          className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </div>
 
+            {/* Equipamentos */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Monitor className="w-5 h-5 text-blue-500" />
+                  Equipamentos
+                  <Badge variant="secondary" className="ml-2">{filteredEquipments.length}</Badge>
+                </h2>
+              </div>
+              {filteredEquipments.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground border rounded-lg">
+                  <Monitor className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Nenhum equipamento encontrado</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {filteredEquipments.map((equipment, index) => {
+                    const Icon = getEquipmentIcon(equipment.equipment_type, equipment.icon_name);
+                    const typeData = getEquipmentTypeData(equipment.equipment_type);
+                    const typeLabel = typeData.label;
+                    const colors = typeData.color || 'text-blue-500';
+                    
+                    return (
+                      <motion.div
+                        key={equipment.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                      >
+                        <Card className="hover:border-primary/50 transition-all cursor-pointer group">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className={`p-2 rounded-lg bg-opacity-10 ${colors.replace('text-', 'bg-')}`}>
+                                <Icon className={`w-5 h-5 ${colors}`} />
+                              </div>
+                              {getConditionBadge(equipment.condition_status)}
+                            </div>
+                            <div className="space-y-1 mb-3">
+                              <p className="font-semibold text-sm">{typeLabel}</p>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Store className="w-3 h-3" />
+                                {equipment.stores?.name}
+                              </p>
+                              {equipment.brand && (
+                                <p className="text-xs text-muted-foreground">{equipment.brand} {equipment.model}</p>
+                              )}
+                            </div>
+                            <div className="flex gap-1 pt-2 border-t">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenEquipmentDialog(equipment);
+                                }}
+                                className="flex-1 h-7 text-xs"
+                              >
+                                <Edit className="w-3 h-3 mr-1" />
+                                Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingEquipment(equipment);
+                                  setDeleteEquipmentDialogOpen(true);
+                                }}
+                                className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Chips */}
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-purple-500" />
+                  Chips
+                  <Badge variant="secondary" className="ml-2">{filteredChips.length}</Badge>
+                </h2>
+              </div>
+              {filteredChips.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground border rounded-lg">
+                  <CreditCard className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Nenhum chip encontrado</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {filteredChips.map((chip, index) => (
+                    <motion.div
+                      key={chip.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                    >
+                      <Card className="hover:border-primary/50 transition-all cursor-pointer group">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="p-2 rounded-lg bg-purple-500/10">
+                              <CreditCard className="w-5 h-5 text-purple-500" />
+                            </div>
+                            <Badge variant="outline" className="text-xs">{chip.carrier}</Badge>
+                          </div>
+                          <div className="space-y-1 mb-3">
+                            <p className="font-semibold text-sm">{chip.phone_number}</p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Store className="w-3 h-3" />
+                              {chip.stores?.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {chip.usage_type || 'Uso não informado'}
+                            </p>
+                          </div>
+                          <div className="flex gap-1 pt-2 border-t">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenChipDialog(chip);
+                              }}
+                              className="flex-1 h-7 text-xs"
+                            >
+                              <Edit className="w-3 h-3 mr-1" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingChip(chip);
+                                setDeleteChipDialogOpen(true);
+                              }}
+                              className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Dialogs - Compartilhados entre admin e loja */}
         {/* Dialog de Equipamento */}
         <Dialog open={equipmentDialogOpen} onOpenChange={setEquipmentDialogOpen}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1367,20 +1754,30 @@ const PatrimonyManagement = () => {
                   <Label>Tipo de Equipamento *</Label>
                   <Select
                     value={equipmentForm.equipment_type}
-                    onValueChange={(value) => setEquipmentForm({ ...equipmentForm, equipment_type: value })}
+                    onValueChange={(value) => {
+                      const selectedType = equipmentTypesList.find(t => t.value === value);
+                      setEquipmentForm({
+                        ...equipmentForm,
+                        equipment_type: value,
+                        icon_name: selectedType?.iconName || 'Smartphone'
+                      });
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {equipmentTypes.map(type => (
-                        <SelectItem key={type.value} value={type.value}>
-                          <div className="flex items-center gap-2">
-                            <type.icon className="w-4 h-4" />
-                            {type.label}
-                          </div>
-                        </SelectItem>
-                      ))}
+                      {equipmentTypesList.map(type => {
+                        const Icon = getEquipmentIcon(type.value, type.iconName);
+                        return (
+                          <SelectItem key={type.value} value={type.value}>
+                            <div className="flex items-center gap-2">
+                              <Icon className="w-4 h-4" />
+                              {type.label}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1402,6 +1799,42 @@ const PatrimonyManagement = () => {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div>
+                <Label>Ícone do Equipamento</Label>
+                <div className="grid grid-cols-6 gap-2 mt-2 p-3 border rounded-lg max-h-[200px] overflow-y-auto">
+                  {availableIcons.map(iconData => {
+                    const Icon = iconData.icon;
+                    const isSelected = equipmentForm.icon_name === iconData.name;
+                    const currentType = equipmentTypesList.find(t => t.value === equipmentForm.equipment_type);
+                    const shouldSelect = !equipmentForm.icon_name && currentType?.iconName === iconData.name;
+                    
+                    return (
+                      <button
+                        key={iconData.name}
+                        type="button"
+                        onClick={() => {
+                          const selectedType = equipmentTypesList.find(t => t.value === equipmentForm.equipment_type);
+                          setEquipmentForm({
+                            ...equipmentForm,
+                            icon_name: iconData.name
+                          });
+                        }}
+                        className={`p-2 rounded border transition-all ${
+                          isSelected || shouldSelect
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary'
+                            : 'border-border hover:border-primary/50 hover:bg-accent'
+                        }`}
+                        title={iconData.label}
+                      >
+                        <Icon className={`w-5 h-5 mx-auto ${isSelected || shouldSelect ? 'text-primary' : 'text-muted-foreground'}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Selecione um ícone para este equipamento (opcional)
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1572,6 +2005,219 @@ const PatrimonyManagement = () => {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Dialog de Detalhes da Loja */}
+        <Dialog open={storeDetailsDialogOpen} onOpenChange={setStoreDetailsDialogOpen}>
+          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Store className="w-5 h-5" />
+                {selectedStoreForDetails && (
+                  <>
+                    {selectedStoreForDetails.code} - {selectedStoreForDetails.name}
+                  </>
+                )}
+              </DialogTitle>
+              <DialogDescription>
+                Detalhes completos dos equipamentos desta loja
+              </DialogDescription>
+            </DialogHeader>
+            {selectedStoreForDetails && (
+              <div className="space-y-6">
+                {/* Estatísticas da Loja */}
+                {(() => {
+                  const storeEquipments = equipments.filter(eq => eq.store_id === selectedStoreForDetails.id);
+                  const storeStat = storeStats.find(s => s.store.id === selectedStoreForDetails.id);
+                  
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-md bg-blue-500/10">
+                              <Monitor className="w-5 h-5 text-blue-500" />
+                            </div>
+                            <div>
+                              <div className="text-2xl font-bold">{storeEquipments.length}</div>
+                              <div className="text-xs text-muted-foreground">Equipamentos</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-md bg-red-500/10">
+                              <AlertCircle className="w-5 h-5 text-red-500" />
+                            </div>
+                            <div>
+                              <div className="text-2xl font-bold text-red-500">
+                                {storeStat?.byCondition.QUEBRADO || 0}
+                              </div>
+                              <div className="text-xs text-muted-foreground">Quebrados</div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                })()}
+
+                {/* Equipamentos */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <Monitor className="w-5 h-5 text-blue-500" />
+                    Equipamentos ({equipments.filter(eq => eq.store_id === selectedStoreForDetails.id).length})
+                  </h3>
+                  {equipments.filter(eq => eq.store_id === selectedStoreForDetails.id).length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground border rounded-lg">
+                      <Monitor className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Nenhum equipamento cadastrado nesta loja</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto">
+                      {equipments
+                        .filter(eq => eq.store_id === selectedStoreForDetails.id)
+                        .map((equipment, index) => {
+                          const Icon = getEquipmentIcon(equipment.equipment_type, equipment.icon_name);
+                          const typeData = getEquipmentTypeData(equipment.equipment_type);
+                          const typeLabel = typeData.label;
+                          const colors = typeData.color || 'text-blue-500';
+                          
+                          return (
+                            <Card key={equipment.id} className="hover:border-primary/50 transition-all">
+                              <CardContent className="p-4">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className={`p-2 rounded-lg bg-opacity-10 ${colors.replace('text-', 'bg-')}`}>
+                                    <Icon className={`w-5 h-5 ${colors}`} />
+                                  </div>
+                                  {getConditionBadge(equipment.condition_status)}
+                                </div>
+                                <div className="space-y-1 mb-3">
+                                  <p className="font-semibold text-sm">{typeLabel}</p>
+                                  {equipment.brand && (
+                                    <p className="text-xs text-muted-foreground">
+                                      {equipment.brand} {equipment.model}
+                                    </p>
+                                  )}
+                                  {equipment.serial_number && (
+                                    <p className="text-xs text-muted-foreground font-mono">
+                                      Patrimônio: {equipment.serial_number}
+                                    </p>
+                                  )}
+                                  {equipment.notes && (
+                                    <p className="text-xs text-muted-foreground italic">
+                                      {equipment.notes}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex gap-1 pt-2 border-t">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenEquipmentDialog(equipment);
+                                      setStoreDetailsDialogOpen(false);
+                                    }}
+                                    className="flex-1 h-7 text-xs"
+                                  >
+                                    <Edit className="w-3 h-3 mr-1" />
+                                    Editar
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingEquipment(equipment);
+                                      setDeleteEquipmentDialogOpen(true);
+                                    }}
+                                    className="h-7 w-7 p-0 text-red-500 hover:text-red-700 hover:bg-red-500/10"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Dialog de Tipo de Equipamento */}
+        <Dialog open={equipmentTypeDialogOpen} onOpenChange={setEquipmentTypeDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>
+                {editingEquipmentType ? 'Editar Tipo de Equipamento' : 'Adicionar Novo Tipo de Equipamento'}
+              </DialogTitle>
+              <DialogDescription>
+                Crie um novo tipo de equipamento para usar no controle de patrimônio
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Nome (Código) *</Label>
+                <Input
+                  value={equipmentTypeForm.name}
+                  onChange={(e) => setEquipmentTypeForm({ ...equipmentTypeForm, name: e.target.value.toUpperCase().replace(/\s+/g, '_') })}
+                  placeholder="Ex: IMPRESSORA_3D"
+                  disabled={!!editingEquipmentType}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Nome único em maiúsculas (será convertido automaticamente)
+                </p>
+              </div>
+              <div>
+                <Label>Label (Nome de Exibição) *</Label>
+                <Input
+                  value={equipmentTypeForm.label}
+                  onChange={(e) => setEquipmentTypeForm({ ...equipmentTypeForm, label: e.target.value })}
+                  placeholder="Ex: Impressora 3D"
+                />
+              </div>
+              <div>
+                <Label>Ícone *</Label>
+                <div className="grid grid-cols-6 gap-2 mt-2 p-3 border rounded-lg max-h-[250px] overflow-y-auto">
+                  {availableIcons.map(iconData => {
+                    const Icon = iconData.icon;
+                    const isSelected = equipmentTypeForm.icon_name === iconData.name;
+                    
+                    return (
+                      <button
+                        key={iconData.name}
+                        type="button"
+                        onClick={() => setEquipmentTypeForm({ ...equipmentTypeForm, icon_name: iconData.name })}
+                        className={`p-2 rounded border transition-all ${
+                          isSelected
+                            ? 'border-primary bg-primary/10 ring-2 ring-primary'
+                            : 'border-border hover:border-primary/50 hover:bg-accent'
+                        }`}
+                        title={iconData.label}
+                      >
+                        <Icon className={`w-5 h-5 mx-auto ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEquipmentTypeDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSaveEquipmentType}>
+                  {editingEquipmentType ? 'Atualizar' : 'Criar'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </>
   );

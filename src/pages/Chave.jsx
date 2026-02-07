@@ -12,13 +12,16 @@ const Chave = () => {
     const { user } = useAuth();
     const { chaveContent, updateChaveContent } = useData();
     const { toast } = useToast();
-    const [content, setContent] = useState(chaveContent);
+    // Garantir que content nunca seja undefined ou null
+    const [content, setContent] = useState(chaveContent || '');
     const [isEditing, setIsEditing] = useState(false);
 
     const isAdmin = user?.role === 'admin';
+    const canEdit = user?.role === 'admin' || user?.role === 'comunicação';
 
     useEffect(() => {
-        setContent(chaveContent);
+        // Garantir que sempre tenha um valor string
+        setContent(chaveContent || '');
     }, [chaveContent]);
 
     const handleSave = () => {
@@ -51,24 +54,34 @@ const Chave = () => {
                     className="bg-card p-8 rounded-xl shadow-lg border border-border"
                 >
                     <h2 className="text-2xl font-bold text-foreground mb-4">Detalhes da Jornada</h2>
-                    {isAdmin && !isEditing ? (
-                        <div className="prose prose-invert max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: content.replace(/\n/g, '<br />').replace(/### (.*)/g, '<h3>$1</h3>') }} />
-                    ) : isAdmin && isEditing ? (
+                    {canEdit && !isEditing ? (
+                        <div 
+                            className="prose prose-invert max-w-none text-muted-foreground" 
+                            dangerouslySetInnerHTML={{ 
+                                __html: (content || '').replace(/\n/g, '<br />').replace(/### (.*)/g, '<h3>$1</h3>') 
+                            }} 
+                        />
+                    ) : canEdit && isEditing ? (
                         <Textarea
-                            value={content}
+                            value={content || ''}
                             onChange={(e) => setContent(e.target.value)}
                             className="w-full min-h-[300px] bg-secondary text-base leading-relaxed"
                             autoFocus
                         />
                     ) : (
-                         <div className="prose prose-invert max-w-none text-muted-foreground" dangerouslySetInnerHTML={{ __html: content.replace(/\n/g, '<br />').replace(/### (.*)/g, '<h3>$1</h3>') }} />
+                         <div 
+                            className="prose prose-invert max-w-none text-muted-foreground" 
+                            dangerouslySetInnerHTML={{ 
+                                __html: (content || '').replace(/\n/g, '<br />').replace(/### (.*)/g, '<h3>$1</h3>') 
+                            }} 
+                        />
                     )}
 
-                    {isAdmin && (
+                    {canEdit && (
                         <div className="mt-6 text-right">
                             {isEditing ? (
                                 <div className="flex gap-2 justify-end">
-                                    <Button variant="ghost" onClick={() => { setIsEditing(false); setContent(chaveContent); }}>Cancelar</Button>
+                                    <Button variant="ghost" onClick={() => { setIsEditing(false); setContent(chaveContent || ''); }}>Cancelar</Button>
                                     <Button onClick={handleSave} className="gap-2">
                                         <Save className="w-4 h-4" /> Salvar
                                     </Button>

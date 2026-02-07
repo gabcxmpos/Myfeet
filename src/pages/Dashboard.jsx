@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 
 const pillarIcons = {
@@ -100,11 +102,160 @@ const SupervisorAnalysisRow = ({ supervisor, stores, score }) => {
   );
 };
 
+// Função para calcular gaps baseado em perguntas com pontuação abaixo de 70
+const calculateGaps = (approvedEvaluations, forms) => {
+  const gapsByPillar = {
+    Pessoas: [],
+    Performance: [],
+    Ambientação: [],
+    Digital: [],
+  };
+
+  // Garantir que forms seja sempre um array
+  const safeForms = Array.isArray(forms) ? forms : [];
+  
+  if (!approvedEvaluations || approvedEvaluations.length === 0 || !safeForms || safeForms.length === 0) {
+    console.log('⚠️ [calculateGaps] Sem dados suficientes:', {
+      evaluations: approvedEvaluations?.length || 0,
+      forms: safeForms?.length || 0
+    });
+    return gapsByPillar;
+  }
+
+  console.log('🔍 [calculateGaps] Calculando gaps:', {
+    evaluations: approvedEvaluations.length,
+    forms: safeForms.length
+  });
+
+  // Criar mapa de formulários por ID para acesso rápido
+  const formsMap = new Map(safeForms.map(f => [f.id, f]));
+
+  // Agrupar avaliações por pilar
+  const evaluationsByPillar = {};
+  approvedEvaluations.forEach(evaluation => {
+    const pillar = evaluation.pillar;
+    if (!evaluationsByPillar[pillar]) {
+      evaluationsByPillar[pillar] = [];
+    }
+    evaluationsByPillar[pillar].push(evaluation);
+  });
+
+  // Para cada pilar, analisar as avaliações
+  Object.keys(gapsByPillar).forEach(pillar => {
+    const pillarEvals = evaluationsByPillar[pillar] || [];
+    const questionGaps = new Map(); // Map<questionId, {count: number, totalScore: number, questionText: string}>
+
+    pillarEvals.forEach(evaluation => {
+      const form = formsMap.get(evaluation.form_id || evaluation.formId);
+      if (!form) return;
+
+      // Parsear questions se for string JSON
+      let questions = form.questions;
+      if (typeof questions === 'string') {
+        try {
+          questions = JSON.parse(questions);
+        } catch (e) {
+          console.warn('⚠️ Erro ao parsear questions do formulário:', e);
+          return;
+        }
+      }
+
+      if (!questions || !Array.isArray(questions) || !evaluation.answers) return;
+
+      // Parsear answers se for string JSON
+      let answers = evaluation.answers;
+      if (typeof answers === 'string') {
+        try {
+          answers = JSON.parse(answers);
+        } catch (e) {
+          console.warn('⚠️ Erro ao parsear answers da avaliação:', e);
+          return;
+        }
+      }
+
+      // Analisar cada pergunta da avaliação
+      questions.forEach(question => {
+        if (question.type === 'text') return; // Ignorar perguntas de texto
+
+        const answer = answers[question.id];
+        if (answer === undefined || answer === null) return;
+
+        let questionScore = 0;
+        let maxScore = 0;
+
+        // Calcular pontuação da pergunta
+        if (question.type === 'satisfaction') {
+          questionScore = answer || 0;
+          maxScore = 10;
+        } else if (question.type === 'multiple-choice') {
+          const selectedOption = question.options?.find(opt => opt.text === answer);
+          questionScore = selectedOption?.value || 0;
+          maxScore = Math.max(...(question.options?.map(o => o.value || 0) || [0]), 0);
+        } else if (question.type === 'checkbox') {
+          if (Array.isArray(answer) && answer.length > 0) {
+            answer.forEach(ans => {
+              const selectedOption = question.options?.find(opt => opt.text === ans);
+              if (selectedOption) {
+                questionScore += selectedOption.value || 0;
+              }
+            });
+          }
+          maxScore = question.options?.reduce((sum, opt) => sum + (opt.value > 0 ? opt.value : 0), 0) || 0;
+        }
+
+        // Calcular pontuação percentual (0-100)
+        const percentageScore = maxScore > 0 ? (questionScore / maxScore) * 100 : 0;
+
+        // Se a pontuação for abaixo de 70, registrar como gap
+        if (percentageScore < 70) {
+          if (!questionGaps.has(question.id)) {
+            questionGaps.set(question.id, {
+              count: 0,
+              totalScore: 0,
+              questionText: question.text || question.question || 'Pergunta sem texto',
+            });
+          }
+          const gap = questionGaps.get(question.id);
+          gap.count += 1;
+          gap.totalScore += percentageScore;
+        }
+      });
+    });
+
+    // Converter gaps em lista de strings descritivas
+    const gapsList = Array.from(questionGaps.entries())
+      .map(([questionId, gap]) => {
+        const avgScore = Math.round(gap.totalScore / gap.count);
+        return `${gap.questionText} (${gap.count} avaliação${gap.count > 1 ? 'ões' : ''} com média de ${avgScore} pontos)`;
+      })
+      .sort((a, b) => {
+        // Ordenar por frequência (mais frequente primeiro)
+        const countA = parseInt(a.match(/\((\d+)/)?.[1] || '0');
+        const countB = parseInt(b.match(/\((\d+)/)?.[1] || '0');
+        return countB - countA;
+      })
+      .slice(0, 5); // Limitar a 5 gaps mais frequentes por pilar
+
+    gapsByPillar[pillar] = gapsList;
+  });
+
+  return gapsByPillar;
+};
+
 const Dashboard = () => {
-  const { stores, feedbacks, evaluations } = useData();
+  const { stores, feedbacks, evaluations, forms } = useData();
   const { user } = useAuth();
   const { toast } = useToast();
   const [filters, setFilters] = useState({ store: [], bandeira: [], franqueado: [], supervisor: [], estado: [] });
+  const [dateStart, setDateStart] = useState(() => {
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    return firstDay.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
+  const [dateEnd, setDateEnd] = useState(() => {
+    const now = new Date();
+    return now.toISOString().split('T')[0]; // YYYY-MM-DD
+  });
 
   const filterOptions = useMemo(() => {
     return {
@@ -130,18 +281,56 @@ const Dashboard = () => {
     });
 
     const filteredStoreIds = new Set(filteredStores.map(s => s.id));
-    const filteredEvaluations = evaluations.filter(e => filteredStoreIds.has(e.storeId));
-    const filteredFeedbacks = feedbacks.filter(f => filteredStoreIds.has(f.storeId));
+    
+    // Filtrar avaliações e feedbacks por período (data início e data fim)
+    const filteredEvaluations = evaluations.filter(e => {
+      const evalStoreId = e.storeId || e.store_id;
+      if (!filteredStoreIds.has(evalStoreId)) return false;
+      
+      // Se tiver data, filtrar por intervalo de datas
+      if (e.created_at || e.date) {
+        const evalDate = e.created_at || e.date;
+        const evalDateStr = evalDate.split('T')[0]; // YYYY-MM-DD
+        return evalDateStr >= dateStart && evalDateStr <= dateEnd;
+      }
+      return true; // Se não tiver data, incluir
+    });
+    
+    const filteredFeedbacks = feedbacks.filter(f => {
+      if (!filteredStoreIds.has(f.storeId)) return false;
+      
+      // Se tiver data, filtrar por intervalo de datas
+      if (f.created_at || f.date) {
+        const feedbackDate = f.created_at || f.date;
+        const feedbackDateStr = feedbackDate.split('T')[0]; // YYYY-MM-DD
+        return feedbackDateStr >= dateStart && feedbackDateStr <= dateEnd;
+      }
+      return true; // Se não tiver data, incluir
+    });
     
     return { filteredStores, filteredEvaluations, filteredFeedbacks };
-  }, [stores, evaluations, feedbacks, filters]);
+  }, [stores, evaluations, feedbacks, filters, dateStart, dateEnd]);
 
   const dashboardData = useMemo(() => {
     const { filteredStores, filteredEvaluations, filteredFeedbacks } = filteredData;
     
-    const isLoja = user.role === 'loja';
+    console.log('📊 [Dashboard] Dados recebidos:', {
+      stores: filteredStores.length,
+      evaluations: filteredEvaluations.length,
+      feedbacks: filteredFeedbacks.length,
+      allEvaluations: evaluations.length,
+      allFeedbacks: feedbacks.length
+    });
     
-    const relevantFeedbacks = isLoja ? feedbacks.filter(fb => fb.storeId === user.storeId) : filteredFeedbacks;
+    const isLoja = user.role === 'loja' || user.role === 'loja_franquia';
+    const isFinanceiro = user.role === 'financeiro';
+    const isDigital = user.role === 'digital';
+    const isSupervisor = user.role === 'supervisor' || user.role === 'supervisor_franquia';
+    
+    // Para loja, filtrar feedbacks por storeId E por período
+    const relevantFeedbacks = isLoja 
+      ? filteredFeedbacks.filter(fb => fb.storeId === user.storeId)
+      : filteredFeedbacks;
     const feedbackSummary = relevantFeedbacks.reduce((acc, fb) => {
         acc[fb.satisfaction] = (acc[fb.satisfaction] || 0) + 1;
         if(fb.isPromotionCandidate) {
@@ -150,35 +339,72 @@ const Dashboard = () => {
         return acc;
     }, {});
 
+    // Buscar apenas avaliações aprovadas
+    const approvedEvaluations = filteredEvaluations.filter(e => e.status === 'approved');
+    
+    console.log('✅ [Dashboard] Avaliações aprovadas:', approvedEvaluations.length);
 
     if (isLoja) {
-        // Logic for single store view remains unchanged
+        // Calcular dados reais para loja
+        const storeEvals = approvedEvaluations.filter(e => {
+          const evalStoreId = e.storeId || e.store_id;
+          return evalStoreId === user.storeId;
+        });
+        const overallScore = storeEvals.length > 0 
+          ? Math.round(storeEvals.reduce((sum, e) => sum + e.score, 0) / storeEvals.length)
+          : 0;
+        
+        // Calcular por pilar
+        const pillars = ['Pessoas', 'Performance', 'Ambientação', 'Digital'];
+        const pillarScores = pillars.map(pillar => {
+          const pillarEvals = storeEvals.filter(e => e.pillar === pillar);
+          const score = pillarEvals.length > 0
+            ? Math.round(pillarEvals.reduce((sum, e) => sum + e.score, 0) / pillarEvals.length)
+            : 0;
+          return { name: pillar, score };
+        });
+        
+        // Calcular gaps para loja
+        const gaps = calculateGaps(storeEvals, forms);
+        
         return {
-            overallScore: 91,
-            pillars: [
-              { name: 'Pessoas', score: 92 },
-              { name: 'Performance', score: 88 },
-              { name: 'Ambientação', score: 95 },
-              { name: 'Digital', score: 90 },
-            ],
-            gaps: {
-              Pessoas: ['Simpatia no caixa'],
-              Performance: [],
-              Ambientação: ['Organização do estoque'],
-              Digital: ['Uso da prateleira infinita'],
-            },
+            overallScore,
+            pillars: pillarScores,
+            gaps,
             feedbackSummary,
         }
     }
 
-    // Admin/Supervisor logic with filters
+    // Admin/Supervisor/Financeiro/Digital logic with filters - CALCULAR DADOS REAIS
     const storeScores = filteredStores.map(store => {
-        const storeEvals = filteredEvaluations.filter(e => e.storeId === store.id && e.status === 'approved');
-        const avgScore = storeEvals.length > 0 ? storeEvals.reduce((sum, e) => sum + e.score, 0) / storeEvals.length : 0;
-        return { ...store, score: Math.round(avgScore) };
+        const storeEvals = approvedEvaluations.filter(e => {
+          // Aceitar tanto camelCase quanto snake_case
+          const evalStoreId = e.storeId || e.store_id;
+          return evalStoreId === store.id;
+        });
+        const avgScore = storeEvals.length > 0 
+          ? Math.round(storeEvals.reduce((sum, e) => sum + e.score, 0) / storeEvals.length)
+          : 0;
+        return { ...store, score: avgScore };
     });
 
-    const supervisorsList = [...new Set(filteredStores.map(s => s.supervisor))];
+    // Calcular pontuação geral
+    const allScores = storeScores.map(s => s.score).filter(s => s > 0);
+    const overallScore = allScores.length > 0
+      ? Math.round(allScores.reduce((sum, s) => sum + s, 0) / allScores.length)
+      : 0;
+
+    // Calcular por pilar
+    const pillars = ['Pessoas', 'Performance', 'Ambientação', 'Digital'];
+    const pillarScores = pillars.map(pillar => {
+      const pillarEvals = approvedEvaluations.filter(e => e.pillar === pillar);
+      const score = pillarEvals.length > 0
+        ? Math.round(pillarEvals.reduce((sum, e) => sum + e.score, 0) / pillarEvals.length)
+        : 0;
+      return { name: pillar, score, trend: null }; // Trend pode ser calculado depois
+    });
+
+    const supervisorsList = [...new Set(filteredStores.map(s => s.supervisor).filter(Boolean))];
     const supervisorAnalysis = supervisorsList.map(sup => {
         const supStores = storeScores.filter(s => s.supervisor === sup);
         const totalScore = supStores.reduce((sum, s) => sum + s.score, 0);
@@ -190,25 +416,25 @@ const Dashboard = () => {
         };
     });
 
+    // Calcular gaps para admin/supervisor
+    const gaps = calculateGaps(approvedEvaluations, forms);
+
+    console.log('📊 [Dashboard] Dados calculados:', {
+      overallScore,
+      pillarScores,
+      supervisorAnalysis: supervisorAnalysis.length,
+      gaps: Object.keys(gaps).map(p => ({ pillar: p, count: gaps[p].length }))
+    });
+
     return {
-        overallScore: 88,
-        overallTrend: 2.5,
-        pillars: [
-          { name: 'Pessoas', score: 85, trend: 3 },
-          { name: 'Performance', score: 92, trend: 1.2 },
-          { name: 'Ambientação', score: 82, trend: -0.5 },
-          { name: 'Digital', score: 90, trend: 5 },
-        ],
-        gaps: {
-          Pessoas: ['Conhecimento de produto', 'Simpatia no caixa'],
-          Performance: ['Atingimento P.A.', 'Conversão de vendas'],
-          Ambientação: ['Limpeza do provador', 'Organização do estoque'],
-          Digital: ['Uso da prateleira infinita', 'Postagens em redes sociais'],
-        },
+        overallScore,
+        overallTrend: null, // Pode ser calculado depois comparando com mês anterior
+        pillars: pillarScores,
+        gaps,
         supervisorAnalysis,
         feedbackSummary,
     };
-  }, [user, filteredData, feedbacks]);
+  }, [user, filteredData, feedbacks, evaluations, forms]);
 
   const handleExport = () => {
     toast({
@@ -217,7 +443,12 @@ const Dashboard = () => {
     });
   };
 
-  if (user.role === 'loja') {
+  const isLoja = user.role === 'loja' || user.role === 'loja_franquia';
+  const isFinanceiro = user.role === 'financeiro';
+  const isDigital = user.role === 'digital';
+  const isSupervisor = user.role === 'supervisor' || user.role === 'supervisor_franquia';
+  
+  if (isLoja) {
     const storeInfo = stores.find(s => s.id === user.storeId);
     return (
         <>
@@ -231,6 +462,32 @@ const Dashboard = () => {
                     <Button onClick={handleExport} variant="outline" className="gap-2">
                         <Download className="w-4 h-4" /> Extrair PDF
                     </Button>
+                </div>
+                {/* Filtros de Período para Loja */}
+                <div className="flex flex-wrap items-center gap-4 bg-card p-4 rounded-lg border border-border/50">
+                    <div className="space-y-1">
+                        <Label htmlFor="dateStartLoja" className="text-xs text-muted-foreground">Data Início</Label>
+                        <Input
+                            id="dateStartLoja"
+                            type="date"
+                            value={dateStart}
+                            onChange={(e) => setDateStart(e.target.value)}
+                            max={dateEnd}
+                            className="w-36 bg-secondary h-9 text-sm"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label htmlFor="dateEndLoja" className="text-xs text-muted-foreground">Data Fim</Label>
+                        <Input
+                            id="dateEndLoja"
+                            type="date"
+                            value={dateEnd}
+                            onChange={(e) => setDateEnd(e.target.value)}
+                            min={dateStart}
+                            className="w-36 bg-secondary h-9 text-sm"
+                        />
+                    </div>
+                    <div className="flex-1" />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                     <KpiCard title="Pontuação Geral" score={dashboardData.overallScore} icon={Award} color="text-yellow-400" className="lg:col-span-1" />
@@ -265,7 +522,29 @@ const Dashboard = () => {
                 <Download className="w-4 h-4" /> Extrair PDF
               </Button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-2">
+                <div className="space-y-1">
+                  <Label htmlFor="dateStart" className="text-xs text-muted-foreground">Data Início</Label>
+                  <Input
+                    id="dateStart"
+                    type="date"
+                    value={dateStart}
+                    onChange={(e) => setDateStart(e.target.value)}
+                    max={dateEnd}
+                    className="w-full bg-secondary h-9 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="dateEnd" className="text-xs text-muted-foreground">Data Fim</Label>
+                  <Input
+                    id="dateEnd"
+                    type="date"
+                    value={dateEnd}
+                    onChange={(e) => setDateEnd(e.target.value)}
+                    min={dateStart}
+                    className="w-full bg-secondary h-9 text-sm"
+                  />
+                </div>
                 <MultiSelectFilter options={filterOptions.stores} selected={filters.store} onChange={(val) => handleFilterChange('store', val)} placeholder="Filtrar por Loja..." />
                 <MultiSelectFilter options={filterOptions.bandeiras} selected={filters.bandeira} onChange={(val) => handleFilterChange('bandeira', val)} placeholder="Filtrar por Bandeira..." />
                 <MultiSelectFilter options={filterOptions.franqueados} selected={filters.franqueado} onChange={(val) => handleFilterChange('franqueado', val)} placeholder="Filtrar por Franquia..." />
@@ -290,7 +569,7 @@ const Dashboard = () => {
             <FeedbackSummaryCard summary={dashboardData.feedbackSummary} className="lg:col-span-1" />
         </div>
         
-        { user.role === 'admin' && (
+        { (user.role === 'admin' || isSupervisor) && dashboardData.supervisorAnalysis && dashboardData.supervisorAnalysis.length > 0 && (
           <div className="bg-card rounded-xl shadow-lg border border-border/50 overflow-hidden">
             <div className="p-6">
                 <h2 className="text-lg font-semibold text-foreground flex items-center gap-2"><Shield className="text-primary"/>Análise por Supervisor</h2>

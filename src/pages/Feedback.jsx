@@ -27,30 +27,47 @@ const Feedback = () => {
   const [feedbackText, setFeedbackText] = useState('');
   const [developmentPoint, setDevelopmentPoint] = useState('');
   const [satisfaction, setSatisfaction] = useState(3);
+  const [managerSatisfaction, setManagerSatisfaction] = useState(3); // Satisfação do gerente com o colaborador
+  const [collaboratorSatisfaction, setCollaboratorSatisfaction] = useState(3); // Satisfação do colaborador
   const [isPromotionCandidate, setIsPromotionCandidate] = useState(false);
 
-  const storeCollaborators = collaborators.filter(c => c.storeId === user.storeId);
+  const storeCollaborators = collaborators.filter(c => c.storeId === user?.storeId || c.store_id === user?.storeId);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!collaboratorId || !feedbackText) {
       toast({ title: 'Erro', description: 'Selecione um colaborador e escreva o feedback.', variant: 'destructive' });
       return;
     }
-    addFeedback({
-      storeId: user.storeId,
-      collaboratorId,
-      feedbackText,
-      developmentPoint,
-      satisfaction,
-      isPromotionCandidate,
-    });
-    toast({ title: 'Sucesso!', description: 'Feedback enviado para o supervisor.' });
-    setCollaboratorId('');
-    setFeedbackText('');
-    setDevelopmentPoint('');
-    setSatisfaction(3);
-    setIsPromotionCandidate(false);
+    
+    if (!user?.storeId) {
+      toast({ title: 'Erro', description: 'Usuário não possui loja associada.', variant: 'destructive' });
+      return;
+    }
+    
+    try {
+      await addFeedback({
+        store_id: user.storeId, // Usar snake_case (padrão do banco)
+        collaborator_id: collaboratorId,
+        feedback_text: feedbackText,
+        development_point: developmentPoint,
+        satisfaction,
+        managerSatisfaction,
+        collaboratorSatisfaction,
+        isPromotionCandidate,
+      });
+      toast({ title: 'Sucesso!', description: 'Feedback enviado para o supervisor.' });
+      setCollaboratorId('');
+      setFeedbackText('');
+      setDevelopmentPoint('');
+      setSatisfaction(3);
+      setManagerSatisfaction(3);
+      setCollaboratorSatisfaction(3);
+      setIsPromotionCandidate(false);
+    } catch (error) {
+      // Erro já é tratado no DataContext
+      console.error('Erro ao enviar feedback:', error);
+    }
   };
 
   return (
@@ -80,15 +97,26 @@ const Feedback = () => {
                 </SelectContent>
               </Select>
             </div>
-             <div className="space-y-2">
-              <Label>Nível de Satisfação</Label>
-               <div className="flex items-center justify-around p-2 bg-secondary rounded-lg">
+            <div className="space-y-2">
+              <Label>Satisfação do Gerente com o Colaborador</Label>
+              <div className="flex items-center justify-around p-2 bg-secondary rounded-lg">
                 {satisfactionLevels.map(({level, icon: Icon, color}) => (
-                  <button key={level} type="button" onClick={() => setSatisfaction(level)} className="p-2 rounded-full transition-all duration-200 hover:bg-accent">
-                    <Icon className={cn("w-8 h-8", satisfaction === level ? color : 'text-muted-foreground/50')} />
+                  <button key={level} type="button" onClick={() => setManagerSatisfaction(level)} className="p-2 rounded-full transition-all duration-200 hover:bg-accent">
+                    <Icon className={cn("w-8 h-8", managerSatisfaction === level ? color : 'text-muted-foreground/50')} />
                   </button>
                 ))}
-               </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Satisfação do Colaborador</Label>
+            <div className="flex items-center justify-around p-2 bg-secondary rounded-lg">
+              {satisfactionLevels.map(({level, icon: Icon, color}) => (
+                <button key={level} type="button" onClick={() => setCollaboratorSatisfaction(level)} className="p-2 rounded-full transition-all duration-200 hover:bg-accent">
+                  <Icon className={cn("w-8 h-8", collaboratorSatisfaction === level ? color : 'text-muted-foreground/50')} />
+                </button>
+              ))}
             </div>
           </div>
           
