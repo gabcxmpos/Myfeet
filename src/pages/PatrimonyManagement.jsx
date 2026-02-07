@@ -1800,42 +1800,6 @@ const PatrimonyManagement = () => {
                   </Select>
                 </div>
               </div>
-              <div>
-                <Label>Ícone do Equipamento</Label>
-                <div className="grid grid-cols-6 gap-2 mt-2 p-3 border rounded-lg max-h-[200px] overflow-y-auto">
-                  {availableIcons.map(iconData => {
-                    const Icon = iconData.icon;
-                    const isSelected = equipmentForm.icon_name === iconData.name;
-                    const currentType = equipmentTypesList.find(t => t.value === equipmentForm.equipment_type);
-                    const shouldSelect = !equipmentForm.icon_name && currentType?.iconName === iconData.name;
-                    
-                    return (
-                      <button
-                        key={iconData.name}
-                        type="button"
-                        onClick={() => {
-                          const selectedType = equipmentTypesList.find(t => t.value === equipmentForm.equipment_type);
-                          setEquipmentForm({
-                            ...equipmentForm,
-                            icon_name: iconData.name
-                          });
-                        }}
-                        className={`p-2 rounded border transition-all ${
-                          isSelected || shouldSelect
-                            ? 'border-primary bg-primary/10 ring-2 ring-primary'
-                            : 'border-border hover:border-primary/50 hover:bg-accent'
-                        }`}
-                        title={iconData.label}
-                      >
-                        <Icon className={`w-5 h-5 mx-auto ${isSelected || shouldSelect ? 'text-primary' : 'text-muted-foreground'}`} />
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Selecione um ícone para este equipamento (opcional)
-                </p>
-              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Marca</Label>
