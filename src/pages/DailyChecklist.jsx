@@ -638,11 +638,11 @@ const AdminSupervisorChecklistView = () => {
                                                 const dayCompleted = Object.values(dayTasks).filter(Boolean).length;
                                                 const dayCompletedGerencial = Object.values(dayGerencialTasks).filter(Boolean).length;
                                                 const dayPercentage = dailyTasks.length > 0 ? (dayCompleted / dailyTasks.length) * 100 : 0;
-                                                const canAudit = dayPercentage >= 5; // Pelo menos 5% das tarefas devem estar completas
                                                 const dateKey = `${store.id}-${dayChecklist.date}`;
                                                 const isAudited = auditedStatus[dateKey] === true || dayChecklist.is_audited === true;
                                                 const checklistKey = `${store.id}-${dayChecklist.date}`;
                                                 const isAuditing = auditingChecklist === checklistKey;
+                                                const canAudit = dayPercentage >= 5; // Pelo menos 5% das tarefas devem estar completas
                                                 
                                                 return (
                                                     <Card key={dayChecklist.date} className="bg-secondary/50">
