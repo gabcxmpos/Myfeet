@@ -782,6 +782,8 @@ const AdminSupervisorGerencialChecklistView = () => {
                         const dayCompleted = Object.values(dayGerencialTasks).filter(Boolean).length;
                         const dayCompletedDaily = Object.values(dayDailyTasks).filter(Boolean).length;
                         const dayPercentage = gerencialTasks.length > 0 ? (dayCompleted / gerencialTasks.length) * 100 : 0;
+                        // Definir canAudit ANTES de qualquer uso
+                        const canAudit = dayPercentage >= 5; // Pelo menos 5% das tarefas devem estar completas
                         const isCompleted = dayPercentage === 100;
                         const dateKey = `${store.id}-${dayChecklist.date}`;
                         const isAudited = auditedStatus[dateKey] === true || dayChecklist.is_audited === true;
