@@ -1,9 +1,40 @@
 
 import { supabase } from '@/lib/customSupabaseClient';
 import { format } from 'date-fns';
+import { 
+  mockStores, 
+  mockUsers, 
+  mockDailyTasks, 
+  mockGerencialTasks, 
+  mockChecklists,
+  generateMockChecklistHistory,
+  mockForms,
+  generateMockEvaluations,
+  mockCollaborators,
+  generateMockFeedbacks,
+  mockSettings,
+  mockMenuVisibility,
+  mockJobRoles
+} from './mockData';
+
+// Modo de desenvolvimento com dados fictícios
+// Para ativar temporariamente: defina como true
+// Para usar dados reais do servidor: defina como false
+const USE_MOCK_DATA = false; // DESATIVADO - Usando dados reais do servidor
+
+// Log para debug (apenas em desenvolvimento)
+if (import.meta.env.DEV) {
+  console.log('🔧 Modo Mock Data:', USE_MOCK_DATA ? 'ATIVADO ✅' : 'DESATIVADO ❌ (Dados reais do servidor)');
+}
 
 // ============ STORES ============
 export const fetchStores = async () => {
+  if (USE_MOCK_DATA) {
+    // Simular delay de API
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return mockStores;
+  }
+  
   const { data, error } = await supabase
     .from('stores')
     .select('*')
@@ -47,6 +78,15 @@ export const deleteStore = async (id) => {
 
 // ============ USERS ============
 export const fetchAppUsers = async () => {
+  if (USE_MOCK_DATA) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return mockUsers.map(user => ({
+      ...user,
+      username: user.name,
+      stores: user.storeId ? { name: mockStores.find(s => s.id === user.storeId)?.name } : null
+    }));
+  }
+  
   const { data, error } = await supabase
     .from('app_users')
     .select('*, stores(name)')
@@ -117,6 +157,11 @@ export const updateLastLogin = async (userId) => {
 
 // ============ FORMS ============
 export const fetchForms = async () => {
+  if (USE_MOCK_DATA) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return mockForms;
+  }
+  
   const { data, error } = await supabase
     .from('forms')
     .select('*')
@@ -160,6 +205,16 @@ export const deleteForm = async (id) => {
 
 // ============ EVALUATIONS ============
 export const fetchEvaluations = async () => {
+  if (USE_MOCK_DATA) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const evaluations = generateMockEvaluations();
+    return evaluations.map(evaluation => ({
+      ...evaluation,
+      stores: { name: mockStores.find(s => s.id === evaluation.storeId)?.name, code: mockStores.find(s => s.id === evaluation.storeId)?.code },
+      app_users: { username: mockUsers.find(u => u.id === evaluation.userId)?.name }
+    }));
+  }
+  
   const { data, error } = await supabase
     .from('evaluations')
     .select('*, stores(name, code), app_users(username)')
@@ -203,6 +258,15 @@ export const deleteEvaluation = async (id) => {
 
 // ============ COLLABORATORS ============
 export const fetchCollaborators = async (storeId = null) => {
+  if (USE_MOCK_DATA) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    let collaborators = mockCollaborators;
+    if (storeId) {
+      collaborators = collaborators.filter(c => c.storeId === storeId);
+    }
+    return collaborators;
+  }
+  
   let query = supabase
     .from('collaborators')
     .select('*')
@@ -240,6 +304,19 @@ export const deleteCollaborator = async (id) => {
 
 // ============ FEEDBACKS ============
 export const fetchFeedbacks = async (storeId = null) => {
+  if (USE_MOCK_DATA) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    let feedbacks = generateMockFeedbacks();
+    if (storeId) {
+      feedbacks = feedbacks.filter(f => f.storeId === storeId);
+    }
+    return feedbacks.map(f => ({
+      ...f,
+      stores: { name: mockStores.find(s => s.id === f.storeId)?.name },
+      collaborators: { name: mockCollaborators.find(c => c.storeId === f.storeId)?.name }
+    }));
+  }
+  
   let query = supabase
     .from('feedbacks')
     .select('*, stores(name), collaborators(name)')
@@ -268,6 +345,19 @@ export const createFeedback = async (feedbackData) => {
 
 // ============ DAILY CHECKLISTS ============
 export const fetchDailyChecklist = async (storeId, date) => {
+  if (USE_MOCK_DATA) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    const checklist = mockChecklists[storeId];
+    if (!checklist) return null;
+    return {
+      store_id: storeId,
+      date,
+      tasks: checklist.tasks,
+      gerencialTasks: checklist.gerencialTasks,
+      is_audited: false
+    };
+  }
+  
   const { data, error } = await supabase
     .from('daily_checklists')
     .select('*')
@@ -332,6 +422,11 @@ export const upsertDailyChecklist = async (storeId, date, tasks, gerencialTasks 
 };
 
 export const fetchChecklistHistory = async (storeId, days = 7) => {
+  if (USE_MOCK_DATA) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return generateMockChecklistHistory(storeId, days);
+  }
+  
   try {
     const endDate = new Date();
     const startDate = new Date();
@@ -365,6 +460,32 @@ export const fetchChecklistHistory = async (storeId, days = 7) => {
 
 // ============ APP SETTINGS ============
 export const fetchAppSettings = async (key) => {
+  if (USE_MOCK_DATA) {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    // Retornar dados mock específicos para cada chave
+    if (key === 'patent_settings') {
+      return mockSettings.patent_settings;
+    }
+    if (key === 'chave_content') {
+      return { initialContent: mockSettings.chave_content };
+    }
+    if (key === 'menu_visibility') {
+      return mockMenuVisibility;
+    }
+    if (key === 'job_roles') {
+      return mockJobRoles;
+    }
+    if (key === 'daily_tasks') {
+      return mockDailyTasks;
+    }
+    if (key === 'gerencial_tasks') {
+      return mockGerencialTasks;
+    }
+    
+    return mockSettings[key] || null;
+  }
+  
   const { data, error } = await supabase
     .from('app_settings')
     .select('*')

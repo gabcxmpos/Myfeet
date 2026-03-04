@@ -169,6 +169,94 @@ export const DataProvider = ({ children }) => {
       setTrainingRegistrations([]);
     }
   }, [isAuthenticated, fetchData]);
+
+  // Subscription Realtime para daily_checklists
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    console.log('🔌 [DataContext] Configurando subscription Realtime para daily_checklists');
+
+    const checklistChannel = supabase
+      .channel('daily_checklists_realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'daily_checklists',
+        },
+        async (payload) => {
+          console.log('🔄 [DataContext] Mudança detectada em daily_checklists:', {
+            eventType: payload.eventType,
+            storeId: payload.new?.store_id || payload.old?.store_id,
+            date: payload.new?.date || payload.old?.date,
+          });
+
+          // Recarregar checklist específico do banco
+          if (payload.new?.store_id && payload.new?.date) {
+            try {
+              const updatedChecklist = await api.fetchDailyChecklist(
+                payload.new.store_id,
+                payload.new.date
+              );
+
+              if (updatedChecklist) {
+                // Atualizar estado local do checklist
+                setChecklist((prev) => ({
+                  ...prev,
+                  [payload.new.store_id]: {
+                    ...(prev[payload.new.store_id] || {}),
+                    date: payload.new.date,
+                    tasks: updatedChecklist.tasks || {},
+                    gerencialTasks: updatedChecklist.gerencialTasks || {},
+                  },
+                }));
+
+                console.log('✅ [DataContext] Checklist atualizado em tempo real:', {
+                  storeId: payload.new.store_id,
+                  date: payload.new.date,
+                });
+              }
+            } catch (error) {
+              console.error('❌ [DataContext] Erro ao buscar checklist atualizado:', error);
+            }
+          }
+
+          // Se foi DELETE, remover do estado local
+          if (payload.eventType === 'DELETE' && payload.old?.store_id) {
+            setChecklist((prev) => {
+              const updated = { ...prev };
+              if (updated[payload.old.store_id]) {
+                const storeChecklist = { ...updated[payload.old.store_id] };
+                if (storeChecklist.date === payload.old.date) {
+                  delete updated[payload.old.store_id];
+                } else {
+                  updated[payload.old.store_id] = storeChecklist;
+                }
+              }
+              return updated;
+            });
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (err) {
+          console.error('❌ [DataContext] Erro na subscription daily_checklists:', err);
+        }
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ [DataContext] Subscription daily_checklists ativa!');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ [DataContext] Erro no canal daily_checklists');
+        } else if (status === 'TIMED_OUT') {
+          console.error('❌ [DataContext] Timeout na subscription daily_checklists');
+        }
+      });
+
+    return () => {
+      console.log('🔌 [DataContext] Desconectando subscription daily_checklists...');
+      checklistChannel.unsubscribe();
+    };
+  }, [isAuthenticated]);
   
   // Wrapper for API calls to refresh local state
   const handleApiCall = useCallback(async (apiCall, successMsg) => {

@@ -85,8 +85,8 @@ function App() {
                 <Route path="training" element={<ProtectedRoute allowedRoles={['loja', 'loja_franquia']}><Training /></ProtectedRoute>} />
                 {/* Devoluções Consolidada (admin, supervisor, supervisor_franquia, loja, devoluções, financeiro) */}
                 <Route path="returns" element={<ProtectedRoute allowedRoles={['admin', 'supervisor', 'supervisor_franquia', 'loja', 'loja_franquia', 'devoluções', 'financeiro']}><ReturnsConsolidated /></ProtectedRoute>} />
-                {/* Rota alternativa para planner (compatibilidade) */}
-                <Route path="returns-planner" element={<ProtectedRoute allowedRoles={['devoluções', 'admin']}><ReturnsConsolidated /></ProtectedRoute>} />
+                {/* Rota alternativa para planner (compatibilidade) - compras pode acessar */}
+                <Route path="returns-planner" element={<ProtectedRoute allowedRoles={['devoluções', 'admin', 'compras']}><ReturnsConsolidated /></ProtectedRoute>} />
                 <Route path="chave" element={<Chave />} />
                 <Route path="checklist" element={<DailyChecklist />} />
                 <Route path="checklist-audit-analytics" element={<ProtectedRoute allowedRoles={['admin']}><ChecklistAuditAnalytics /></ProtectedRoute>} />

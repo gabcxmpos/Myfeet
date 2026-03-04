@@ -39,8 +39,8 @@ const allMenuItems = [
     { path: '/training-management', icon: GraduationCap, label: 'Agenda de Treinamentos', roles: ['admin', 'supervisor', 'supervisor_franquia', 'comunicação', 'digital'] },
     { path: '/training', icon: GraduationCap, label: 'Treinamentos', roles: ['loja', 'loja_franquia'] },
     { path: '/returns', icon: RotateCcw, label: 'Devoluções', roles: ['admin', 'supervisor', 'loja', 'devoluções', 'financeiro'] }, // SEM loja_franquia e supervisor_franquia
-    // Planner de Devoluções ainda aparece separado para perfil devoluções (não admin)
-    { path: '/returns-planner', icon: Calendar, label: 'Planner de Devoluções', roles: ['devoluções'] },
+    // Planner de Devoluções - perfil devoluções e compras (compras só visualiza)
+    { path: '/returns-planner', icon: Calendar, label: 'Planner de Devoluções', roles: ['devoluções', 'compras'] },
 ];
 
 const Sidebar = ({ isOpen, onClose, isCollapsed, onToggleCollapse, isDesktop: isDesktopProp }) => {
