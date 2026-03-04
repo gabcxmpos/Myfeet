@@ -100,6 +100,8 @@ const ReturnsManagement = () => {
   const isAdmin = user?.role === 'admin';
   const isStore = user?.role === 'loja' || user?.role === 'admin_loja';
   const isDevolucoes = user?.role === 'devoluções';
+  const isCompras = user?.role === 'compras';
+  const canViewOnly = isCompras; // Perfil Compras só visualiza, não edita
   
   // Debug: Verificar se returnsPlanner está sendo carregado
   useEffect(() => {
@@ -1121,8 +1123,8 @@ const ReturnsManagement = () => {
           </div>
         </div>
 
-        {/* Dashboard - Sempre visível para lojas e admin */}
-        {(isStore || isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
+        {/* Dashboard - Sempre visível para lojas, admin, supervisor, devoluções e compras */}
+        {(isStore || isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) && (
         <div className="space-y-6 mb-6">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
@@ -1141,8 +1143,8 @@ const ReturnsManagement = () => {
                 </h3>
               </div>
 
-              {/* Filtros para Devoluções Pendentes (admin/supervisor/devoluções) */}
-              {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
+              {/* Filtros para Devoluções Pendentes (admin/supervisor/devoluções/compras) */}
+              {(isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) && (
                 <Card className="p-4 bg-secondary/50 border border-yellow-500/30">
                   <h4 className="font-semibold text-foreground mb-3 text-sm">Filtros de Devoluções Pendentes</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -1596,8 +1598,8 @@ const ReturnsManagement = () => {
 
           {/* ABA PENDENTES */}
           <TabsContent value="pending" className="space-y-4 mt-4">
-            {/* Filtros (admin/supervisor/devoluções) */}
-            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
+            {/* Filtros (admin/supervisor/devoluções/compras) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) && (
               <Card className="p-4 mb-6">
                 <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1799,7 +1801,8 @@ const ReturnsManagement = () => {
                               {store?.name || 'Loja não encontrada'}
                             </p>
                           </div>
-                          {(isAdmin || isDevolucoes) && (
+                          {/* Menu de ações - apenas admin e devoluções podem editar (compras só visualiza) */}
+                          {(isAdmin || isDevolucoes) && !canViewOnly && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -1870,8 +1873,8 @@ const ReturnsManagement = () => {
                         </div>
                       </div>
                       
-                      {/* Botão COLETADO para lojas e perfil de devoluções */}
-                      {(isStore && returnItem.store_id === user?.storeId) || isDevolucoes ? (
+                      {/* Botão COLETADO para lojas e perfil de devoluções (compras não pode editar) */}
+                      {((isStore && returnItem.store_id === user?.storeId) || isDevolucoes) && !canViewOnly ? (
                         <Button
                           onClick={() => handleMarkAsCollected(returnItem.id)}
                           className="w-full gap-2 bg-green-500 hover:bg-green-600 text-white"
@@ -1889,8 +1892,8 @@ const ReturnsManagement = () => {
 
           {/* ABA COLETADOS */}
           <TabsContent value="collected" className="space-y-4 mt-4">
-            {/* Filtros (admin/supervisor/devoluções) */}
-            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
+            {/* Filtros (admin/supervisor/devoluções/compras) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) && (
               <Card className="p-4 mb-6">
                 <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1978,7 +1981,8 @@ const ReturnsManagement = () => {
                           </p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {(isAdmin || isDevolucoes) && (
+                          {/* Menu de ações - apenas admin e devoluções podem editar (compras só visualiza) */}
+                          {(isAdmin || isDevolucoes) && !canViewOnly && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -2052,8 +2056,8 @@ const ReturnsManagement = () => {
 
           {/* ABA FALTA FISICA */}
           <TabsContent value="missing" className="space-y-4 mt-4">
-            {/* Filtros (admin/supervisor/devoluções) */}
-            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
+            {/* Filtros (admin/supervisor/devoluções/compras) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) && (
               <Card className="p-4 mb-6">
                 <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2630,8 +2634,8 @@ const ReturnsManagement = () => {
 
           {/* ABA FINALIZADOS (Falta Física) */}
           <TabsContent value="finished" className="space-y-4 mt-4">
-            {/* Filtros (admin/supervisor/devoluções) */}
-            {(isAdmin || user?.role === 'supervisor' || isDevolucoes) && (
+            {/* Filtros (admin/supervisor/devoluções/compras) */}
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) && (
               <Card className="p-4 mb-6">
                 <h3 className="font-semibold text-foreground mb-4">Filtros</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

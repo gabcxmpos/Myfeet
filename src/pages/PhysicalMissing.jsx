@@ -40,6 +40,8 @@ const PhysicalMissing = () => {
   const isAdmin = user?.role === 'admin';
   const isStore = user?.role === 'loja' || user?.role === 'admin_loja';
   const isDevolucoes = user?.role === 'devoluções';
+  const isCompras = user?.role === 'compras';
+  const canViewOnly = isCompras; // Perfil Compras só visualiza, não edita
   
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('open');
@@ -163,7 +165,7 @@ const PhysicalMissing = () => {
     let filteredMissing = physicalMissing || [];
 
     // Aplicar filtros (para admin/supervisor/devoluções)
-    if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
+    if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) {
       // Filtro por data
       if (activeFilters.startDate || activeFilters.endDate) {
         filteredMissing = filteredMissing.filter(item => {
@@ -240,7 +242,7 @@ const PhysicalMissing = () => {
       if (!store) return false;
       
       // Aplicar filtros (para admin/supervisor/devoluções)
-      if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) {
         const matchStore = filters.store.length === 0 || filters.store.includes(store.id);
         const matchFranqueado = filters.franqueado.length === 0 || (store.franqueado && filters.franqueado.includes(store.franqueado));
         const matchBandeira = filters.bandeira.length === 0 || (store.bandeira && filters.bandeira.includes(store.bandeira));
@@ -294,7 +296,7 @@ const PhysicalMissing = () => {
       if (!store) return;
       
       // Para admin, supervisor e devoluções: aplicar filtros se existirem
-      if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) {
         // Se há filtros aplicados, verificar correspondência
         const hasFilters = activeFilters.store.length > 0 || 
                           activeFilters.franqueado.length > 0 || 
@@ -732,7 +734,7 @@ const PhysicalMissing = () => {
       </div>
 
       {/* Dashboard de Falta Física */}
-      {(isAdmin || isStore || user?.role === 'supervisor' || isDevolucoes) && (
+      {(isAdmin || isStore || user?.role === 'supervisor' || isDevolucoes || isCompras) && (
         <Card className="p-6 border-2 border-red-500/20 mb-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-4">
@@ -849,8 +851,8 @@ const PhysicalMissing = () => {
         </Card>
       )}
 
-      {/* Formulário para falta física (apenas lojas) */}
-      {isStore && (
+            {/* Formulário para falta física (apenas lojas) - compras não pode criar */}
+            {isStore && !canViewOnly && (
         <Card className="p-4 mb-6">
           <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Plus className="w-5 h-5" />
@@ -1545,7 +1547,8 @@ const PhysicalMissing = () => {
                         </p>
                       )}
                     </div>
-                    {(isAdmin || isDevolucoes) && (
+                    {/* Menu de ações - apenas admin e devoluções podem editar (compras só visualiza) */}
+                    {(isAdmin || isDevolucoes) && !canViewOnly && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">

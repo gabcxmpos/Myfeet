@@ -9,13 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, Calendar, TrendingUp, History, ChevronDown, ChevronUp, CheckCircle2, Briefcase } from 'lucide-react';
+import { CheckCircle, Calendar, TrendingUp, History, ChevronDown, ChevronUp, CheckCircle2, Briefcase, XCircle } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import * as api from '@/lib/supabaseService';
-import { AdminSupervisorGerencialChecklistView } from '@/pages/GerencialChecklist';
 import StoreDailyChecklist from './StoreDailyChecklist';
 import {
   Dialog,
@@ -261,22 +260,28 @@ const StoreChecklistView = ({ storeId }) => {
 };
 
 const AdminSupervisorChecklistView = () => {
-    const { stores, dailyTasks, checklist, updateChecklist, fetchData } = useData();
+    const { stores, dailyTasks, gerencialTasks, checklist, updateChecklist, updateGerencialChecklist, fetchData } = useData();
     const { user } = useAuth();
     const { toast } = useToast();
     const [checklistHistories, setChecklistHistories] = useState({});
     const [loadingHistories, setLoadingHistories] = useState({});
     const [selectedStoreForHistory, setSelectedStoreForHistory] = useState(null);
     const [expandedStores, setExpandedStores] = useState(new Set());
+    const [expandedHistoryDates, setExpandedHistoryDates] = useState(new Set());
     const [auditingChecklist, setAuditingChecklist] = useState(null);
     const [auditedStatus, setAuditedStatus] = useState({});
     const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor';
 
     const tasksBySector = useMemo(() => organizeTasksBySector(dailyTasks), [dailyTasks]);
+    const gerencialTasksBySector = useMemo(() => organizeTasksBySector(gerencialTasks || []), [gerencialTasks]);
     const sectors = useMemo(() => {
       if (!tasksBySector || typeof tasksBySector !== 'object') return [];
       return Object.keys(tasksBySector);
     }, [tasksBySector]);
+    const gerencialSectors = useMemo(() => {
+      if (!gerencialTasksBySector || typeof gerencialTasksBySector !== 'object') return [];
+      return Object.keys(gerencialTasksBySector);
+    }, [gerencialTasksBySector]);
 
     const toggleStore = (storeId) => {
         setExpandedStores(prev => {
@@ -506,8 +511,17 @@ const AdminSupervisorChecklistView = () => {
                 <TabsContent value="hoje" className="space-y-6">
                     {stores.map(store => {
                         const storeTodayChecklist = checklist[store.id]?.tasks || {};
-                        const totalTasks = dailyTasks.length;
-                        const completedTasks = Object.values(storeTodayChecklist).filter(Boolean).length;
+                        const storeTodayGerencialChecklist = checklist[store.id]?.gerencialTasks || {};
+                        
+                        // Calcular totais unificados
+                        const totalDailyTasks = dailyTasks.length;
+                        const totalGerencialTasks = (gerencialTasks || []).length;
+                        const totalTasks = totalDailyTasks + totalGerencialTasks;
+                        
+                        const completedDailyTasks = Object.values(storeTodayChecklist).filter(Boolean).length;
+                        const completedGerencialTasks = Object.values(storeTodayGerencialChecklist).filter(Boolean).length;
+                        const completedTasks = completedDailyTasks + completedGerencialTasks;
+                        
                         const completionPercentage = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
                         const isExpanded = expandedStores.has(store.id);
                         const canAudit = completionPercentage >= 5; // Pelo menos 5% das tarefas devem estar completas
@@ -571,6 +585,14 @@ const AdminSupervisorChecklistView = () => {
                                             <Badge variant={completionPercentage === 100 ? 'default' : 'secondary'}>
                                                 {completionPercentage.toFixed(0)}%
                                             </Badge>
+                                            <Badge variant="outline" className="text-xs">
+                                                Diário: {completedDailyTasks}/{totalDailyTasks}
+                                            </Badge>
+                                            {totalGerencialTasks > 0 && (
+                                                <Badge variant="outline" className="text-xs">
+                                                    PPAD: {completedGerencialTasks}/{totalGerencialTasks}
+                                                </Badge>
+                                            )}
                                             <Button
                                                 variant="outline"
                                                 size="sm"
@@ -592,19 +614,56 @@ const AdminSupervisorChecklistView = () => {
                                     </div>
                                 </CardHeader>
                                 {isExpanded && (
-                                    <CardContent className="space-y-4 pt-4">
-                                        {sectors.map((sector) => (
-                                            <SectorSection
-                                                key={sector}
-                                                sector={sector}
-                                                tasks={dailyTasks}
-                                                storeTodayChecklist={storeTodayChecklist}
-                                                onCheckChange={(taskId, checked) => {
-                                                    updateChecklist(store.id, taskId, checked);
-                                                }}
-                                                storeId={store.id}
-                                            />
-                                        ))}
+                                    <CardContent className="space-y-6 pt-4">
+                                        {/* Checklist Diário */}
+                                        {totalDailyTasks > 0 && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2 pb-2 border-b">
+                                                    <CheckCircle className="w-5 h-5 text-primary" />
+                                                    <h3 className="text-lg font-semibold">Checklist Diário</h3>
+                                                    <Badge variant="outline">
+                                                        {completedDailyTasks}/{totalDailyTasks}
+                                                    </Badge>
+                                                </div>
+                                                {sectors.map((sector) => (
+                                                    <SectorSection
+                                                        key={`daily-${sector}`}
+                                                        sector={sector}
+                                                        tasks={dailyTasks}
+                                                        storeTodayChecklist={storeTodayChecklist}
+                                                        onCheckChange={(taskId, checked) => {
+                                                            updateChecklist(store.id, taskId, checked);
+                                                        }}
+                                                        storeId={store.id}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                        
+                                        {/* PPAD Gerencial */}
+                                        {totalGerencialTasks > 0 && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2 pb-2 border-b">
+                                                    <Briefcase className="w-5 h-5 text-purple-500" />
+                                                    <h3 className="text-lg font-semibold">PPAD Gerencial</h3>
+                                                    <Badge variant="outline">
+                                                        {completedGerencialTasks}/{totalGerencialTasks}
+                                                    </Badge>
+                                                </div>
+                                                {gerencialSectors.map((sector) => (
+                                                    <SectorSection
+                                                        key={`gerencial-${sector}`}
+                                                        sector={sector}
+                                                        tasks={gerencialTasks || []}
+                                                        storeTodayChecklist={storeTodayGerencialChecklist}
+                                                        onCheckChange={(taskId, checked) => {
+                                                            updateGerencialChecklist(store.id, taskId, checked);
+                                                        }}
+                                                        storeId={store.id}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
                                     </CardContent>
                                 )}
                             </Card>
@@ -616,6 +675,19 @@ const AdminSupervisorChecklistView = () => {
                     {stores.map(store => {
                         const history = checklistHistories[store.id] || [];
                         const loading = loadingHistories[store.id];
+
+                        const toggleHistoryDate = (dateStr) => {
+                            setExpandedHistoryDates(prev => {
+                                const newSet = new Set(prev);
+                                const dateKey = `${store.id}-${dateStr}`;
+                                if (newSet.has(dateKey)) {
+                                    newSet.delete(dateKey);
+                                } else {
+                                    newSet.add(dateKey);
+                                }
+                                return newSet;
+                            });
+                        };
 
                         return (
                             <Card key={store.id} className="bg-card border-border">
@@ -637,28 +709,57 @@ const AdminSupervisorChecklistView = () => {
                                                 const dayGerencialTasks = dayChecklist.gerencialTasks || {};
                                                 const dayCompleted = Object.values(dayTasks).filter(Boolean).length;
                                                 const dayCompletedGerencial = Object.values(dayGerencialTasks).filter(Boolean).length;
-                                                const dayPercentage = dailyTasks.length > 0 ? (dayCompleted / dailyTasks.length) * 100 : 0;
+                                                const totalDailyTasks = dailyTasks.length;
+                                                const totalGerencialTasks = (gerencialTasks || []).length;
+                                                const dayPercentage = totalDailyTasks > 0 ? (dayCompleted / totalDailyTasks) * 100 : 0;
+                                                const totalCompleted = dayCompleted + dayCompletedGerencial;
+                                                const totalTasks = totalDailyTasks + totalGerencialTasks;
+                                                const totalPercentage = totalTasks > 0 ? (totalCompleted / totalTasks) * 100 : 0;
+                                                
                                                 // Definir canAudit ANTES de qualquer uso
-                                                const canAudit = dayPercentage >= 5; // Pelo menos 5% das tarefas devem estar completas
+                                                const canAudit = totalPercentage >= 5; // Pelo menos 5% das tarefas devem estar completas
                                                 const dateKey = `${store.id}-${dayChecklist.date}`;
                                                 const isAudited = auditedStatus[dateKey] === true || dayChecklist.is_audited === true;
                                                 const checklistKey = `${store.id}-${dayChecklist.date}`;
                                                 const isAuditing = auditingChecklist === checklistKey;
+                                                const historyDateKey = `${store.id}-${dayChecklist.date}`;
+                                                const isExpanded = expandedHistoryDates.has(historyDateKey);
+                                                
+                                                // Tarefas não performadas
+                                                const pendingDailyTasks = dailyTasks.filter(task => !dayTasks[task.id]);
+                                                const pendingGerencialTasks = (gerencialTasks || []).filter(task => !dayGerencialTasks[task.id]);
                                                 
                                                 return (
                                                     <Card key={dayChecklist.date} className="bg-secondary/50">
                                                         <CardHeader className="pb-2">
                                                             <div className="flex justify-between items-center">
-                                                                <span className="text-sm font-semibold">
-                                                                    {isToday(date) ? 'Hoje' : isYesterday(date) ? 'Ontem' : format(date, "dd/MM/yyyy", { locale: ptBR })}
-                                                                </span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        onClick={() => toggleHistoryDate(dayChecklist.date)}
+                                                                        className="p-1 h-auto"
+                                                                    >
+                                                                        {isExpanded ? (
+                                                                            <ChevronUp className="w-4 h-4" />
+                                                                        ) : (
+                                                                            <ChevronDown className="w-4 h-4" />
+                                                                        )}
+                                                                    </Button>
+                                                                    <span className="text-sm font-semibold">
+                                                                        {isToday(date) ? 'Hoje' : isYesterday(date) ? 'Ontem' : format(date, "dd/MM/yyyy", { locale: ptBR })}
+                                                                    </span>
+                                                                </div>
                                                                 <div className="flex gap-2 items-center">
-                                                                    <Badge variant={dayPercentage === 100 ? 'default' : 'secondary'}>
-                                                                        Diário: {dayCompleted}/{dailyTasks.length} ({dayPercentage.toFixed(0)}%)
+                                                                    <Badge variant={totalPercentage === 100 ? 'default' : 'secondary'}>
+                                                                        {totalCompleted}/{totalTasks} ({totalPercentage.toFixed(0)}%)
                                                                     </Badge>
-                                                                    {dayCompletedGerencial > 0 && (
-                                                                        <Badge variant="outline">
-                                                                            PPAD: {dayCompletedGerencial}
+                                                                    <Badge variant="outline" className="text-xs">
+                                                                        Diário: {dayCompleted}/{totalDailyTasks}
+                                                                    </Badge>
+                                                                    {totalGerencialTasks > 0 && (
+                                                                        <Badge variant="outline" className="text-xs">
+                                                                            PPAD: {dayCompletedGerencial}/{totalGerencialTasks}
                                                                         </Badge>
                                                                     )}
                                                                     {isAdminOrSupervisor && (
@@ -675,8 +776,6 @@ const AdminSupervisorChecklistView = () => {
                                                                                         });
                                                                                         return;
                                                                                     }
-                                                                                    // checked = true significa que queremos auditar (isAudited atual é false)
-                                                                                    // checked = false significa que queremos remover (isAudited atual é true)
                                                                                     handleToggleAudit(store.id, dayChecklist.date, isAudited);
                                                                                 }}
                                                                                 disabled={isAuditing || (!isAudited && !canAudit)}
@@ -696,13 +795,14 @@ const AdminSupervisorChecklistView = () => {
                                                             </div>
                                                         </CardHeader>
                                                         <CardContent className="pt-2">
-                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
                                                                 {sectors.map((sector) => {
                                                                     const sectorTasks = tasksBySector[sector] || [];
                                                                     const sectorCompleted = sectorTasks.filter(task => dayTasks[task.id]).length;
                                                                     const sectorTotal = sectorTasks.length;
                                                                     const sectorPct = sectorTotal > 0 ? (sectorCompleted / sectorTotal) * 100 : 0;
                                                                     const colors = sectorColors[sector] || sectorColors.OUTROS;
+                                                                    const sectorPending = sectorTasks.filter(task => !dayTasks[task.id]);
                                                                     
                                                                     return (
                                                                         <div key={sector} className={`${colors.bg} p-2 rounded border ${colors.border}`}>
@@ -715,10 +815,95 @@ const AdminSupervisorChecklistView = () => {
                                                                                     {sectorPct.toFixed(0)}%
                                                                                 </span>
                                                                             </div>
+                                                                            {sectorPending.length > 0 && (
+                                                                                <div className="text-xs text-red-500 mt-1">
+                                                                                    {sectorPending.length} pendente{sectorPending.length > 1 ? 's' : ''}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                                {gerencialSectors.map((sector) => {
+                                                                    const sectorTasks = gerencialTasksBySector[sector] || [];
+                                                                    const sectorCompleted = sectorTasks.filter(task => dayGerencialTasks[task.id]).length;
+                                                                    const sectorTotal = sectorTasks.length;
+                                                                    const sectorPct = sectorTotal > 0 ? (sectorCompleted / sectorTotal) * 100 : 0;
+                                                                    const colors = sectorColors[sector] || sectorColors.OUTROS;
+                                                                    const sectorPending = sectorTasks.filter(task => !dayGerencialTasks[task.id]);
+                                                                    
+                                                                    return (
+                                                                        <div key={`gerencial-${sector}`} className={`${colors.bg} p-2 rounded border ${colors.border} border-dashed`}>
+                                                                            <div className="text-xs font-semibold uppercase mb-1 flex items-center gap-1">
+                                                                                <Briefcase className="w-3 h-3" />
+                                                                                {sector} (PPAD)
+                                                                            </div>
+                                                                            <div className="flex items-center justify-between">
+                                                                                <span className={`text-xs font-bold ${colors.text}`}>
+                                                                                    {sectorCompleted}/{sectorTotal}
+                                                                                </span>
+                                                                                <span className="text-xs text-muted-foreground">
+                                                                                    {sectorPct.toFixed(0)}%
+                                                                                </span>
+                                                                            </div>
+                                                                            {sectorPending.length > 0 && (
+                                                                                <div className="text-xs text-red-500 mt-1">
+                                                                                    {sectorPending.length} pendente{sectorPending.length > 1 ? 's' : ''}
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     );
                                                                 })}
                                                             </div>
+                                                            
+                                                            {/* Detalhes das tarefas não performadas quando expandido */}
+                                                            {isExpanded && (pendingDailyTasks.length > 0 || pendingGerencialTasks.length > 0) && (
+                                                                <div className="mt-4 pt-4 border-t space-y-4">
+                                                                    <h4 className="text-sm font-semibold text-red-500 flex items-center gap-2">
+                                                                        <XCircle className="w-4 h-4" />
+                                                                        Tarefas Não Performadas
+                                                                    </h4>
+                                                                    
+                                                                    {pendingDailyTasks.length > 0 && (
+                                                                        <div>
+                                                                            <h5 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                                                                                <CheckCircle className="w-3 h-3" />
+                                                                                Checklist Diário ({pendingDailyTasks.length})
+                                                                            </h5>
+                                                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                                                {pendingDailyTasks.map((task) => {
+                                                                                    const taskSector = task.sector || 'OUTROS';
+                                                                                    const colors = sectorColors[taskSector] || sectorColors.OUTROS;
+                                                                                    return (
+                                                                                        <div key={task.id} className={`${colors.bg} p-2 rounded border ${colors.border} text-xs`}>
+                                                                                            <span className={`font-medium ${colors.text}`}>{task.text}</span>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    
+                                                                    {pendingGerencialTasks.length > 0 && (
+                                                                        <div>
+                                                                            <h5 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                                                                                <Briefcase className="w-3 h-3" />
+                                                                                PPAD Gerencial ({pendingGerencialTasks.length})
+                                                                            </h5>
+                                                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                                                {pendingGerencialTasks.map((task) => {
+                                                                                    const taskSector = task.sector || 'OUTROS';
+                                                                                    const colors = sectorColors[taskSector] || sectorColors.OUTROS;
+                                                                                    return (
+                                                                                        <div key={task.id} className={`${colors.bg} p-2 rounded border ${colors.border} border-dashed text-xs`}>
+                                                                                            <span className={`font-medium ${colors.text}`}>{task.text}</span>
+                                                                                        </div>
+                                                                                    );
+                                                                                })}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                         </CardContent>
                                                     </Card>
                                                 );
@@ -749,7 +934,6 @@ const DailyChecklist = () => {
     const { user } = useAuth();
     const isLoja = user?.role === 'loja' || user?.role === 'loja_franquia';
     const isAdminOrSupervisor = user?.role === 'admin' || user?.role === 'supervisor';
-    const [activeTab, setActiveTab] = useState('diario');
 
     console.log('🔍 [DailyChecklist] Renderizando:', {
         userRole: user?.role,
@@ -784,24 +968,7 @@ const DailyChecklist = () => {
                 )}
                 {isAdminOrSupervisor && (
                     <div className="space-y-6">
-                        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                            <TabsList className="grid w-full grid-cols-2 max-w-md mb-6">
-                                <TabsTrigger value="diario" className="gap-2">
-                                    <CheckCircle className="w-4 h-4" />
-                                    Checklist Diário
-                                </TabsTrigger>
-                                <TabsTrigger value="gerencial" className="gap-2">
-                                    <Briefcase className="w-4 h-4" />
-                                    PPAD Gerencial
-                                </TabsTrigger>
-                            </TabsList>
-                            <TabsContent value="diario" className="mt-0">
-                                <AdminSupervisorChecklistView />
-                            </TabsContent>
-                            <TabsContent value="gerencial" className="mt-0">
-                                <AdminSupervisorGerencialChecklistView />
-                            </TabsContent>
-                        </Tabs>
+                        <AdminSupervisorChecklistView />
                     </div>
                 )}
                 {!isLoja && !isAdminOrSupervisor && (

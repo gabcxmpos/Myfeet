@@ -4,10 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '@/contexts/DataContext';
 import { useToast } from '@/components/ui/use-toast';
-import { updateStore as updateStoreAPI } from '@/lib/supabaseService';
+import { updateStore as updateStoreAPI, updateEvaluation as updateEvaluationAPI } from '@/lib/supabaseService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useOptimizedRefresh } from '@/lib/useOptimizedRefresh';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Plus, Store, Edit, Trash2, Eye, MoreVertical, Search, CheckCircle, Flame, TrendingUp, DollarSign, Percent, Hash, Truck, BarChart as BarChartIcon, Globe, Trophy, ChevronLeft, ChevronRight, ChevronsUp, ChevronsDown, Users, AlertCircle, FileText, Download, Upload } from 'lucide-react';
@@ -295,11 +296,152 @@ const StoreFormModal = ({ store, onSave, onOpenChange }) => {
   );
 };
 
-const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users }) => {
+const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users, onApprove }) => {
   if (!evaluation) return null;
+
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [countedAnswers, setCountedAnswers] = React.useState(() => {
+    // Inicializar com todas as respostas selecionadas por padrão, ou usar as já salvas
+    const saved = evaluation.counted_answers || evaluation.countedAnswers;
+    if (saved) return saved;
+    // Se não houver seleções salvas, todas as respostas são contabilizadas por padrão
+    const initial = {};
+    if (form && form.questions) {
+      form.questions.forEach(q => {
+        if (q.type !== 'text') { // Text não conta para pontuação
+          initial[q.id] = true;
+        }
+      });
+    }
+    return initial;
+  });
+  const [isSaving, setIsSaving] = React.useState(false);
 
   const approvedByUser = evaluation.approvedByUser || (evaluation.approved_by || evaluation.approvedBy ? users?.find(u => u.id === (evaluation.approved_by || evaluation.approvedBy)) : null);
   const createdByUser = evaluation.app_user || (evaluation.userId ? users?.find(u => u.id === evaluation.userId) : null);
+  
+  const isPending = evaluation.status === 'pending';
+  const canEdit = isPending && (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'comunicação');
+
+  // Calcular pontuação baseada apenas nas respostas selecionadas
+  const calculateScore = React.useCallback(() => {
+    if (!form || !form.questions) return evaluation.score || 0;
+
+    let totalScore = 0;
+    let maxScore = 0;
+
+    form.questions.forEach(q => {
+      if (q.type === 'text') return; // Text não conta para pontuação
+      
+      // Só conta se estiver selecionado para contabilização
+      if (!countedAnswers[q.id]) {
+        // Se não está selecionado, adiciona ao maxScore mas não ao totalScore
+        if (q.type === 'satisfaction') {
+          maxScore += 10;
+        } else if (q.type === 'multiple-choice') {
+          maxScore += Math.max(...q.options.map(o => o.value || 0), 0);
+        } else if (q.type === 'checkbox') {
+          maxScore += q.options.reduce((sum, opt) => sum + Math.max(opt.value || 0, 0), 0);
+        }
+        return;
+      }
+
+      const answer = evaluation.answers?.[q.id];
+      
+      if (q.type === 'satisfaction') {
+        const scoreValue = answer || 0;
+        totalScore += scoreValue;
+        maxScore += 10;
+      } else if (q.type === 'multiple-choice') {
+        const selectedOption = q.options.find(opt => opt.text === answer);
+        const scoreValue = selectedOption ? selectedOption.value : 0;
+        totalScore += scoreValue;
+        maxScore += Math.max(...q.options.map(o => o.value || 0), 0);
+      } else if (q.type === 'checkbox') {
+        if (Array.isArray(answer) && answer.length > 0) {
+          answer.forEach(ans => {
+            const selectedOption = q.options.find(opt => opt.text === ans);
+            if (selectedOption) {
+              totalScore += selectedOption.value || 0;
+            }
+          });
+        }
+        maxScore += q.options.reduce((sum, opt) => sum + Math.max(opt.value || 0, 0), 0);
+      }
+    });
+
+    const finalScore = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+    return Math.max(0, Math.min(100, finalScore));
+  }, [form, evaluation.answers, countedAnswers, evaluation.score]);
+
+  const recalculatedScore = calculateScore();
+
+  const handleToggleCounted = (questionId) => {
+    setCountedAnswers(prev => ({
+      ...prev,
+      [questionId]: !prev[questionId]
+    }));
+  };
+
+  const handleSaveAndApprove = async () => {
+    if (!canEdit) return;
+    
+    setIsSaving(true);
+    try {
+      const newScore = calculateScore();
+      await updateEvaluationAPI(evaluation.id, {
+        status: 'approved',
+        score: newScore,
+        counted_answers: countedAnswers
+      });
+      
+      toast({
+        title: 'Sucesso',
+        description: `Avaliação aprovada com pontuação recalculada: ${newScore} pts`,
+      });
+      
+      if (onApprove) {
+        onApprove(evaluation.id);
+      }
+      
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Erro ao salvar avaliação:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Não foi possível salvar as alterações.',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveOnly = async () => {
+    if (!canEdit) return;
+    
+    setIsSaving(true);
+    try {
+      await updateEvaluationAPI(evaluation.id, {
+        counted_answers: countedAnswers
+      });
+      
+      toast({
+        title: 'Sucesso',
+        description: 'Seleções salvas com sucesso.',
+      });
+    } catch (error) {
+      console.error('Erro ao salvar seleções:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Não foi possível salvar as seleções.',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <DialogContent className="max-w-3xl bg-card border-border max-h-[90vh] overflow-y-auto">
@@ -316,7 +458,14 @@ const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users }) => {
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div>
               <p className="text-sm text-muted-foreground">Pontuação</p>
-              <p className="text-2xl font-bold text-primary">{evaluation.score} pts</p>
+              <p className="text-2xl font-bold text-primary">
+                {canEdit ? `${recalculatedScore} pts` : `${evaluation.score} pts`}
+              </p>
+              {canEdit && recalculatedScore !== evaluation.score && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Original: {evaluation.score} pts
+                </p>
+              )}
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Status</p>
@@ -342,41 +491,72 @@ const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users }) => {
           </div>
         </div>
 
+        {canEdit && (
+          <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg">
+            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+              <strong>Modo de Edição:</strong> Selecione quais respostas devem ser contabilizadas na pontuação. 
+              Respostas não selecionadas não contarão para o score final.
+            </p>
+          </div>
+        )}
+
         <div className="space-y-4">
           <h3 className="font-semibold text-lg">Respostas</h3>
           {form && form.questions && form.questions.length > 0 ? (
             form.questions.map((question, index) => {
               const answer = evaluation.answers?.[question.id];
+              const isCounted = countedAnswers[question.id] !== false; // Por padrão é true
+              const showCheckbox = canEdit && question.type !== 'text'; // Text não conta para pontuação
+              
               return (
-                <div key={question.id} className="bg-secondary p-4 rounded-lg">
-                  <p className="font-semibold mb-2">{index + 1}. {question.text}</p>
-                  {question.subtitle && <p className="text-sm text-muted-foreground mb-3">{question.subtitle}</p>}
-                  <div className="mt-2">
-                    {question.type === 'satisfaction' && (
-                      <div>
-                        <p className="font-medium">Nota: {answer || 0}/10</p>
-                        <div className="w-full bg-secondary rounded-full h-2 mt-2">
-                          <div className="bg-primary h-2 rounded-full" style={{ width: `${((answer || 0) / 10) * 100}%` }} />
-                        </div>
+                <div key={question.id} className={`bg-secondary p-4 rounded-lg ${!isCounted && canEdit ? 'opacity-60' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        {showCheckbox && (
+                          <Checkbox
+                            id={`counted-${question.id}`}
+                            checked={isCounted}
+                            onCheckedChange={() => handleToggleCounted(question.id)}
+                            className="mt-1"
+                          />
+                        )}
+                        <p className="font-semibold">{index + 1}. {question.text}</p>
                       </div>
-                    )}
-                    {question.type === 'multiple-choice' && (
-                      <p className="font-medium">{answer || 'Não respondido'}</p>
-                    )}
-                    {question.type === 'checkbox' && (
-                      <div className="space-y-1">
-                        {Array.isArray(answer) && answer.length > 0 ? (
-                          answer.map((item, idx) => (
-                            <p key={idx} className="font-medium">• {item}</p>
-                          ))
-                        ) : (
-                          <p className="text-muted-foreground">Nenhuma opção selecionada</p>
+                      {question.subtitle && <p className="text-sm text-muted-foreground mb-3 ml-6">{question.subtitle}</p>}
+                      {showCheckbox && (
+                        <p className="text-xs text-muted-foreground mb-2 ml-6">
+                          {isCounted ? '✓ Contabilizada na pontuação' : '✗ Não contabilizada'}
+                        </p>
+                      )}
+                      <div className="mt-2 ml-6">
+                        {question.type === 'satisfaction' && (
+                          <div>
+                            <p className="font-medium">Nota: {answer || 0}/10</p>
+                            <div className="w-full bg-secondary rounded-full h-2 mt-2">
+                              <div className="bg-primary h-2 rounded-full" style={{ width: `${((answer || 0) / 10) * 100}%` }} />
+                            </div>
+                          </div>
+                        )}
+                        {question.type === 'multiple-choice' && (
+                          <p className="font-medium">{answer || 'Não respondido'}</p>
+                        )}
+                        {question.type === 'checkbox' && (
+                          <div className="space-y-1">
+                            {Array.isArray(answer) && answer.length > 0 ? (
+                              answer.map((item, idx) => (
+                                <p key={idx} className="font-medium">• {item}</p>
+                              ))
+                            ) : (
+                              <p className="text-muted-foreground">Nenhuma opção selecionada</p>
+                            )}
+                          </div>
+                        )}
+                        {question.type === 'text' && (
+                          <p className="font-medium whitespace-pre-wrap">{answer || 'Sem resposta'}</p>
                         )}
                       </div>
-                    )}
-                    {question.type === 'text' && (
-                      <p className="font-medium whitespace-pre-wrap">{answer || 'Sem resposta'}</p>
-                    )}
+                    </div>
                   </div>
                 </div>
               );
@@ -385,14 +565,35 @@ const EvaluationDetailModal = ({ evaluation, form, onOpenChange, users }) => {
             <p className="text-muted-foreground">Formulário não encontrado ou sem questões. Carregando informações básicas...</p>
           )}
         </div>
+
+        {canEdit && (
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button 
+              variant="outline" 
+              onClick={handleSaveOnly}
+              disabled={isSaving}
+            >
+              Salvar Seleções
+            </Button>
+            <Button 
+              onClick={handleSaveAndApprove}
+              disabled={isSaving}
+            >
+              {isSaving ? 'Salvando...' : 'Salvar e Aprovar'}
+            </Button>
+          </div>
+        )}
       </div>
     </DialogContent>
   );
 };
 
-const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onViewDetail }) => {
+const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onViewDetail, deleteEvaluationDirect, approveEvaluationDirect, fetchData }) => {
   const { evaluations, users } = useData();
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [isProcessing, setIsProcessing] = useState(false);
+  
   const pendingEvaluations = useMemo(() => {
     return evaluations
       .filter(ev => {
@@ -402,6 +603,126 @@ const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onV
       .sort((a, b) => new Date(b.date || b.created_at || 0) - new Date(a.date || a.created_at || 0));
   }, [evaluations, store.id]);
 
+  const canManage = user.role === 'admin' || user.role === 'supervisor' || user.role === 'supervisor_franquia' || user.role === 'comunicação';
+
+  const handleApproveAll = async () => {
+    if (pendingEvaluations.length === 0) return;
+    
+    if (!window.confirm(`Tem certeza que deseja aprovar todas as ${pendingEvaluations.length} avaliação(ões) pendente(s)?`)) {
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Usar a função direta do contexto sem confirmação individual
+      for (const ev of pendingEvaluations) {
+        try {
+          if (approveEvaluationDirect) {
+            await approveEvaluationDirect(ev.id);
+          } else {
+            await onApprove(ev.id);
+          }
+          successCount++;
+        } catch (error) {
+          console.error(`Erro ao aprovar avaliação ${ev.id}:`, error);
+          errorCount++;
+        }
+      }
+
+      // Atualizar dados uma única vez após processar todas
+      if (fetchData && successCount > 0) {
+        await fetchData();
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: 'Sucesso',
+          description: `${successCount} avaliação(ões) aprovada(s) com sucesso.`,
+          variant: 'default',
+        });
+      }
+
+      if (errorCount > 0) {
+        toast({
+          title: 'Atenção',
+          description: `${errorCount} avaliação(ões) não puderam ser aprovadas.`,
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao aprovar todas as avaliações:', error);
+      toast({
+        title: 'Erro',
+        description: 'Ocorreu um erro ao aprovar as avaliações.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleRejectAll = async () => {
+    if (pendingEvaluations.length === 0) return;
+    
+    if (!window.confirm(`Tem certeza que deseja excluir todas as ${pendingEvaluations.length} avaliação(ões) pendente(s)? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Usar a função direta do contexto sem confirmação individual
+      for (const ev of pendingEvaluations) {
+        try {
+          if (deleteEvaluationDirect) {
+            await deleteEvaluationDirect(ev.id);
+          } else {
+            await onDelete(ev.id);
+          }
+          successCount++;
+        } catch (error) {
+          console.error(`Erro ao excluir avaliação ${ev.id}:`, error);
+          errorCount++;
+        }
+      }
+
+      // Atualizar dados uma única vez após processar todas
+      if (fetchData && successCount > 0) {
+        await fetchData();
+      }
+
+      if (successCount > 0) {
+        toast({
+          title: 'Sucesso',
+          description: `${successCount} avaliação(ões) excluída(s) com sucesso.`,
+          variant: 'default',
+        });
+      }
+
+      if (errorCount > 0) {
+        toast({
+          title: 'Atenção',
+          description: `${errorCount} avaliação(ões) não puderam ser excluídas.`,
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao excluir todas as avaliações:', error);
+      toast({
+        title: 'Erro',
+        description: 'Ocorreu um erro ao excluir as avaliações.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <DialogContent className="max-w-2xl bg-card border-border">
       <DialogHeader>
@@ -410,6 +731,39 @@ const PendingEvaluationsModal = ({ store, onOpenChange, onDelete, onApprove, onV
           Lista de avaliações aguardando aprovação para esta loja.
         </DialogDescription>
       </DialogHeader>
+      
+      {pendingEvaluations.length > 0 && canManage && (
+        <div className="mt-4 p-4 bg-secondary/50 rounded-lg border border-border">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-yellow-500" />
+              <span className="font-semibold text-foreground">
+                Total: {pendingEvaluations.length} avaliação{pendingEvaluations.length > 1 ? 'ões' : ''} pendente{pendingEvaluations.length > 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleApproveAll}
+              disabled={isProcessing}
+              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {isProcessing ? 'Processando...' : 'Aprovar Todas'}
+            </Button>
+            <Button
+              onClick={handleRejectAll}
+              disabled={isProcessing}
+              variant="destructive"
+              className="flex-1"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              {isProcessing ? 'Processando...' : 'Recusar Todas'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 max-h-[60vh] overflow-y-auto space-y-3 pr-2">
         {pendingEvaluations.length > 0 ? pendingEvaluations.map(ev => {
           const createdByUser = ev.app_user || (ev.userId ? users?.find(u => u.id === ev.userId) : null);
@@ -1202,17 +1556,18 @@ const StoresManagement = () => {
       }}>
         {modalState.type === 'editStore' && <StoreFormModal store={modalState.data} onSave={handleSaveStore} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} />}
         {modalState.type === 'viewEvaluations' && <ViewEvaluationsModal store={modalState.data} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} onDelete={handleDeleteEvaluation} onApprove={handleApproveEvaluation} onViewDetail={handleViewEvaluationDetail} />}
-        {modalState.type === 'pendingEvaluations' && <PendingEvaluationsModal store={modalState.data} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} onDelete={handleDeleteEvaluation} onApprove={handleApproveEvaluation} onViewDetail={handleViewEvaluationDetail} />}
+        {modalState.type === 'pendingEvaluations' && <PendingEvaluationsModal store={modalState.data} onOpenChange={(isOpen) => !isOpen && setModalState({ type: null, data: null })} onDelete={handleDeleteEvaluation} onApprove={handleApproveEvaluation} onViewDetail={handleViewEvaluationDetail} deleteEvaluationDirect={deleteEvaluation} approveEvaluationDirect={approveEvaluation} fetchData={fetchData} />}
         {modalState.type === 'evaluationDetail' && selectedEvaluation && (
           <EvaluationDetailModal 
             evaluation={selectedEvaluation} 
-            form={forms?.find(f => f.id === (selectedEvaluation.formId || selectedEvaluation.form_id))} 
+            form={forms?.find(f => f.id === (selectedEvaluation?.formId || selectedEvaluation?.form_id))} 
             onOpenChange={(isOpen) => {
               if (!isOpen) {
                 setModalState({ type: null, data: null });
                 setSelectedEvaluation(null);
               }
             }}
+            onApprove={handleApproveEvaluation}
             users={users}
           />
         )}

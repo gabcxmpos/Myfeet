@@ -24,6 +24,7 @@ const ReturnsConsolidated = () => {
     if (!user) return 'pending';
     if (user?.role === 'devoluções') return 'planner';
     if (user?.role === 'financeiro') return 'payment-dashboard';
+    if (user?.role === 'compras') return 'planner'; // Compras inicia no Planner (livro de registro)
     if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'loja' || user?.role === 'loja_franquia') return 'pending';
     return 'pending';
   };
@@ -47,6 +48,8 @@ const ReturnsConsolidated = () => {
       setActiveTab('planner');
     } else if (user?.role === 'financeiro') {
       setActiveTab('payment-dashboard');
+    } else if (user?.role === 'compras') {
+      setActiveTab('planner'); // Compras inicia no Planner (livro de registro)
     } else if (user?.role === 'admin' || user?.role === 'supervisor' || user?.role === 'supervisor_franquia' || user?.role === 'loja') {
       setActiveTab('pending');
     }
@@ -62,6 +65,7 @@ const ReturnsConsolidated = () => {
   const isSupervisor = user?.role === 'supervisor' || user?.role === 'supervisor_franquia';
   const isFinanceiro = user?.role === 'financeiro';
   const isLoja = user?.role === 'loja' || user?.role === 'admin_loja' || user?.role === 'loja_franquia';
+  const isCompras = user?.role === 'compras';
 
   // Atualizar URL quando a aba mudar
   const handleTabChange = (value) => {
@@ -96,6 +100,8 @@ const ReturnsConsolidated = () => {
           <p className="text-muted-foreground mt-2">
             {isLoja 
               ? 'Gerencie devoluções pendentes'
+              : isCompras
+              ? 'Acompanhe o livro de registro de devoluções (somente leitura)'
               : 'Gerencie devoluções, planner e falta física'
             }
           </p>
@@ -104,7 +110,7 @@ const ReturnsConsolidated = () => {
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="w-full flex flex-wrap gap-2 h-auto overflow-x-auto scrollbar-hide">
-            {/* Aba Devoluções (Pendentes) - Comunicativo com loja (NÃO para financeiro) */}
+            {/* Aba Devoluções (Pendentes) - Comunicativo com loja (NÃO para financeiro e compras) */}
             {(isAdmin || isSupervisor || isLoja || isDevolucoes) && (
               <TabsTrigger value="pending" className="flex items-center gap-2">
                 <RotateCcw className="w-4 h-4" />
@@ -112,8 +118,8 @@ const ReturnsConsolidated = () => {
               </TabsTrigger>
             )}
 
-            {/* Aba Planner - Registro do time de devoluções */}
-            {(isAdmin || isDevolucoes || isSupervisor) && (
+            {/* Aba Planner - Registro do time de devoluções - Compras pode visualizar */}
+            {(isAdmin || isDevolucoes || isSupervisor || isCompras) && (
               <TabsTrigger value="planner" className="flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
                 <span>Planner</span>
@@ -160,7 +166,8 @@ const ReturnsConsolidated = () => {
             </TabsContent>
           )}
 
-          {(isAdmin || isDevolucoes || isSupervisor) && (
+          {/* Planner - Admin, devoluções, supervisor e compras podem visualizar */}
+          {(isAdmin || isDevolucoes || isSupervisor || isCompras) && (
             <TabsContent value="planner" className="mt-6">
               {activeTab === 'planner' && <ReturnsPlanner />}
             </TabsContent>

@@ -38,6 +38,8 @@ const ReturnsPlanner = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const isCompras = user?.role === 'compras';
+  const canViewOnly = isCompras; // Perfil Compras só visualiza, não edita
   const [editingItem, setEditingItem] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -929,7 +931,8 @@ const ReturnsPlanner = () => {
                 Exportar PDF
               </Button>
             )}
-            {user?.role === 'devoluções' || user?.role === 'admin' ? (
+            {/* Botão Configurar Marcas - apenas admin e devoluções (compras não pode configurar) */}
+            {(user?.role === 'devoluções' || user?.role === 'admin') && !canViewOnly && (
               <Button
                 variant="outline"
                 onClick={() => navigate('/brands-settings')}
@@ -938,7 +941,7 @@ const ReturnsPlanner = () => {
                 <Settings className="w-4 h-4" />
                 Configurar Marcas
               </Button>
-            ) : null}
+            )}
           </div>
         </div>
 
@@ -966,6 +969,7 @@ const ReturnsPlanner = () => {
             <FileText className="w-4 h-4 inline mr-2" />
             Lista de Registros
           </button>
+          {/* Aba Pagamentos - apenas admin e devoluções (compras não pode ver) */}
           {(user?.role === 'admin' || user?.role === 'devoluções') && (
             <button
               onClick={() => setActiveTab('pagamentos')}
@@ -1666,8 +1670,8 @@ const ReturnsPlanner = () => {
               </CardContent>
             </Card>
 
-            {/* Formulário Inline para Novo Registro */}
-            {editingItem === 'new' && (
+            {/* Formulário Inline para Novo Registro - Compras não pode criar */}
+            {editingItem === 'new' && !canViewOnly && (
               <Card className="border-primary/50 bg-primary/5">
                 <CardContent className="p-4 md:p-6">
                   <div className="flex items-center justify-between mb-4">
@@ -1837,8 +1841,8 @@ const ReturnsPlanner = () => {
               </Card>
             )}
 
-            {/* Botão para Novo Registro (quando não está editando) */}
-            {!editingItem && (
+            {/* Botão para Novo Registro (quando não está editando) - Compras não pode criar */}
+            {!editingItem && !canViewOnly && (
               <Button onClick={handleCreate} className="gap-2 w-full md:w-auto">
                 <Plus className="w-4 h-4" />
                 Novo Registro
@@ -1861,7 +1865,8 @@ const ReturnsPlanner = () => {
             ) : (
               <div className="space-y-4">
                 {filteredData.map((item) => {
-                  if (editingItem && editingItem !== 'new' && editingItem.id === item.id) {
+                  // Compras não pode editar - mostrar apenas visualização
+                  if (editingItem && editingItem !== 'new' && editingItem.id === item.id && !canViewOnly) {
                     return (
                       // Formulário de Edição Inline
                       <Card key={item.id} className="border-primary/50 bg-primary/5">
@@ -2158,26 +2163,37 @@ const ReturnsPlanner = () => {
                   </div>
 
                   <div className="flex flex-col md:flex-row items-start md:items-center gap-2">
-                    {/* Troca rápida de status */}
-                    <Select 
-                      value={item.status} 
-                      onValueChange={(newStatus) => handleQuickStatusChange(item.id, newStatus)}
-                    >
-                      <SelectTrigger className="w-full md:w-[200px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Aguardando aprovação da marca">Aguardando Aprovação</SelectItem>
-                        <SelectItem value="Aguardando coleta">Aguardando Coleta</SelectItem>
-                        <SelectItem value="Coletado">Coletado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button variant="outline" size="icon" onClick={() => handleEdit(item)}>
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button variant="outline" size="icon" onClick={() => handleDeleteClick(item)}>
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                    {/* Troca rápida de status - Compras não pode alterar */}
+                    {canViewOnly ? (
+                      <Badge variant="outline" className="text-sm w-full md:w-[200px] justify-center">
+                        {item.status || 'Aguardando aprovação da marca'}
+                      </Badge>
+                    ) : (
+                      <Select 
+                        value={item.status} 
+                        onValueChange={(newStatus) => handleQuickStatusChange(item.id, newStatus)}
+                      >
+                        <SelectTrigger className="w-full md:w-[200px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Aguardando aprovação da marca">Aguardando Aprovação</SelectItem>
+                          <SelectItem value="Aguardando coleta">Aguardando Coleta</SelectItem>
+                          <SelectItem value="Coletado">Coletado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
+                    {/* Botões de ação - apenas admin e devoluções podem editar (compras só visualiza) */}
+                    {!canViewOnly && (
+                      <>
+                        <Button variant="outline" size="icon" onClick={() => handleEdit(item)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button variant="outline" size="icon" onClick={() => handleDeleteClick(item)}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </>
+                    )}
                   </div>
               </div>
             </motion.div>
@@ -2187,7 +2203,8 @@ const ReturnsPlanner = () => {
             )}
           </div>
         )}
-        {activeTab === 'pagamentos' && (
+        {/* Aba Pagamentos - apenas admin e devoluções (compras não pode ver) */}
+        {activeTab === 'pagamentos' && (user?.role === 'admin' || user?.role === 'devoluções') && (
           <div className="mt-6">
             <ReturnsPaymentDashboard />
           </div>

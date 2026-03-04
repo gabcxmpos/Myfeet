@@ -41,6 +41,8 @@ const ReturnsPending = () => {
   const isStore = user?.role === 'loja' || user?.role === 'admin_loja';
   const isDevolucoes = user?.role === 'devoluções';
   const isFinanceiro = user?.role === 'financeiro';
+  const isCompras = user?.role === 'compras';
+  const canViewOnly = isCompras; // Perfil Compras só visualiza, não edita
   
   const [searchTerm, setSearchTerm] = useState('');
   const [availableBrands, setAvailableBrands] = useState(DEFAULT_BRANDS);
@@ -115,7 +117,7 @@ const ReturnsPending = () => {
     let filteredReturns = returns || [];
 
     // Aplicar filtros (para admin/supervisor/devoluções/financeiro)
-    if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro) {
+    if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro || isCompras) {
       // Filtro por data
       if (activeFilters.startDate || activeFilters.endDate) {
         filteredReturns = filteredReturns.filter(ret => {
@@ -166,7 +168,7 @@ const ReturnsPending = () => {
       if (isStore && user?.storeId && !isDevolucoes) {
         return item.store_id === user.storeId;
       }
-      if (isAdmin || user?.role === 'supervisor' || isDevolucoes) {
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isCompras) {
         const store = (stores || []).find(s => s.id === item.store_id);
         if (!store) return false;
         
@@ -223,7 +225,7 @@ const ReturnsPending = () => {
       if (!store) return false;
       
       // Para admin, supervisor, devoluções e financeiro: aplicar filtros se existirem
-      if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro) {
+      if (isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro || isCompras) {
         // Se há filtros aplicados, verificar correspondência
         const hasFilters = activeFilters.store.length > 0 || 
                           activeFilters.franqueado.length > 0 || 
@@ -525,7 +527,7 @@ const ReturnsPending = () => {
       </div>
 
       {/* Dashboard de Devoluções Pendentes */}
-      {(isAdmin || isStore || user?.role === 'supervisor' || isDevolucoes) && (
+      {(isAdmin || isStore || user?.role === 'supervisor' || isDevolucoes || isCompras) && (
         <Card className="p-6 border-2 border-yellow-500/20 mb-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-4">
@@ -536,7 +538,7 @@ const ReturnsPending = () => {
             </div>
 
             {/* Filtros para Devoluções Pendentes (admin/supervisor/devoluções/financeiro) */}
-            {(isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro) && (
+            {(isAdmin || user?.role === 'supervisor' || isDevolucoes || isFinanceiro || isCompras) && (
               <Card className="p-4 bg-secondary/50 border border-yellow-500/30 mb-4">
                 <h4 className="font-semibold text-foreground mb-3 text-sm">Filtros</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
@@ -825,7 +827,8 @@ const ReturnsPending = () => {
                         {store?.name || 'Loja não encontrada'}
                       </p>
                     </div>
-                    {(isAdmin || isDevolucoes) && (
+                    {/* Menu de ações - apenas admin e devoluções podem editar (compras só visualiza) */}
+                    {(isAdmin || isDevolucoes) && !canViewOnly && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">

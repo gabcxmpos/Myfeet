@@ -35,6 +35,8 @@ const UserManagement = () => {
     const [resetEmail, setResetEmail] = useState('');
     const [showResetDialog, setShowResetDialog] = useState(false);
     const [selectedUserId, setSelectedUserId] = useState(null);
+    const [deleteUserId, setDeleteUserId] = useState(null);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
     // Filtrar lojas disponíveis baseado no role selecionado
     // ⚠️ IMPORTANTE: useMemo deve estar ANTES de qualquer return condicional
@@ -175,9 +177,17 @@ const UserManagement = () => {
         toast({ title: 'Status Alterado', description: 'O status do usuário foi atualizado.'});
     }
     
-    const handleDeleteUser = async (userId) => {
+    const handleDeleteClick = (userId) => {
+        setDeleteUserId(userId);
+        setShowDeleteDialog(true);
+    }
+    
+    const handleDeleteUser = async () => {
+        if (!deleteUserId) return;
         try {
-            await contextDeleteUser(userId);
+            await contextDeleteUser(deleteUserId);
+            setShowDeleteDialog(false);
+            setDeleteUserId(null);
             // Toast já é exibido no DataContext
         } catch (error) {
             // Erro já é tratado no DataContext
@@ -185,10 +195,25 @@ const UserManagement = () => {
         }
     }
     
+    const closeDeleteDialog = () => {
+        setShowDeleteDialog(false);
+        setDeleteUserId(null);
+    }
+    
     const handleResetPasswordClick = (userId, userEmail = '') => {
         setSelectedUserId(userId);
         setResetEmail(userEmail);
         setShowResetDialog(true);
+    }
+    
+    const getSelectedUser = () => {
+        if (!selectedUserId) return null;
+        return users.find(u => u.id === selectedUserId);
+    }
+    
+    const getDeleteUser = () => {
+        if (!deleteUserId) return null;
+        return users.find(u => u.id === deleteUserId);
     }
     
     const confirmResetPassword = async () => {
@@ -220,6 +245,7 @@ const UserManagement = () => {
             case 'colaborador': return 'bg-emerald-500/20 text-emerald-400';
             case 'admin_loja': return 'bg-teal-500/20 text-teal-400';
             case 'devoluções': return 'bg-purple-500/20 text-purple-400';
+            case 'compras': return 'bg-amber-500/20 text-amber-400';
             case 'comunicação': return 'bg-cyan-500/20 text-cyan-400';
             case 'digital': return 'bg-indigo-500/20 text-indigo-400';
             case 'financeiro': return 'bg-yellow-500/20 text-yellow-400';
@@ -251,6 +277,7 @@ const UserManagement = () => {
             'colaborador': 'Colaborador',
             'admin_loja': 'Admin de Loja',
             'devoluções': 'Devoluções',
+            'compras': 'Compras',
             'comunicação': 'Comunicação',
             'digital': 'Digital',
             'financeiro': 'Financeiro',
@@ -272,7 +299,7 @@ const UserManagement = () => {
         });
         
         // Ordenar os perfis em uma ordem específica
-        const roleOrder = ['admin', 'supervisor', 'supervisor_franquia', 'financeiro', 'devoluções', 'comunicação', 'digital', 'rh', 'motorista', 'loja', 'loja_franquia', 'admin_loja', 'colaborador', 'outros'];
+        const roleOrder = ['admin', 'supervisor', 'supervisor_franquia', 'financeiro', 'devoluções', 'compras', 'comunicação', 'digital', 'rh', 'motorista', 'loja', 'loja_franquia', 'admin_loja', 'colaborador', 'outros'];
         const ordered = {};
         roleOrder.forEach(role => {
             if (grouped[role]) {
@@ -331,6 +358,7 @@ const UserManagement = () => {
                                 <SelectItem value="colaborador">Colaborador</SelectItem>
                                 <SelectItem value="admin_loja">Admin de Loja</SelectItem>
                                 <SelectItem value="devoluções">Devoluções</SelectItem>
+                                <SelectItem value="compras">Compras</SelectItem>
                                 <SelectItem value="comunicação">Comunicação</SelectItem>
                                 <SelectItem value="digital">Digital</SelectItem>
                                 <SelectItem value="financeiro">Financeiro</SelectItem>
@@ -396,78 +424,22 @@ const UserManagement = () => {
                                                         <Button variant="ghost" size="icon" onClick={() => handleToggleStatus(user.id)} title={(user.status || 'active') === 'active' ? 'Bloquear' : 'Desbloquear'}>
                                                           {(user.status || 'active') === 'active' ? <Lock className="w-4 h-4 text-yellow-400" /> : <Unlock className="w-4 h-4 text-green-400" />}
                                                         </Button>
-                                                        <AlertDialog open={showResetDialog && selectedUserId === user.id} onOpenChange={(open) => {
-                                                            if (!open) {
-                                                                closeResetDialog();
-                                                            }
-                                                        }}>
-                                                            <AlertDialogTrigger asChild>
-                                                                <Button 
-                                                                    variant="ghost" 
-                                                                    size="icon" 
-                                                                    title="Resetar senha"
-                                                                    onClick={() => handleResetPasswordClick(user.id, '')}
-                                                                >
-                                                                    <KeyRound className="w-4 h-4 text-blue-400" />
-                                                                </Button>
-                                                            </AlertDialogTrigger>
-                                                            <AlertDialogContent aria-describedby="reset-password-description">
-                                                                <AlertDialogHeader>
-                                                                    <AlertDialogTitle>Resetar Senha</AlertDialogTitle>
-                                                                    <AlertDialogDescription id="reset-password-description">
-                                                                        Digite o email do usuário "<strong>{user.username}</strong>" para resetar a senha para a senha padrão "afeet10".
-                                                                        <br /><br />
-                                                                        <strong>Importante:</strong> A senha será resetada imediatamente para "afeet10". O usuário poderá fazer login com essa senha e será redirecionado para definir uma nova senha no primeiro acesso.
-                                                                    </AlertDialogDescription>
-                                                                </AlertDialogHeader>
-                                                                <div className="space-y-4 py-4">
-                                                                    <div className="space-y-2">
-                                                                        <Label htmlFor="resetEmail">E-mail do usuário</Label>
-                                                                        <Input 
-                                                                            id="resetEmail" 
-                                                                            type="email" 
-                                                                            value={resetEmail} 
-                                                                            onChange={(e) => setResetEmail(e.target.value)}
-                                                                            placeholder="usuario@email.com"
-                                                                            className="bg-secondary"
-                                                                            required
-                                                                        />
-                                                                        <p className="text-xs text-muted-foreground">
-                                                                            O email do usuário é necessário para resetar a senha. A senha será resetada para "afeet10" imediatamente.
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                                <AlertDialogFooter>
-                                                                    <AlertDialogCancel onClick={closeResetDialog}>Cancelar</AlertDialogCancel>
-                                                                    <AlertDialogAction onClick={confirmResetPassword} className="bg-primary hover:bg-primary/90">
-                                                                        Resetar Senha para "afeet10"
-                                                                    </AlertDialogAction>
-                                                                </AlertDialogFooter>
-                                                            </AlertDialogContent>
-                                                        </AlertDialog>
-                                                        <AlertDialog>
-                                                            <AlertDialogTrigger asChild>
-                                                                <Button variant="ghost" size="icon" title="Excluir usuário">
-                                                                    <Trash2 className="w-4 h-4 text-destructive" />
-                                                                </Button>
-                                                            </AlertDialogTrigger>
-                                                            <AlertDialogContent aria-describedby="delete-user-description">
-                                                                <AlertDialogHeader>
-                                                                    <AlertDialogTitle>Excluir Usuário</AlertDialogTitle>
-                                                                    <AlertDialogDescription id="delete-user-description">
-                                                                        Esta ação não pode ser desfeita. Isso irá excluir permanentemente o usuário "<strong>{user.username}</strong>" do sistema (tanto do servidor quanto do web).
-                                                                        <br /><br />
-                                                                        <strong>Importante:</strong> O usuário será excluído completamente de auth.users e app_users. Esta ação é irreversível.
-                                                                    </AlertDialogDescription>
-                                                                </AlertDialogHeader>
-                                                                <AlertDialogFooter>
-                                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                                    <AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive hover:bg-destructive/90">
-                                                                        Excluir Usuário
-                                                                    </AlertDialogAction>
-                                                                </AlertDialogFooter>
-                                                            </AlertDialogContent>
-                                                        </AlertDialog>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            title="Resetar senha"
+                                                            onClick={() => handleResetPasswordClick(user.id, user.email || '')}
+                                                        >
+                                                            <KeyRound className="w-4 h-4 text-blue-400" />
+                                                        </Button>
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            title="Excluir usuário" 
+                                                            onClick={() => handleDeleteClick(user.id)}
+                                                        >
+                                                            <Trash2 className="w-4 h-4 text-destructive" />
+                                                        </Button>
                                                     </div>
                                                 )}
                                             </div>
@@ -479,6 +451,79 @@ const UserManagement = () => {
                     </div>
                 </div>
             </div>
+            
+            {/* Dialog de Resetar Senha - Renderizado uma vez fora do map */}
+            <AlertDialog open={showResetDialog} onOpenChange={(open) => {
+                if (!open) {
+                    closeResetDialog();
+                }
+            }}>
+                <AlertDialogContent aria-describedby="reset-password-description">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Resetar Senha</AlertDialogTitle>
+                        <AlertDialogDescription id="reset-password-description">
+                            {getSelectedUser() && (
+                                <>
+                                    Digite o email do usuário "<strong>{getSelectedUser().username}</strong>" para resetar a senha para a senha padrão "afeet10".
+                                    <br /><br />
+                                    <strong>Importante:</strong> A senha será resetada imediatamente para "afeet10". O usuário poderá fazer login com essa senha e será redirecionado para definir uma nova senha no primeiro acesso.
+                                </>
+                            )}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="resetEmail">E-mail do usuário</Label>
+                            <Input 
+                                id="resetEmail" 
+                                type="email" 
+                                value={resetEmail} 
+                                onChange={(e) => setResetEmail(e.target.value)}
+                                placeholder="usuario@email.com"
+                                className="bg-secondary"
+                                required
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                O email do usuário é necessário para resetar a senha. A senha será resetada para "afeet10" imediatamente.
+                            </p>
+                        </div>
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={closeResetDialog}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmResetPassword} className="bg-primary hover:bg-primary/90">
+                            Resetar Senha para "afeet10"
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            
+            {/* Dialog de Excluir Usuário - Renderizado uma vez fora do map */}
+            <AlertDialog open={showDeleteDialog} onOpenChange={(open) => {
+                if (!open) {
+                    closeDeleteDialog();
+                }
+            }}>
+                <AlertDialogContent aria-describedby="delete-user-description">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Excluir Usuário</AlertDialogTitle>
+                        <AlertDialogDescription id="delete-user-description">
+                            {getDeleteUser() && (
+                                <>
+                                    Esta ação não pode ser desfeita. Isso irá excluir permanentemente o usuário "<strong>{getDeleteUser().username}</strong>" do sistema (tanto do servidor quanto do web).
+                                    <br /><br />
+                                    <strong>Importante:</strong> O usuário será excluído completamente de auth.users e app_users. Esta ação é irreversível.
+                                </>
+                            )}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={closeDeleteDialog}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive hover:bg-destructive/90">
+                            Excluir Usuário
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
         </>
     )
